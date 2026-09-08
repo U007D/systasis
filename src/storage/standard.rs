@@ -11,13 +11,14 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// Consumable storage with nonblocking, synchronized access.
 #[doc(hidden)]
 pub struct TakeSlot<T> {
-    lock: RwLock<()>,
+    reserved: RwLock<bool>,
     value: UnsafeCell<Option<T>>,
 }
 
-// SAFETY: every payload access through &self first acquires the lock. Shared
-// acquisition exposes only &T, requiring Sync. Exclusive acquisition can move
-// T between threads, requiring Send. Private fields prevent unguarded access.
+// SAFETY: access initially acquires the lock. A permanent reservation permits
+// only shared payload access thereafter, even after its lock is released.
+// Sharing T requires Sync; moving it between threads before reservation requires
+// Send. Private fields prevent resetting reservations or unguarded mutation.
 unsafe impl<T: Send + Sync> Sync for TakeSlot<T> {}
 
 // Match RwLock<Option<T>>: unwinding through a write guard poisons the lock.
@@ -29,16 +30,19 @@ impl<T> TakeSlot<T> {
     /// Stores a value without allocating or invoking user code.
     pub const fn new(value: T) -> Self {
         Self {
-            lock: RwLock::new(()),
+            reserved: RwLock::new(false),
             value: UnsafeCell::new(Some(value)),
         }
     }
 
     /// Takes ownership, leaving the slot empty after successful acquisition.
     pub fn try_resolve(&self) -> Result<T, Error> {
-        let _guard = self.lock.try_write().map_err(Error::from_lock)?;
-        // SAFETY: the retained write lock excludes all other payload accesses
-        // for the entire use of the mutable reference.
+        let guard = self.reserved.try_write().map_err(Error::from_lock)?;
+        if *guard {
+            return Err(Error::ValueAccessContention);
+        }
+        // SAFETY: the write lock excludes ordinary accesses, and the checked
+        // absence of a reservation excludes outstanding guard-free references.
         unsafe { &mut *self.value.get() }
             .take()
             .ok_or(Error::ValueAlreadyConsumed)
@@ -46,7 +50,7 @@ impl<T> TakeSlot<T> {
 
     /// Borrows a present value while retaining the acquired read lock.
     pub fn try_resolve_ref(&self) -> Result<Ref<'_, T>, Error> {
-        let guard = self.lock.try_read().map_err(Error::from_lock)?;
+        let guard = self.reserved.try_read().map_err(Error::from_lock)?;
         // SAFETY: the read lock excludes removal and mutation. Other readers
         // only create shared references. No payload reference precedes locking.
         let value = unsafe { &*self.value.get() }
@@ -61,8 +65,12 @@ impl<T> TakeSlot<T> {
 
     /// Mutably borrows a present value while retaining the acquired write lock.
     pub fn try_resolve_ref_mut(&self) -> Result<RefMut<'_, T>, Error> {
-        let guard = self.lock.try_write().map_err(Error::from_lock)?;
-        // SAFETY: the exclusive lock excludes every other payload access.
+        let guard = self.reserved.try_write().map_err(Error::from_lock)?;
+        if *guard {
+            return Err(Error::ValueAccessContention);
+        }
+        // SAFETY: exclusive acquisition and the absence of a reservation
+        // exclude every other payload reference before forming &mut Option<T>.
         let value = unsafe { &mut *self.value.get() }
             .as_mut()
             .ok_or(Error::ValueAlreadyConsumed)?;
@@ -80,6 +88,26 @@ impl<T> TakeSlot<T> {
     {
         self.try_resolve_ref().map(|guard| T::clone(&guard))
     }
+
+    /// Permanently reserves shared access and returns a guard-free reference.
+    ///
+    /// The reservation lasts until this slot is destroyed, even after the
+    /// returned reference's last use. Taking and mutable access then report
+    /// contention. Acquisition is nonblocking and requires an exclusive lock,
+    /// including repeated reservations. The reference cannot outlive the slot.
+    #[doc(hidden)]
+    pub fn try_reserve_ref(&self) -> Result<&T, Error> {
+        let mut guard = self.reserved.try_write().map_err(Error::from_lock)?;
+        // SAFETY: exclusive acquisition excludes ordinary writers and readers.
+        // Existing reservations permit only shared access. No mutable payload
+        // reference is formed, including on repeated reservation attempts.
+        let value = unsafe { &*self.value.get() }
+            .as_ref()
+            .ok_or(Error::ValueAlreadyConsumed)?;
+        *guard = true;
+        drop(guard);
+        Ok(value)
+    }
 }
 
 /// A shared reference to a present value, retaining its std read-lock guard.
@@ -92,7 +120,7 @@ impl<T> TakeSlot<T> {
 /// assert_send::<systasis::Ref<'static, u32>>();
 /// ```
 pub struct Ref<'a, T: ?Sized> {
-    guard: RwLockReadGuard<'a, ()>,
+    guard: RwLockReadGuard<'a, bool>,
     value: NonNull<T>,
     marker: PhantomData<&'a T>,
 }
@@ -147,7 +175,7 @@ unsafe impl<T: ?Sized + Sync> Sync for Ref<'_, T> {}
 /// }
 /// ```
 pub struct RefMut<'a, T: ?Sized> {
-    _guard: RwLockWriteGuard<'a, ()>,
+    _guard: RwLockWriteGuard<'a, bool>,
     value: NonNull<T>,
     marker: PhantomData<&'a mut T>,
 }
