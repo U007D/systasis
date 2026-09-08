@@ -8,3 +8,12 @@ pub mod app_container;
 
 mod fallible;
 pub use fallible::Fallible;
+
+mod storage;
+pub use storage::{Ref, RefMut};
+
+/// Runtime support for generated code; not a stable hand-written API.
+#[doc(hidden)]
+pub mod __private {
+    pub use crate::storage::{CopySlot, TakeSlot};
+}
