@@ -49,14 +49,14 @@ impl<T> TakeSlot<T> {
     }
 
     /// Borrows a present value while retaining the acquired read lock.
-    pub fn try_resolve_ref(&self) -> Result<Ref<'_, T>, Error> {
+    pub fn try_resolve_ref(&self) -> Result<ReadGuard<'_, T>, Error> {
         let guard = self.reserved.try_read().map_err(Error::from_lock)?;
         // SAFETY: the read lock excludes removal and mutation. Other readers
         // only create shared references. No payload reference precedes locking.
         let value = unsafe { &*self.value.get() }
             .as_ref()
             .ok_or(Error::ValueAlreadyConsumed)?;
-        Ok(Ref {
+        Ok(ReadGuard {
             guard,
             value: NonNull::from(value),
             marker: PhantomData,
@@ -64,7 +64,7 @@ impl<T> TakeSlot<T> {
     }
 
     /// Mutably borrows a present value while retaining the acquired write lock.
-    pub fn try_resolve_ref_mut(&self) -> Result<RefMut<'_, T>, Error> {
+    pub fn try_resolve_ref_mut(&self) -> Result<WriteGuard<'_, T>, Error> {
         let guard = self.reserved.try_write().map_err(Error::from_lock)?;
         if *guard {
             return Err(Error::ValueAccessContention);
@@ -74,7 +74,7 @@ impl<T> TakeSlot<T> {
         let value = unsafe { &mut *self.value.get() }
             .as_mut()
             .ok_or(Error::ValueAlreadyConsumed)?;
-        Ok(RefMut {
+        Ok(WriteGuard {
             _guard: guard,
             value: NonNull::from(value),
             marker: PhantomData,
@@ -110,30 +110,30 @@ impl<T> TakeSlot<T> {
     }
 }
 
-/// A shared reference to a present value, retaining its std read-lock guard.
+/// A guard providing shared access to a present value under a std read lock.
 ///
 /// This is a systasis guard, not `std::cell::Ref`. It cannot be sent to another
 /// thread because the underlying std lock guard must be dropped on its thread.
 ///
 /// ```compile_fail
 /// fn assert_send<T: Send>() {}
-/// assert_send::<systasis::Ref<'static, u32>>();
+/// assert_send::<systasis::ReadGuard<'static, u32>>();
 /// ```
-pub struct Ref<'a, T: ?Sized> {
+pub struct ReadGuard<'a, T: ?Sized> {
     guard: RwLockReadGuard<'a, bool>,
     value: NonNull<T>,
     marker: PhantomData<&'a T>,
 }
 
-impl<'a, T: ?Sized> Ref<'a, T> {
+impl<'a, T: ?Sized> ReadGuard<'a, T> {
     /// Changes the reference target without releasing the original read lock.
     #[doc(hidden)]
-    pub fn map<U: ?Sized, F>(original: Self, project: F) -> Ref<'a, U>
+    pub fn map<U: ?Sized, F>(original: Self, project: F) -> ReadGuard<'a, U>
     where
         F: FnOnce(&T) -> &U,
     {
         let value = NonNull::from(project(&original));
-        Ref {
+        ReadGuard {
             guard: original.guard,
             value,
             marker: PhantomData,
@@ -141,7 +141,7 @@ impl<'a, T: ?Sized> Ref<'a, T> {
     }
 }
 
-impl<T: ?Sized> Deref for Ref<'_, T> {
+impl<T: ?Sized> Deref for ReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -155,32 +155,32 @@ impl<T: ?Sized> Deref for Ref<'_, T> {
 // SAFETY: sharing the wrapper exposes only &T. Its retained read lock excludes
 // mutation/removal, and T: Sync permits shared references across threads.
 // No Send implementation: the std guard must drop on its owning thread.
-unsafe impl<T: ?Sized + Sync> Sync for Ref<'_, T> {}
+unsafe impl<T: ?Sized + Sync> Sync for ReadGuard<'_, T> {}
 
-/// An exclusive reference to a present value, retaining its std write lock.
+/// A guard providing exclusive access to a present value under a std write lock.
 ///
 /// Like `&mut T`, this guard is invariant in T. Like its std lock guard, it is
 /// not `Send`.
 ///
 /// ```compile_fail
 /// fn assert_send<T: Send>() {}
-/// assert_send::<systasis::RefMut<'static, u32>>();
+/// assert_send::<systasis::WriteGuard<'static, u32>>();
 /// ```
 ///
 /// ```compile_fail
 /// fn shorten<'guard, 'short>(
-///     value: systasis::RefMut<'guard, &'static str>,
-/// ) -> systasis::RefMut<'guard, &'short str> {
+///     value: systasis::WriteGuard<'guard, &'static str>,
+/// ) -> systasis::WriteGuard<'guard, &'short str> {
 ///     value
 /// }
 /// ```
-pub struct RefMut<'a, T: ?Sized> {
+pub struct WriteGuard<'a, T: ?Sized> {
     _guard: RwLockWriteGuard<'a, bool>,
     value: NonNull<T>,
     marker: PhantomData<&'a mut T>,
 }
 
-impl<T: ?Sized> Deref for RefMut<'_, T> {
+impl<T: ?Sized> Deref for WriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -190,7 +190,7 @@ impl<T: ?Sized> Deref for RefMut<'_, T> {
     }
 }
 
-impl<T: ?Sized> DerefMut for RefMut<'_, T> {
+impl<T: ?Sized> DerefMut for WriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         // SAFETY: &mut self guarantees an exclusive reborrow of the retained
         // exclusive access. PhantomData<&mut T> prevents covariant substitution.
@@ -198,6 +198,6 @@ impl<T: ?Sized> DerefMut for RefMut<'_, T> {
     }
 }
 
-// SAFETY: sharing &RefMut exposes only &T. DerefMut requires &mut RefMut,
+// SAFETY: sharing &WriteGuard exposes only &T. DerefMut requires &mut WriteGuard,
 // which cannot coexist with shared borrows. The exclusive lock remains held.
-unsafe impl<T: ?Sized + Sync> Sync for RefMut<'_, T> {}
+unsafe impl<T: ?Sized + Sync> Sync for WriteGuard<'_, T> {}

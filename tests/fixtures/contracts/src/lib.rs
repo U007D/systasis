@@ -18,12 +18,12 @@ pub fn slot_and_guard_traits() {
     fn sync<T: Sync>() {}
     send::<systasis::__private::TakeSlot<core::cell::Cell<u32>>>();
     sync::<systasis::__private::TakeSlot<u32>>();
-    sync::<systasis::Ref<'static, u32>>();
-    sync::<systasis::RefMut<'static, u32>>();
+    sync::<systasis::ReadGuard<'static, u32>>();
+    sync::<systasis::WriteGuard<'static, u32>>();
     #[cfg(not(feature = "std"))]
     {
-        send::<systasis::Ref<'static, u32>>();
-        send::<systasis::RefMut<'static, core::cell::Cell<u32>>>();
+        send::<systasis::ReadGuard<'static, u32>>();
+        send::<systasis::WriteGuard<'static, core::cell::Cell<u32>>>();
     }
 }
 
@@ -55,17 +55,17 @@ pub fn ordinary_value_is_not_fallible() {
 #[cfg(feature = "bad-send-guard")]
 pub fn std_guard_cannot_move_between_threads() {
     fn requires_send<T: Send>() {}
-    requires_send::<systasis::Ref<'static, u32>>();
+    requires_send::<systasis::ReadGuard<'static, u32>>();
 }
 
 #[cfg(feature = "bad-send-mut-guard")]
 pub fn std_mut_guard_cannot_move_between_threads() {
     fn requires_send<T: Send>() {}
-    requires_send::<systasis::RefMut<'static, u32>>();
+    requires_send::<systasis::WriteGuard<'static, u32>>();
 }
 
 #[cfg(feature = "bad-guard-escape")]
-pub fn guard_cannot_outlive_slot() -> systasis::Ref<'static, u32> {
+pub fn guard_cannot_outlive_slot() -> systasis::ReadGuard<'static, u32> {
     let slot = systasis::__private::TakeSlot::new(7);
     slot.try_resolve_ref().unwrap()
 }
@@ -73,7 +73,7 @@ pub fn guard_cannot_outlive_slot() -> systasis::Ref<'static, u32> {
 #[cfg(feature = "bad-sync-cell-guard")]
 pub fn non_sync_payload_cannot_be_shared() {
     fn requires_sync<T: Sync>() {}
-    requires_sync::<systasis::Ref<'static, core::cell::Cell<u32>>>();
+    requires_sync::<systasis::ReadGuard<'static, core::cell::Cell<u32>>>();
 }
 
 #[cfg(feature = "bad-reserved-escape")]
@@ -105,7 +105,7 @@ pub fn reservation_does_not_make_payload_send() {
 #[cfg(feature = "bad-send-cell-reader")]
 pub fn shared_guard_of_non_sync_payload_cannot_be_sent() {
     fn requires_send<T: Send>() {}
-    requires_send::<systasis::Ref<'static, core::cell::Cell<u32>>>();
+    requires_send::<systasis::ReadGuard<'static, core::cell::Cell<u32>>>();
 }
 
 #[cfg(feature = "bad-mutable-lifetime")]

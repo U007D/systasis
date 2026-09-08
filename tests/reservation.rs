@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use systasis::{__private::TakeSlot, Ref, app_container::Error};
+use systasis::{__private::TakeSlot, ReadGuard, app_container::Error};
 
 fn assert_contended<T>(result: Result<T, Error>) {
     assert!(matches!(result, Err(Error::ValueAccessContention)));
@@ -25,6 +25,27 @@ fn reservation_rejects_mutation_and_take_before_touching_the_payload() {
         assert_eq!(&*slot.try_resolve_ref().unwrap(), reserved);
         assert_eq!(slot.try_resolve_clone().unwrap(), *reserved);
     }
+}
+
+#[test]
+fn read_guard_coexists_with_a_direct_shared_borrow_without_releasing_its_reservation() {
+    let slot = TakeSlot::new(String::from("original"));
+    let reserved = slot.try_reserve_ref().unwrap();
+    let reader: ReadGuard<'_, String> = slot.try_resolve_ref().unwrap();
+
+    assert!(std::ptr::eq(reserved, &*reader));
+    assert_contended(slot.try_resolve_ref_mut());
+    assert_contended(slot.try_resolve());
+    assert_eq!(reserved, "original");
+
+    drop(reader);
+
+    // The read lock is gone; the permanent reservation still prevents creation
+    // of a mutable payload reference or removal while this direct borrow lives.
+    assert_contended(slot.try_resolve_ref_mut());
+    assert_contended(slot.try_resolve());
+    assert_eq!(reserved, "original");
+    assert_eq!(&*slot.try_resolve_ref().unwrap(), reserved);
 }
 
 #[test]
@@ -49,8 +70,8 @@ fn repeated_reservation_releases_its_lock_and_keeps_the_same_reference() {
     let first = slot.try_reserve_ref().unwrap();
     let second = slot.try_reserve_ref().unwrap();
     assert!(std::ptr::eq(first, second));
-    let projected = Ref::map(slot.try_resolve_ref().unwrap(), String::as_str);
-    let projected = Ref::map(projected, str::as_bytes);
+    let projected = ReadGuard::map(slot.try_resolve_ref().unwrap(), String::as_str);
+    let projected = ReadGuard::map(projected, str::as_bytes);
     assert_eq!(&*projected, b"value");
     // Reservation acquisition always needs a write lock, even if reserved.
     assert_contended(slot.try_reserve_ref());

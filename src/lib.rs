@@ -10,7 +10,7 @@ mod fallible;
 pub use fallible::Fallible;
 
 mod storage;
-pub use storage::{Ref, RefMut};
+pub use storage::{ReadGuard, WriteGuard};
 
 /// Runtime support for generated code; not a stable hand-written API.
 #[doc(hidden)]

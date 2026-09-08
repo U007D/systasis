@@ -1,6 +1,6 @@
 # Checked storage safety
 
-`Ref` and `RefMut` are systasis lock-guard wrappers. They are created only after
+`ReadGuard` and `WriteGuard` are systasis lock-guard wrappers. They are created only after
 nonblocking lock acquisition and a successful occupancy check. They never defer
 an empty-slot error until dereferencing. Taking a value requires exclusive
 acquisition and leaves the slot empty. All acquisition failures are returned.
@@ -43,17 +43,17 @@ The checked backend has seven unsafe blocks and three unsafe `Sync` implementati
 | Shared acquisition | Hold a read lock while checking occupancy and forming `&T`. |
 | Mutable acquisition | Hold the write lock and check no reservation exists before forming `&mut Option<T>` or `&mut T`. |
 | Persistent reservation | Hold the write lock, form only shared payload references, set the irreversible flag before releasing the lock. |
-| `Ref::deref` | Its pointer targets the checked value or a valid projection, protected by the retained read lock. |
-| `RefMut::deref` | Its pointer is valid under the retained write lock; `&self` permits only a shared reborrow. |
-| `RefMut::deref_mut` | `&mut self` permits an exclusive reborrow under that same write lock. |
+| `ReadGuard::deref` | Its pointer targets the checked value or a valid projection, protected by the retained read lock. |
+| `WriteGuard::deref` | Its pointer is valid under the retained write lock; `&self` permits only a shared reborrow. |
+| `WriteGuard::deref_mut` | `&mut self` permits an exclusive reborrow under that same write lock. |
 | `TakeSlot<T>: Sync` | T is `Send + Sync`: taking can transfer ownership and readers can share references. |
-| `Ref<T>: Sync` | T is `Sync`; sharing the wrapper exposes only shared references. |
-| `RefMut<T>: Sync` | T is `Sync`; shared wrapper references expose only shared references, while mutation requires an exclusive wrapper reference. |
+| `ReadGuard<T>: Sync` | T is `Sync`; sharing the wrapper exposes only shared references. |
+| `WriteGuard<T>: Sync` | T is `Sync`; shared wrapper references expose only shared references, while mutation requires an exclusive wrapper reference. |
 
-Pointers, lock guards and lifetime markers are private. `Ref::map` consumes the
+Pointers, lock guards and lifetime markers are private. `ReadGuard::map` consumes the
 source wrapper, invokes a lifetime-preserving shared-reference projection, and
 retains its lock. The projected target may be unsized. A caller projection panic
-drops the original guard through ordinary unwinding. `RefMut` uses
+drops the original guard through ordinary unwinding. `WriteGuard` uses
 `PhantomData<&mut T>` to preserve invariance in T. Neither std wrapper implements
 `Send`; its actual std guard enforces the owning-thread drop requirement.
 

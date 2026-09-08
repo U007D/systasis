@@ -53,18 +53,18 @@ impl<T> TakeSlot<T> {
     }
 
     /// Borrows a present value while retaining the acquired read lock.
-    pub fn try_resolve_ref(&self) -> Result<Ref<'_, T>, Error> {
+    pub fn try_resolve_ref(&self) -> Result<ReadGuard<'_, T>, Error> {
         let guard = self.read()?;
         // SAFETY: the read lock excludes removal and mutation. Ordinary readers
         // and any permanent reservations expose only shared references.
         let value = unsafe { &*self.value.get() }
             .as_ref()
             .ok_or(Error::ValueAlreadyConsumed)?;
-        Ok(Ref { guard, value })
+        Ok(ReadGuard { guard, value })
     }
 
     /// Mutably borrows a present value while retaining the acquired write lock.
-    pub fn try_resolve_ref_mut(&self) -> Result<RefMut<'_, T>, Error> {
+    pub fn try_resolve_ref_mut(&self) -> Result<WriteGuard<'_, T>, Error> {
         let guard = self.write()?;
         if *guard {
             return Err(Error::ValueAccessContention);
@@ -74,7 +74,7 @@ impl<T> TakeSlot<T> {
         let value = unsafe { &mut *self.value.get() }
             .as_mut()
             .ok_or(Error::ValueAlreadyConsumed)?;
-        Ok(RefMut {
+        Ok(WriteGuard {
             _guard: guard,
             value,
         })
@@ -109,29 +109,29 @@ impl<T> TakeSlot<T> {
     }
 }
 
-/// A shared reference to a present value, retaining its Spin read-lock guard.
+/// A guard providing shared access to a present value under a Spin read lock.
 ///
 /// This is a systasis guard, not `std::cell::Ref`.
-pub struct Ref<'a, T: ?Sized> {
+pub struct ReadGuard<'a, T: ?Sized> {
     guard: RwLockReadGuard<'a, bool>,
     value: &'a T,
 }
 
-impl<'a, T: ?Sized> Ref<'a, T> {
+impl<'a, T: ?Sized> ReadGuard<'a, T> {
     /// Changes the reference target without releasing the original read lock.
     #[doc(hidden)]
-    pub fn map<U: ?Sized, F>(original: Self, project: F) -> Ref<'a, U>
+    pub fn map<U: ?Sized, F>(original: Self, project: F) -> ReadGuard<'a, U>
     where
         F: FnOnce(&T) -> &U,
     {
-        Ref {
+        ReadGuard {
             value: project(original.value),
             guard: original.guard,
         }
     }
 }
 
-impl<T: ?Sized> Deref for Ref<'_, T> {
+impl<T: ?Sized> Deref for ReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -139,15 +139,15 @@ impl<T: ?Sized> Deref for Ref<'_, T> {
     }
 }
 
-/// An exclusive reference to a present value, retaining its Spin write lock.
+/// A guard providing exclusive access to a present value under a Spin write lock.
 ///
 /// Like `&mut T`, this guard is invariant in T.
-pub struct RefMut<'a, T: ?Sized> {
+pub struct WriteGuard<'a, T: ?Sized> {
     _guard: RwLockWriteGuard<'a, bool>,
     value: &'a mut T,
 }
 
-impl<T: ?Sized> Deref for RefMut<'_, T> {
+impl<T: ?Sized> Deref for WriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -155,7 +155,7 @@ impl<T: ?Sized> Deref for RefMut<'_, T> {
     }
 }
 
-impl<T: ?Sized> DerefMut for RefMut<'_, T> {
+impl<T: ?Sized> DerefMut for WriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         self.value
     }

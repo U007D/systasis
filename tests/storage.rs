@@ -11,7 +11,7 @@ use std::{
 };
 use systasis::{
     __private::{CopySlot, TakeSlot},
-    Ref, RefMut,
+    ReadGuard, WriteGuard,
     app_container::Error,
 };
 
@@ -67,9 +67,9 @@ fn writer_excludes_every_other_operation_until_dropped() {
 #[test]
 fn projection_retains_lock_through_repeated_unsized_mapping() {
     let slot = TakeSlot::new(String::from("value"));
-    let text: Ref<'_, str> = Ref::map(slot.try_resolve_ref().unwrap(), String::as_str);
-    let bytes: Ref<'_, [u8]> = Ref::map(text, str::as_bytes);
-    let suffix: Ref<'_, [u8]> = Ref::map(bytes, |bytes| &bytes[1..]);
+    let text: ReadGuard<'_, str> = ReadGuard::map(slot.try_resolve_ref().unwrap(), String::as_str);
+    let bytes: ReadGuard<'_, [u8]> = ReadGuard::map(text, str::as_bytes);
+    let suffix: ReadGuard<'_, [u8]> = ReadGuard::map(bytes, |bytes| &bytes[1..]);
     assert_eq!(&*suffix, b"alue");
     assert_contended(slot.try_resolve());
     drop(suffix);
@@ -87,7 +87,8 @@ fn trait_object_projection_preserves_access() {
         }
     }
     let slot = TakeSlot::new(String::from("value"));
-    let view: Ref<'_, dyn Label> = Ref::map(slot.try_resolve_ref().unwrap(), |v| v as &dyn Label);
+    let view: ReadGuard<'_, dyn Label> =
+        ReadGuard::map(slot.try_resolve_ref().unwrap(), |v| v as &dyn Label);
     assert_eq!(view.label(), "value");
     assert_contended(slot.try_resolve_ref_mut());
 }
@@ -95,7 +96,7 @@ fn trait_object_projection_preserves_access() {
 #[test]
 fn static_projection_still_retains_original_lock() {
     let slot = TakeSlot::new(String::from("value"));
-    let text = Ref::map(slot.try_resolve_ref().unwrap(), |_| "static");
+    let text = ReadGuard::map(slot.try_resolve_ref().unwrap(), |_| "static");
     assert_eq!(&*text, "static");
     assert_contended(slot.try_resolve());
     drop(text);
@@ -226,8 +227,8 @@ fn barrier_establishes_cross_thread_contention_without_sleeps() {
 #[test]
 fn guard_references_can_be_shared_when_value_is_sync() {
     fn assert_sync<T: Sync>() {}
-    assert_sync::<Ref<'_, u32>>();
-    assert_sync::<RefMut<'_, u32>>();
+    assert_sync::<ReadGuard<'_, u32>>();
+    assert_sync::<WriteGuard<'_, u32>>();
     let slot = TakeSlot::new(7_u32);
     let guard = slot.try_resolve_ref_mut().unwrap();
     std::thread::scope(|scope| {
@@ -299,7 +300,7 @@ fn caller_projection_panic_releases_read_lock() {
     let slot = TakeSlot::new(7_u32);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _: Ref<'_, u32> = Ref::map(slot.try_resolve_ref().unwrap(), |_| {
+            let _: ReadGuard<'_, u32> = ReadGuard::map(slot.try_resolve_ref().unwrap(), |_| {
                 panic!("caller failure")
             });
         }))

@@ -6,9 +6,9 @@ mod spin;
 mod standard;
 
 #[cfg(not(feature = "std"))]
-pub use spin::{Ref, RefMut, TakeSlot};
+pub use spin::{ReadGuard, TakeSlot, WriteGuard};
 #[cfg(feature = "std")]
-pub use standard::{Ref, RefMut, TakeSlot};
+pub use standard::{ReadGuard, TakeSlot, WriteGuard};
 
 /// Plain storage for a registration with established `Copy` behavior.
 #[doc(hidden)]
