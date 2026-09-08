@@ -177,3 +177,34 @@ fn guard_cannot_escape_backing_slot() {
 fn guard_does_not_make_cell_sync() {
     rejects("bad-sync-cell-guard", "E0277", &["Cell", "shared"]);
 }
+
+#[test]
+fn reserved_reference_cannot_escape_backing_slot() {
+    rejects("bad-reserved-escape", "E0515", &["slot"]);
+}
+
+#[test]
+fn reserved_reference_prevents_moving_backing_slot() {
+    rejects("bad-move-reserved-slot", "E0505", &["slot", "borrowed"]);
+}
+
+#[test]
+fn reservation_does_not_make_cell_slot_sync() {
+    rejects("bad-sync-cell-slot", "E0277", &["Cell", "shared"]);
+}
+
+#[test]
+fn reservation_does_not_make_rc_slot_send() {
+    rejects("bad-send-rc-slot", "E0277", &["Rc", "sent"]);
+}
+
+#[cfg(not(feature = "std"))]
+#[test]
+fn spin_shared_guard_requires_sync_payload_to_be_send() {
+    rejects("bad-send-cell-reader", "E0277", &["Cell", "shared"]);
+}
+
+#[test]
+fn mutable_guard_preserves_payload_lifetime_invariance() {
+    rejects("bad-mutable-lifetime", "E0521", &["escapes"]);
+}

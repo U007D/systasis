@@ -3,6 +3,30 @@
 
 use systasis::{Fallible, app_container::Error};
 
+extern crate alloc;
+
+/// Positive control: reservation adds no independent lifetime or guard type.
+pub fn reserved_reference(
+    slot: &systasis::__private::TakeSlot<u32>,
+) -> Result<&u32, Error> {
+    slot.try_reserve_ref()
+}
+
+/// Positive controls for unchanged field-derived thread-safety contracts.
+pub fn slot_and_guard_traits() {
+    fn send<T: Send>() {}
+    fn sync<T: Sync>() {}
+    send::<systasis::__private::TakeSlot<core::cell::Cell<u32>>>();
+    sync::<systasis::__private::TakeSlot<u32>>();
+    sync::<systasis::Ref<'static, u32>>();
+    sync::<systasis::RefMut<'static, u32>>();
+    #[cfg(not(feature = "std"))]
+    {
+        send::<systasis::Ref<'static, u32>>();
+        send::<systasis::RefMut<'static, core::cell::Cell<u32>>>();
+    }
+}
+
 pub fn error() -> Error {
     Error::ValueAlreadyConsumed
 }
@@ -50,4 +74,44 @@ pub fn guard_cannot_outlive_slot() -> systasis::Ref<'static, u32> {
 pub fn non_sync_payload_cannot_be_shared() {
     fn requires_sync<T: Sync>() {}
     requires_sync::<systasis::Ref<'static, core::cell::Cell<u32>>>();
+}
+
+#[cfg(feature = "bad-reserved-escape")]
+pub fn reserved_reference_cannot_outlive_slot() -> &'static u32 {
+    let slot = systasis::__private::TakeSlot::new(7);
+    slot.try_reserve_ref().unwrap()
+}
+
+#[cfg(feature = "bad-move-reserved-slot")]
+pub fn live_reservation_prevents_slot_move() -> u32 {
+    let slot = systasis::__private::TakeSlot::new(7);
+    let reserved = slot.try_reserve_ref().unwrap();
+    drop(slot);
+    *reserved
+}
+
+#[cfg(feature = "bad-sync-cell-slot")]
+pub fn reservation_does_not_make_payload_sync() {
+    fn requires_sync<T: Sync>() {}
+    requires_sync::<systasis::__private::TakeSlot<core::cell::Cell<u32>>>();
+}
+
+#[cfg(feature = "bad-send-rc-slot")]
+pub fn reservation_does_not_make_payload_send() {
+    fn requires_send<T: Send>() {}
+    requires_send::<systasis::__private::TakeSlot<alloc::rc::Rc<u32>>>();
+}
+
+#[cfg(feature = "bad-send-cell-reader")]
+pub fn shared_guard_of_non_sync_payload_cannot_be_sent() {
+    fn requires_send<T: Send>() {}
+    requires_send::<systasis::Ref<'static, core::cell::Cell<u32>>>();
+}
+
+#[cfg(feature = "bad-mutable-lifetime")]
+pub fn mutable_guard_cannot_store_short_reference(
+    slot: &systasis::__private::TakeSlot<&'static str>,
+    value: &str,
+) {
+    *slot.try_resolve_ref_mut().unwrap() = value;
 }
