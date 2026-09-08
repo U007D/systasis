@@ -1,0 +1,27 @@
+[package]
+name = "systasis"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Statically wired dependency injection with checked, nonblocking value access"
+publish = false
+
+[workspace]
+members = ["systasis-macros"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[lints]
+workspace = true
+
+[features]
+default = ["std"]
+std = []
+
