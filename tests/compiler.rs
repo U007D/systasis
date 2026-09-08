@@ -82,8 +82,25 @@ impl Driver {
 
 fn has_error(diagnostics: &str, code: &str, fragments: &[&str]) -> bool {
     diagnostics.lines().any(|line| {
-        line.contains(&format!("error[{code}]"))
-            && fragments.iter().all(|fragment| line.contains(fragment))
+        // Short diagnostics begin with an optional path:line:column location.
+        // Inspect severity before searching message text: a warning can quote
+        // an error code without being evidence of that compiler rejection.
+        let diagnostic = line
+            .split_once(": ")
+            .filter(|(location, _)| {
+                let mut fields = location.rsplitn(3, ':');
+                fields
+                    .next()
+                    .is_some_and(|column| column.parse::<usize>().is_ok())
+                    && fields
+                        .next()
+                        .is_some_and(|row| row.parse::<usize>().is_ok())
+                    && fields.next().is_some()
+            })
+            .map_or(line, |(_, diagnostic)| diagnostic);
+        diagnostic
+            .strip_prefix(&format!("error[{code}]:"))
+            .is_some_and(|message| fragments.iter().all(|fragment| message.contains(fragment)))
     })
 }
 
@@ -105,6 +122,11 @@ fn rejects(case: &str, code: &str, fragments: &[&str]) {
 
 #[test]
 fn matcher_rejects_warning_and_unrelated_error_fragments() {
+    assert!(!has_error(
+        "src/lib.rs:9:3: warning: quoted error[E0277]: Copy\nsrc/lib.rs:10:3: error[E0308]: unrelated mismatch",
+        "E0277",
+        &["Copy"]
+    ));
     assert!(!has_error(
         "warning: Copy\nerror[E0277]: Send",
         "E0277",
