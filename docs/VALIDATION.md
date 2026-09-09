@@ -171,6 +171,14 @@ with Clippy. Runs here set `CARGO_BUILD_RUSTC_WRAPPER=`; Clippy additionally use
 
 ## Current boundaries
 
+Local package validation (378d2f2) found and fixed missing license texts in the
+proc-macro archive. `cargo +stable package --offline -p systasis-macros` now
+includes both texts and verifies the extracted package. Runtime packaging and
+an extracted no_std build pass with a command-line crates.io patch pointing at
+that extracted macro package. This is local artifact validation, not evidence
+that the unpublished dependency can be downloaded from a registry. No package
+was published; no persistent patch or lockfile change was retained.
+
 - The legacy reservation API retains its regression tests but is not called by
   current generated containers. Stored services retaining internal borrows remain
   deferred. See SAFETY.md for the current split-payload storage obligations.
