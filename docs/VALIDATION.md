@@ -2,6 +2,16 @@
 
 ## Current generated-container checks
 
+Generic integration commits 99b9d7f/e2b639a preserve declaration-site Copy policy
+and authored alias parameters for stored values, fresh constructors, typed
+captures, returned guards and single-trait dyn access. Dedicated behavior,
+negative diagnostics and downstream provider/caller checks pass both backends.
+Full workspace tests and both Clippy configurations passed during integration;
+the subsequently added cross-crate suite also passed both backends.
+Runtime and generated-fixture `cargo check` pass for ARM
+`thumbv8m.main-none-eabihf` and RISC-V `riscv32imac-unknown-none-elf`, including a
+generic generated container. This is compile evidence, not linking or board tests.
+
 Static group registration (90ff0d7) passes seven public-API tests on each backend,
 with whole-group/member distinction and override diagnostics. Additional tests
 exercise all six permutations of three traits and qualified names with an

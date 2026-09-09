@@ -25,9 +25,13 @@ they do not conflict with capture names. Opaque macros, other local imports,
 struct/alias destructuring and implicit reference-pattern binding modes remain
 implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
 
-Still pending: generic enclosing functions,
-combined dyn trait groups, named namespaces and composition, unchecked generation,
-and embedded validation. Container-stored services retaining internal borrows are
+Generic enclosing functions preserve authored type, const and lifetime parameters
+in `AppContainer`, with registration-site Copy policy. See
+[generic tests](tests/generic_container.rs) and [cross-crate checks](tests/generic_cross_crate.rs).
+Relative-path handling and differently spelled equivalent Copy bounds remain gaps.
+
+Still pending: combined dyn trait groups, named namespaces and composition,
+unchecked generation, and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.
 
