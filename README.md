@@ -64,6 +64,13 @@ infer the never error type without spelling `!` in generated source. Explicit
 `.build::<!>()` still depends on the caller's compiler accepting that type syntax.
 No nightly guard feature is used.
 
+For targets without native atomic compare-and-swap, enable `portable-atomic`
+alongside `default-features = false`. It enables Spin's portable atomics and the
+critical-section fallback; the application must supply a platform-appropriate
+`critical-section` implementation. Systasis does not assume a single core or
+install an interrupt handler. `experimental-hardware` enables this integration
+and its embedded compile/link checks; physical-board validation remains deferred.
+
 ## Validation
 
 Run `cargo test --workspace` and repeat with `--no-default-features`. The Rust

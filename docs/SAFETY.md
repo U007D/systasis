@@ -46,6 +46,23 @@ Neither backend poisons on caller panic. Unwinding releases guards normally;
 subsequent operations can observe whatever value the caller left behind.
 Systasis does not catch or repair caller constructors, destructors, or mutations.
 
+## Portable atomic fallback
+
+The explicit `portable-atomic` feature enables Spin's portable atomics with
+`critical-section` support. The application supplies the platform implementation,
+including interrupt exclusion, multicore exclusion and nested acquire/release
+behavior. No unsafe single-core or privileged-mode assumption is selected.
+Each fallback atomic operation enters and leaves its own critical section;
+that critical section is not held for the lifetime of a systasis Ref/RefMut.
+The ordinary Spin lock state still protects the payload while a guard exists.
+
+Try-lock contention remains nonblocking at the container API, but a platform
+critical-section implementation may itself wait. Neither bounded interrupt
+latency nor hard real-time behavior follows from the feature alone. Native host
+Miri tests exercise the selected dependency's native atomic path; embedded
+compile/link checks do not establish correctness of an application critical
+section or execution on a physical board.
+
 ## Legacy reservation operation
 
 The internal try_reserve_ref API remains for existing research compatibility.

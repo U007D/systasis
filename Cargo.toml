@@ -25,9 +25,12 @@ workspace = true
 default = ["std"]
 std = ["thiserror/std", "dep:parking_lot"]
 resolve_unchecked = ["systasis-macros/resolve_unchecked"]
+portable-atomic = ["spin/portable-atomic", "dep:portable-atomic"]
+experimental-hardware = ["portable-atomic"]
 
 [dependencies]
 systasis-macros = { path = "systasis-macros", version = "0.1.0" }
 parking_lot = { version = "0.12.5", default-features = false, features = ["send_guard"], optional = true }
 thiserror = { version = "2.0.20", default-features = false }
 spin = { version = "0.12.2", default-features = false, features = ["rwlock", "lock_api"] }
+portable-atomic = { version = "1.15.0", default-features = false, features = ["critical-section"], optional = true }
