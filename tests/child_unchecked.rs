@@ -11,6 +11,7 @@ mod leaf {
     pub fn run(call: impl FnOnce(&AppContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(String::from("value"): String as IValue);
+            register_value!(String::from("metric"): String as IValue in metrics);
         }
         .build();
         call(container);
@@ -55,6 +56,9 @@ mod outer {
                 // SAFETY: both guards were dropped; value remains present.
                 let owned = unsafe { resolve_unchecked_from!(IValue, branch::primary) };
                 assert_eq!(owned, "value!");
+                // SAFETY: this independent namespace value has not been accessed.
+                let metric = unsafe { resolve_unchecked_from!(IValue, branch::primary::metrics) };
+                assert_eq!(metric, "metric");
                 owned.len()
             }: usize as ILength);
         }
