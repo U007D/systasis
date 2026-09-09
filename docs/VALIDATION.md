@@ -10,12 +10,22 @@ backends, passing a nameable restricted child reference to an ordinary function.
 The requirements' complete quick example also runs on both backends, retaining
 its private implementation types and inline registration shape.
 
-Tuple-alias capture support (ee235a1) passes six integration/driver checks on each
+Tuple-alias capture support (ee235a1/9d0f9d8) passes ten integration/driver checks on each
 backend: nested shared/mutable binding modes, selected ownership and exact drops,
 discarded overrides, authored generic parameters, and a separately compiled
 consumer of a container with private captures. The negative fixture checks that
 generated capture helpers remain private. A unit test generates an arity-64
 projection from its authored pattern; implementations are not a fixed arity list.
+Additional checks preserve explicit ref/ref mut bindings, lifetime/const
+parameters, surrounding helper-like names and nested selected-leaf ownership.
+
+Configured captures (d373c08/50c41e9) pass four integration tests per backend.
+Rust selects active local annotations before capture analysis; statement
+ancestors are selected before their descendants. A native Rust control and
+generated regression retain invalid child predicates under disabled blocks.
+Discarded conditional array elements and match arms remain rustc-owned.
+This verifies the bounded support in [capture limits](CAPTURE_LIMITS.md), not
+arbitrary configuration inside signatures or opaque registration tokens.
 
 Async guard checks (cc4ffe3/2603e3d) use safe manual polling without an executor
 dependency. Both backends verify shared/exclusive contention while suspended,

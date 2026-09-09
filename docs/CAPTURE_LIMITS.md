@@ -51,9 +51,14 @@ candidates and they do not depend on unhoisted function-local items. This includ
 ordinary `use std::...` and function-local imports of `systasis_container`.
 Glob imports and imports depending on function-local modules remain unsupported.
 Local `cfg` and selection-producing `cfg_attr` attributes are selected by rustc
-before capture analysis. Tests cover conflicting binding annotations, nested
-ordinary blocks, and constructor ownership on both backends. Conditional
-ancestor blocks, opaque macro bodies and other conditional syntax still require
-separate handling; this is not general cfg support. See
+before capture analysis. Conditional statement ancestors are selected before
+their contents, so a disabled block does not expose its nested predicates.
+Tests cover conflicting binding annotations, nested ordinary blocks, and
+constructor ownership on both backends. Other conditional expressions, match
+arms and struct-literal fields remain rustc-owned: selection does not descend
+through their conditional boundaries. Opaque macro bodies, signature and
+registration configuration still require separate handling; this is not general
+cfg support. Long sequences of selected statements currently require one macro
+re-entry per condition; constant-depth selection is being investigated. See
 [configured-capture regressions](../tests/configured_captures.rs).
 These are implementation limitations, not changes to the agreed requirements.
