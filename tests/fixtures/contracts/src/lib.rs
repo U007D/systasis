@@ -3,6 +3,20 @@
 
 use systasis::{Fallible, app_container::Error};
 
+/// Positive control for the generated path in no_std target compilation.
+pub mod generated {
+    pub trait IValue {}
+    impl IValue for u32 {}
+
+    #[systasis::container]
+    pub fn round_trip(input: u32) -> u32 {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(input: u32 as IValue);
+        }.build();
+        container.resolve_i_value()
+    }
+}
+
 #[cfg(feature = "bad-local-sync")]
 pub fn local_slot_cannot_be_shared() {
     fn sync<T: Sync>() {}
