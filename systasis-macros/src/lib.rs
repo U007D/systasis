@@ -4,6 +4,7 @@
 mod analysis;
 mod captures;
 mod generate;
+mod generic_policy;
 mod graph;
 mod parse;
 mod requirements;
