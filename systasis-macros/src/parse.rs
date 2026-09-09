@@ -33,8 +33,8 @@ impl Namespace {
 
     pub(crate) fn key(&self, interface: &InterfaceGroup) -> String {
         self.0.as_ref().map_or_else(
-            || interface.to_token_stream().to_string(),
-            |namespace| format!("{} in {}", interface.to_token_stream(), namespace.unraw()),
+            || interface.key(),
+            |namespace| format!("{} in {}", interface.key(), namespace.unraw()),
         )
     }
 }
@@ -43,6 +43,32 @@ impl Namespace {
 #[derive(Clone)]
 pub(crate) struct InterfaceGroup(pub(crate) Vec<Path>);
 
+/// Raw identifier notation does not change a Rust identifier's identity.
+/// Normalize keys only, retaining original tokens when emitting trait bounds.
+fn identifier_key(tokens: proc_macro2::TokenStream) -> String {
+    fn normalize(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        tokens
+            .into_iter()
+            .map(|token| match token {
+                proc_macro2::TokenTree::Ident(ident) => {
+                    proc_macro2::TokenTree::Ident(ident.unraw())
+                }
+                proc_macro2::TokenTree::Group(group) => proc_macro2::TokenTree::Group(
+                    proc_macro2::Group::new(group.delimiter(), normalize(group.stream())),
+                ),
+                token => token,
+            })
+            .collect()
+    }
+    normalize(tokens).to_string()
+}
+
+impl InterfaceGroup {
+    pub(crate) fn key(&self) -> String {
+        identifier_key(self.to_token_stream())
+    }
+}
+
 impl Parse for InterfaceGroup {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut paths = vec![input.parse::<Path>()?];
@@ -50,9 +76,9 @@ impl Parse for InterfaceGroup {
             input.parse::<Token![+]>()?;
             paths.push(input.parse()?);
         }
-        paths.sort_by_cached_key(|path| path.to_token_stream().to_string());
+        paths.sort_by_cached_key(|path| identifier_key(path.to_token_stream()));
         paths.dedup_by(|left, right| {
-            left.to_token_stream().to_string() == right.to_token_stream().to_string()
+            identifier_key(left.to_token_stream()) == identifier_key(right.to_token_stream())
         });
         Ok(Self(paths))
     }
@@ -162,6 +188,17 @@ impl Parse for Registrations {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_interface_identifiers_share_one_key_without_rewriting_source_bounds() {
+        let raw: InterfaceGroup =
+            syn::parse_str("r#module::r#IValue<r#Item = u32> + module::IValue<Item = u32>")
+                .unwrap();
+        let ordinary: InterfaceGroup = syn::parse_str("module::IValue<Item = u32>").unwrap();
+        assert_eq!(raw.0.len(), 1);
+        assert_eq!(raw.key(), ordinary.key());
+        assert!(raw.to_token_stream().to_string().contains("r#"));
+    }
 
     #[test]
     fn namespaces_are_parsed_for_every_registration_kind() {
