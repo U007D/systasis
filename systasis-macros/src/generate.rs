@@ -28,6 +28,11 @@ pub(crate) fn expand(
             "generic container functions are not implemented yet",
         ));
     }
+    let systasis_error_ident = Ident::new("__systasis_error", Span::mixed_site());
+    let systasis_value_ident = Ident::new("__systasis_value", Span::mixed_site());
+    let systasis_result_ident = Ident::new("__systasis_result", Span::mixed_site());
+    let systasis_owner_ident = Ident::new("__systasis_owner", Span::mixed_site());
+    let systasis_published_ident = Ident::new("__systasis_published", Span::mixed_site());
     let slot_type = if local_policy {
         quote!(::systasis::__private::LocalTakeSlot)
     } else {
@@ -144,6 +149,10 @@ pub(crate) fn expand(
             }
             dependencies.push(queries.dependencies);
         }
+        let initializer_types = registrations
+            .iter()
+            .map(|r| r.ty.clone())
+            .collect::<Vec<_>>();
         let order = crate::graph::schedule(&dependencies).map_err(|cycle| {
             let names = cycle
                 .iter()
@@ -155,7 +164,7 @@ pub(crate) fn expand(
             )
         })?;
         let slots = (0..registrations.len())
-            .map(|i| format_ident!("__systasis_slot_{i}"))
+            .map(|i| format_ident!("__systasis_slot_{i}", span = Span::mixed_site()))
             .collect::<Vec<_>>();
         let fields = (0..registrations.len())
             .map(|i| format_ident!("value_{i}"))
@@ -208,7 +217,7 @@ pub(crate) fn expand(
             let slot = &slots[i];
             let storage = &selected[i];
             field_types.push(storage.clone());
-            values.push(quote!(#field: #slot.unwrap_or_else(|| unreachable!("successful build initialized every slot"))));
+            values.push(quote!(#field: #slot.unwrap_or_else(|| ::core::unreachable!("successful build initialized every slot"))));
             let raw = registration
                 .interface
                 .segments
@@ -288,19 +297,19 @@ pub(crate) fn expand(
                 impl<__Value: ::core::default::Default, #(#others),*> Generated<#(#fresh_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
                 }
-                impl<#lifetime __Value: Copy, #(#others),*> Generated<#(#copy_args),*> {
+                impl<#lifetime __Value: ::core::marker::Copy, #(#others),*> Generated<#(#copy_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
                     pub fn #copy_ref(&self) -> &__Value { self.#field.resolve_ref() }
                     pub fn #clone(&self) -> __Value { self.#field.resolve_clone() }
                 }
                 impl<#lifetime __Value, #(#others),*> Generated<#(#take_args),*> {
-                    pub fn #read(&self) -> Result<#read_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref() }
-                    pub fn #write(&self) -> Result<#write_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref_mut() }
-                    pub fn #take(&self) -> Result<__Value,::systasis::__private::Error> { self.#field.try_resolve() }
+                    pub fn #read(&self) -> ::core::result::Result<#read_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref() }
+                    pub fn #write(&self) -> ::core::result::Result<#write_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref_mut() }
+                    pub fn #take(&self) -> ::core::result::Result<__Value,::systasis::__private::Error> { self.#field.try_resolve() }
                 }
             ));
         }
-        emitted = Some(quote!(
+        emitted = ::core::option::Option::Some(quote!(
             #[allow(non_snake_case, unused_imports, dead_code)]
             mod __systasis_injected {
                 use super::*;
@@ -321,19 +330,26 @@ pub(crate) fn expand(
             let slot = &slots[*i];
             let value = &registrations[*i].value;
             let flag = &flags[*i];
-            let ty = &registrations[*i].ty;
+            let ty = &initializer_types[*i];
+            let interface = &registrations[*i].interface;
             let stored = if registrations[*i].fresh {
                 quote!(::systasis::__private::FreshSlot::<#ty>::new())
             } else {
-                quote!(<::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<_>>::store({#value}))
+                quote!({
+                    let __systasis_input: #ty = { #value };
+                    {
+                        fn __systasis_check<T: #interface>(value: T) -> T { value }
+                        <::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<#ty>>::store(__systasis_check(__systasis_input))
+                    }
+                })
             };
-            initialization.push(quote!(let (#slot,__systasis_error)=match __systasis_error {
-                Some(error)=>(None,Some(error)),
-                None=>::systasis::__private::split((|| -> Result<_, #error_ty> {
+            initialization.push(quote!(let (#slot,#systasis_error_ident)=match #systasis_error_ident {
+                ::core::option::Option::Some(error)=>(::core::option::Option::None,::core::option::Option::Some(error)),
+                ::core::option::Option::None=>::systasis::__private::split((|| -> ::core::result::Result<_, #error_ty> {
                     // An empty match coerces into the contextual error type.
                     // It cannot execute: this expression constructs Ok, whose
                     // source error type Infallible has no inhabitants.
-                    Result::<_, ::core::convert::Infallible>::Ok(
+                    ::core::result::Result::<_, ::core::convert::Infallible>::Ok(
                         #stored
                     ).map_err(|never| match never {})
                 })()),
@@ -348,28 +364,28 @@ pub(crate) fn expand(
         let checks = requirements.iter().map(|bound| {
             quote!({
                 fn __systasis_assert<T: ::core::marker::#bound>(_: &T) {}
-                if let Ok(container) = &__systasis_published { __systasis_assert(*container); }
+                if let ::core::result::Result::Ok(container) = &#systasis_published_ident { __systasis_assert(*container); }
             })
         });
         let generated: Block = syn::parse2(quote!({
-            let __systasis_error:Option<#error_ty>=Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
+            let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
             #(#initialization)*
-            let __systasis_result=match __systasis_error {
-                None=>Ok(AppContainer {#(#values,)*_pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData}),
-                Some(error)=>{#(::systasis::__private::discard(#reverse);)* Err(error)},
+            let #systasis_result_ident=match #systasis_error_ident {
+                ::core::option::Option::None=>::core::result::Result::Ok(AppContainer {#(#values,)*_pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData}),
+                ::core::option::Option::Some(error)=>{#(::systasis::__private::discard(#reverse);)* ::core::result::Result::Err(error)},
             };
-            let (__systasis_value,__systasis_error)=::systasis::__private::split(__systasis_result);
-            let __systasis_owner=::core::pin::pin!(__systasis_value);
-            let __systasis_published=match (__systasis_owner.as_ref().get_ref(),__systasis_error) {
-                (Some(container),None)=>Ok(container),
-                (None,Some(error))=>Err(error),
-                _=>unreachable!("split result has exactly one occupied branch"),
+            let (#systasis_value_ident,#systasis_error_ident)=::systasis::__private::split(#systasis_result_ident);
+            let #systasis_owner_ident=::core::pin::pin!(#systasis_value_ident);
+            let #systasis_published_ident=match (#systasis_owner_ident.as_ref().get_ref(),#systasis_error_ident) {
+                (::core::option::Option::Some(container),::core::option::Option::None)=>::core::result::Result::Ok(container),
+                (::core::option::Option::None,::core::option::Option::Some(error))=>::core::result::Result::Err(error),
+                _=>::core::unreachable!("split result has exactly one occupied branch"),
             };
             #(#checks)*
-            let #pattern = __systasis_published #otherwise;
+            let #pattern = #systasis_published_ident #otherwise;
         }))?;
         statements.extend(generated.stmts);
     }
     function.block.stmts = statements;
-    Ok(quote!(#emitted #function))
+    ::core::result::Result::Ok(quote!(#emitted #function))
 }

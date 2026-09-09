@@ -30,6 +30,13 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "wrong_lifetime_interface",
+            "",
+            "register_value!(Borrowed(\"value\"): Borrowed<'_> as IValue);",
+            "",
+            Some("E0277"),
+        ),
+        (
             "baseline",
             "",
             "register_value!(String::new(): String as IValue);",
@@ -125,6 +132,7 @@ fn container_diagnostics() {
         let source = format!(
             r#"
 trait IValue {{}}
+struct Borrowed<'a>(&'a str);
 impl IValue for String {{}}
 trait INumber {{}}
 impl INumber for u32 {{}}

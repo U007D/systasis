@@ -18,12 +18,15 @@ impl VisitMut for Queries<'_> {
             if let Some(index) = self.indices.get(&key) {
                 self.dependencies.insert(*index);
 
-                let owner = format_ident!("__systasis_slot_{index}");
+                let owner = format_ident!(
+                    "__systasis_slot_{index}",
+                    span = proc_macro2::Span::mixed_site()
+                );
                 let method =
                     query.mac.path.get_ident().unwrap_or_else(|| {
                         unreachable!("query path was checked to be an identifier")
                     });
-                *expression = parse_quote!(#owner.as_ref().unwrap_or_else(|| unreachable!("topological predecessor initialized before dependent")).#method());
+                *expression = parse_quote!(#owner.as_ref().unwrap_or_else(|| ::core::unreachable!("topological predecessor initialized before dependent")).#method());
             } else {
                 self.error = Some(Error::new_spanned(query, "unregistered dependency"));
             }
