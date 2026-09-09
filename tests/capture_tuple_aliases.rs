@@ -57,6 +57,29 @@ mod owned {
     }
 }
 
+mod nested_owned {
+    use super::*;
+    type Pair<'a> = (Tracked<'a>, Tracked<'a>);
+    type Envelope<'a> = (Pair<'a>, bool);
+    #[systasis::container]
+    fn run<'a>(input: Envelope<'a>, drops: &'a Cell<usize>) {
+        let ((head, tail), _): Envelope<'a> = input;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as ILength, || head.0.get());
+        }
+        .build();
+        drop(tail);
+        assert_eq!(container.resolve_i_length(), 1);
+        assert_eq!(drops.get(), 1);
+    }
+    #[test]
+    fn nested_owned_aliases_move_only_the_selected_leaf() {
+        let drops = Cell::new(0);
+        run(((Tracked(&drops), Tracked(&drops)), true), &drops);
+        assert_eq!(drops.get(), 2);
+    }
+}
+
 mod modes {
     use super::*;
     type Tuple = (String, u8);
@@ -136,6 +159,71 @@ mod generic {
     fn generic_alias_keeps_only_authored_container_parameters() {
         run((String::from("four"), true));
         run(("four", false));
+    }
+}
+
+mod explicit_modes {
+    use super::*;
+    type Pair = (String, String);
+    #[systasis::container]
+    fn run(mut input: Pair) {
+        let (ref head, ref mut tail): Pair = input;
+        tail.push('!');
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as ILength, || head.len() + tail.len());
+        }
+        .build();
+        assert_eq!(container.resolve_i_length(), 6);
+    }
+    #[test]
+    fn explicit_ref_and_ref_mut_alias_bindings_keep_their_backing_values() {
+        run((String::from("one"), String::from("ab")));
+    }
+}
+
+mod const_lifetime {
+    use super::*;
+    type Pair<'a, const N: usize> = (&'a str, [u8; N]);
+    fn receive<'a, const N: usize>(container: &AppContainer<'a, N>) -> &'a str {
+        container.resolve_i_text()
+    }
+    #[systasis::container(require(Send, Sync))]
+    fn run<'a, const N: usize>(input: Pair<'a, N>) {
+        let (head, tail): Pair<'a, N> = input;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(&'a str as IText, || head);
+            register_type_with!(usize as ILength, || tail.len());
+        }
+        .build();
+        assert_eq!(receive(container), "input");
+        assert_eq!(container.resolve_i_length(), N);
+    }
+    #[test]
+    fn capture_records_preserve_original_const_and_lifetime_parameters() {
+        let text = String::from("input");
+        run((text.as_str(), []));
+        run((text.as_str(), [1, 2, 3]));
+    }
+}
+
+mod hygiene {
+    use super::*;
+    type Pair = (String, bool);
+    struct __CaptureOwned;
+    struct __CaptureRecord0;
+    trait __SystasisCaptureTuple2_0 {}
+    impl __SystasisCaptureTuple2_0 for __CaptureOwned {}
+    #[systasis::container]
+    #[test]
+    fn helper_names_do_not_capture_surrounding_symbols() {
+        let _: &dyn __SystasisCaptureTuple2_0 = &__CaptureOwned;
+        let _ = __CaptureRecord0;
+        let (__systasis_captures, _): Pair = (String::from("input"), false);
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as ILength, || __systasis_captures.len());
+        }
+        .build();
+        assert_eq!(container.resolve_i_length(), 5);
     }
 }
 
