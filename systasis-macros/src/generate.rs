@@ -698,7 +698,18 @@ pub(crate) fn expand(
                 .interface
                 .0
                 .iter()
-                .map(|path| path.segments.last().unwrap().ident.unraw().to_string())
+                .map(|path| {
+                    path.segments
+                        .last()
+                        .unwrap_or_else(|| {
+                            unreachable!(
+                                "InterfaceGroup parses Rust paths with at least one segment"
+                            )
+                        })
+                        .ident
+                        .unraw()
+                        .to_string()
+                })
                 .collect::<Vec<_>>();
             names.sort();
             let snake = names
@@ -901,8 +912,16 @@ pub(crate) fn expand(
                 let mut dyn_copy_args = copy_args.clone();
                 dyn_take_args[i] = quote!(#slot_type<#dyn_value>);
                 dyn_copy_args[i] = quote!(::systasis::__private::CopySlot<#dyn_value>);
-                *dyn_take_args.last_mut().unwrap() = generic_marker.clone();
-                *dyn_copy_args.last_mut().unwrap() = generic_marker.clone();
+                *dyn_take_args.last_mut().unwrap_or_else(|| {
+                    unreachable!(
+                        "take_args maps every parameter, including the final generic marker"
+                    )
+                }) = generic_marker.clone();
+                *dyn_copy_args.last_mut().unwrap_or_else(|| {
+                    unreachable!(
+                        "copy_args maps every parameter, including the final generic marker"
+                    )
+                }) = generic_marker.clone();
                 implementations.push(quote!(
                     impl #dyn_parameters Generated<#(#dyn_take_args),*> #dyn_where {
                         pub fn #dyn_ref<#dyn_lifetime>(&#dyn_lifetime self) -> ::core::result::Result<#read_type<#dyn_lifetime, #target>, ::systasis::__private::Error> {
@@ -985,7 +1004,11 @@ pub(crate) fn expand(
         field_types.push(child_tuple.clone());
         field_types.push(generic_marker);
         let child_parameter = &parameters[registrations.len()];
-        let generic_parameter = parameters.last().unwrap();
+        let generic_parameter = parameters.last().unwrap_or_else(|| {
+            unreachable!(
+                "parameters includes child and generic-marker entries even with no registrations"
+            )
+        });
         let (alias_parameters, alias_arguments, alias_where) = generics.split_for_impl();
         let mut child_aliases = Vec::new();
         let mut child_exports = Vec::new();
@@ -1012,8 +1035,14 @@ pub(crate) fn expand(
         }
         let mut construction_type: Type = parse_quote!(AppContainer #alias_arguments);
         if let Type::Path(path) = &mut construction_type
-            && let PathArguments::AngleBracketed(arguments) =
-                &mut path.path.segments.last_mut().unwrap().arguments
+            && let PathArguments::AngleBracketed(arguments) = &mut path
+                .path
+                .segments
+                .last_mut()
+                .unwrap_or_else(|| {
+                    unreachable!("construction_type was just parsed from the AppContainer path")
+                })
+                .arguments
         {
             for argument in &mut arguments.args {
                 if let GenericArgument::Lifetime(lifetime) = argument
