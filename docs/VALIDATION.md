@@ -1,4 +1,30 @@
-# Runtime foundation validation
+# Implementation validation
+
+## Current generated-container checks
+
+Production commits bff03b7 through 678d63d add stored-value generation, owned
+dependencies, Default constructors, overrides, checked access and cloning,
+single-trait dyn access, build inference, and import/initializer hygiene.
+Both full stable workspace suites pass (std and no_std runtime on the host),
+as do both Clippy configurations with warnings denied. The owned example runs
+with warnings denied and the documented macro import.
+
+The six integration suites `owned_container`, `container_access`,
+`container_hygiene`, `dyn_container`, `fresh_container`, and `build_inference`
+also pass Miri: 24 tests per backend. This verifies the newly integrated
+generated/runtime paths; it does not revalidate hardware or prove soundness.
+The generator adds no unsafe code or runtime allocation mechanism.
+
+`container_compiler` checks 16 downstream cases against explicit diagnostics.
+The scheduler tests all 65,536 four-node directed graphs, checking dependency
+order or the validity of each reported cycle. Its separate ordering test checks
+frozen layers. The existing storage/compiler suites remain enabled.
+
+Run the six named integration suites with `cargo +nightly miri test --test NAME`,
+and repeat with `--no-default-features`. Native suites use the workspace commands
+below. See [README.md](../README.md) for remaining implementation work.
+
+## Historical runtime evidence
 
 Current update: std parking_lot 0.12.5/send_guard and no_std spin each pass
 51 native tests and 31 Miri tests (storage, reservation, unsynchronized).
