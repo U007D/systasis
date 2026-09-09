@@ -172,9 +172,12 @@ pub(crate) fn expand(
             probe.visit_type_mut(&mut original.clone());
             let flag = &flags[i];
             let interface = &registration.interface;
+            let default_bound = registration
+                .fresh
+                .then(|| quote!(+ ::core::default::Default));
             constants.push(if probe.0.is_empty() {
                 quote!(pub(super) const #flag: bool = {
-                    fn __systasis_check<T: #interface>() {}
+                    fn __systasis_check<T: #interface #default_bound>() {}
                     let _ = __systasis_check::<#original>;
                     ::systasis::__private::Pick::<#original>::IS_COPY
                 };)
@@ -186,7 +189,8 @@ pub(crate) fn expand(
         let selected = registrations.iter().enumerate().map(|(i,r)| {
             let ty = &r.ty;
             let flag = &flags[i];
-            quote!(<::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<#ty>>::Slot)
+            if r.fresh { quote!(::systasis::__private::FreshSlot<#ty>) }
+            else { quote!(<::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<#ty>>::Slot) }
         }).collect::<Vec<_>>();
         let mut generics = function.sig.generics.clone();
         for lifetime in &lifetimes.0 {
@@ -269,7 +273,21 @@ pub(crate) fn expand(
                     }
                 })
                 .collect::<Vec<_>>();
+            let fresh_args = parameters
+                .iter()
+                .enumerate()
+                .map(|(j, p)| {
+                    if i == j {
+                        quote!(::systasis::__private::FreshSlot<__Value>)
+                    } else {
+                        quote!(#p)
+                    }
+                })
+                .collect::<Vec<_>>();
             implementations.push(quote!(
+                impl<__Value: ::core::default::Default, #(#others),*> Generated<#(#fresh_args),*> {
+                    pub fn #copy(&self) -> __Value { self.#field.resolve() }
+                }
                 impl<#lifetime __Value: Copy, #(#others),*> Generated<#(#copy_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
                     pub fn #copy_ref(&self) -> &__Value { self.#field.resolve_ref() }
@@ -295,6 +313,7 @@ pub(crate) fn expand(
                 }
                 #(#implementations)*
             }
+            /// The container generated from this module's registration declaration.
             pub type AppContainer #generics = __systasis_injected::Generated<#(#field_types),*>;
         ));
         let mut initialization = Vec::new();
@@ -302,6 +321,12 @@ pub(crate) fn expand(
             let slot = &slots[*i];
             let value = &registrations[*i].value;
             let flag = &flags[*i];
+            let ty = &registrations[*i].ty;
+            let stored = if registrations[*i].fresh {
+                quote!(::systasis::__private::FreshSlot::<#ty>::new())
+            } else {
+                quote!(<::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<_>>::store({#value}))
+            };
             initialization.push(quote!(let (#slot,__systasis_error)=match __systasis_error {
                 Some(error)=>(None,Some(error)),
                 None=>::systasis::__private::split((|| -> Result<_, #error_ty> {
@@ -309,7 +334,7 @@ pub(crate) fn expand(
                     // It cannot execute: this expression constructs Ok, whose
                     // source error type Infallible has no inhabitants.
                     Result::<_, ::core::convert::Infallible>::Ok(
-                        <::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<_>>::store({#value})
+                        #stored
                     ).map_err(|never| match never {})
                 })()),
             };));

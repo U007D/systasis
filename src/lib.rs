@@ -9,6 +9,7 @@ pub mod app_container;
 mod fallible;
 pub use fallible::Fallible;
 
+mod fresh;
 mod storage;
 pub use storage::{Ref, RefMut};
 pub use systasis_macros::{container, systasis_container};
@@ -16,6 +17,7 @@ pub use systasis_macros::{container, systasis_container};
 /// Runtime support for generated code; not a stable hand-written API.
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::fresh::FreshSlot;
     pub use crate::storage::{
         CopyFallback, CopySlot, LocalTakeSlot, Pick, Policy, ReadSlot, Select, TakeSlot,
     };
