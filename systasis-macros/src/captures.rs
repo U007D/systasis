@@ -95,9 +95,17 @@ impl Bindings {
             (Pat::Paren(pattern), _) => {
                 self.observe_annotated_pattern(&pattern.pat, annotation);
             }
-            (Pat::Ident(binding), _) if binding.by_ref.is_none() && binding.subpat.is_none() => {
-                self.types
-                    .insert(name(&binding.ident), Some(annotation.clone()));
+            (Pat::Ident(binding), _) if binding.subpat.is_none() => {
+                let ty = if binding.by_ref.is_some() {
+                    let mutability = binding.mutability;
+                    syn::parse_quote!(&'_ #mutability #annotation)
+                } else {
+                    annotation.clone()
+                };
+                self.types.insert(name(&binding.ident), Some(ty));
+            }
+            (Pat::Reference(pattern), Type::Reference(ty)) => {
+                self.observe_annotated_pattern(&pattern.pat, &ty.elem);
             }
             (Pat::Tuple(pattern), Type::Tuple(ty)) => {
                 let rest = pattern
@@ -717,7 +725,6 @@ mod tests {
     fn unsupported_patterns_remain_untyped_instead_of_guessing() {
         let statements: Vec<Stmt> = vec![
             parse_quote!(let (value, _): Alias = input;),
-            parse_quote!(let (ref value, _): (String, u8) = input;),
             parse_quote!(let [_, value @ ..]: [u8; 3] = input;),
             parse_quote!(let (value, _): &(String, u8) = input;),
             parse_quote!(let Record { value }: Record = input;),
@@ -736,5 +743,24 @@ mod tests {
             .expect("unsupported destructuring must not retain an earlier annotation");
             assert!(error.to_string().contains("explicit type annotation"));
         }
+    }
+
+    #[test]
+    fn explicit_reference_patterns_and_ref_bindings_keep_reference_types() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(
+            &parse_quote!(let (ref value, ref mut other): (String, u8) = input;),
+        );
+        bindings.observe_statement(&parse_quote!(let &(copied, _): &(u32, u8) = input;));
+        let result = prepare(
+            &parse_quote!(|| (value, other, copied)),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert_eq!(
+            capture_types(&result),
+            ["& '_ String", "& '_ mut u8", "u32"]
+        );
     }
 }

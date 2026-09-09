@@ -223,3 +223,19 @@ mod imported_capture {
         assert_eq!(container.resolve_i_service().0, "imported");
     }
 }
+
+mod reference_capture {
+    use super::*;
+
+    #[systasis::container]
+    #[test]
+    fn ref_binding_keeps_caller_owned_value_alive() {
+        let ref config: String = String::from("borrowed");
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(Service as IService, move || Service((*config).clone()));
+        }
+        .build();
+        assert_eq!(container.resolve_i_service().0, "borrowed");
+        assert_eq!(config, "borrowed");
+    }
+}
