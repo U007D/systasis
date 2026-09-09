@@ -39,6 +39,34 @@ impl IValue for u32 {}
 #[allow(non_camel_case_types, dead_code)]
 struct __SystasisConfiguration_main {}
 fn named(container: &AppContainer) -> u32 { container.resolve_i_value() }
+#[systasis::container]
+#[cfg(any())]
+fn disabled_function_with_condition() {
+    #[cfg(invalid_predicate(foo))]
+    let invalid: u8 = missing;
+    let Ok(container) = systasis::systasis_container! { register_value!(3u32: u32 as IValue); }.build();
+    let _ = container;
+}
+#[systasis::container]
+#[cfg(any())]
+fn disabled_function_without_condition() {
+    let Ok(container) = systasis::systasis_container! { register_value!(3u32: u32 as IValue); }.build();
+    let _ = container;
+}
+#[systasis::container(require(Send, Sync))]
+#[cfg_attr(all(), cfg_attr(all(), cfg(any())))]
+fn disabled_function_with_nested_attribute() {
+    #[cfg(invalid_predicate(foo))]
+    let invalid: u8 = missing;
+    let Ok(container) = systasis::systasis_container! { register_value!(3u32: u32 as IValue); }.build();
+    let _ = container;
+}
+#[inline]
+#[cfg(any())]
+fn ordinary_disabled_function() {
+    #[cfg(invalid_predicate(foo))]
+    let invalid: u8 = missing;
+}
 fn ordinary() {
     #[cfg(any())]
     #[cfg()]
@@ -88,6 +116,8 @@ mod {module} {{
     trait IValue {{}} impl IValue for u32 {{}}
     fn named(container: &AppContainer) -> u32 {{ container.resolve_i_value() }}
     #[systasis::container]
+    #[cfg(all())]
+    #[inline]
     pub fn run() {{
         #[cfg(all())] let value: u32 = 3;
         let Ok(container) = systasis::systasis_container! {{
