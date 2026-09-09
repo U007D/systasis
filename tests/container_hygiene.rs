@@ -1,6 +1,21 @@
 //! Generated implementation details must not change caller name or type resolution.
 #![forbid(unsafe_code)]
 
+mod raw_interface {
+    #[allow(non_camel_case_types)]
+    trait r#type {}
+    impl r#type for u32 {}
+    #[systasis::container]
+    #[test]
+    fn raw_trait_identifier_generates_a_valid_method() {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(7_u32: u32 as r#type);
+        }
+        .build();
+        assert_eq!(container.resolve_type(), 7);
+    }
+}
+
 mod caller_local {
     trait IValue {}
     impl IValue for String {}

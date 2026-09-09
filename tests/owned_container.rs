@@ -49,6 +49,26 @@ macro_rules! scenario {
 scenario!(synchronized, (require(Send, Sync)));
 scenario!(local, (require(Send, !Sync)));
 
+mod nested_types {
+    use super::*;
+    struct Wrapper<T>(T);
+    trait IWrapper {}
+    impl<T> IWrapper for Wrapper<T> {}
+    #[systasis::container]
+    #[test]
+    fn lookup_recursively_substitutes_final_concrete_types() -> Result<(), Error> {
+        let built = systasis::systasis_container! {
+            register_value!(Wrapper(try_resolve!(IService)?): Wrapper<registered_type!(IService)> as IWrapper);
+            register_value!(Service::new(try_resolve!(IDatabase)?): Service<registered_type!(IDatabase)> as IService);
+            register_value!(Database(String::from("db")): Database as IDatabase);
+        }.build::<Error>();
+        let container = built?;
+        let concrete: Wrapper<Service<Database>> = container.try_resolve_i_wrapper()?;
+        assert_eq!(concrete.0.database.name(), "db");
+        Ok(())
+    }
+}
+
 mod overrides {
     use super::*;
     #[systasis::container]

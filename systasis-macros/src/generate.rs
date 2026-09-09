@@ -3,7 +3,7 @@ use crate::parse::Registrations;
 use proc_macro2::Span;
 use quote::{ToTokens, format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet};
-use syn::{visit_mut::VisitMut, *};
+use syn::{ext::IdentExt, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
 impl VisitMut for Lifetimes {
     fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
@@ -227,6 +227,7 @@ pub(crate) fn expand(
                 .last()
                 .unwrap()
                 .ident
+                .unraw()
                 .to_string();
             let snake = raw
                 .chars()
