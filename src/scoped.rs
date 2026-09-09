@@ -75,6 +75,48 @@ pub trait Registered<Path, Key> {
         Self: 'a;
 }
 
+/// Declaration-site Copy policy for a registration resolved through a path.
+///
+/// The generated implementation selects the original registration's policy;
+/// `LOCAL` selects the receiving container's non-Copy storage backend.
+pub trait RegistrationPolicy<Path, Key, const LOCAL: bool> {
+    /// A type implementing the existing storage selection contract.
+    type Policy;
+}
+
+/// Recover a stored slot's selected Copy policy without redetecting its value.
+///
+/// Fresh constructors do not implement this trait: their output policy must
+/// be supplied by the generator from the declaration-site bounds.
+pub trait SlotPolicy<const LOCAL: bool> {
+    /// The policy adapted to the receiving container's local setting.
+    type Policy;
+}
+
+/// Change only the local-storage setting of an existing declaration policy.
+#[doc(hidden)]
+pub trait RebindPolicy<const LOCAL: bool> {
+    /// The same Copy decision with the requested local-storage setting.
+    type Policy;
+}
+impl<const COPY: bool, const OLD: bool, const LOCAL: bool> RebindPolicy<LOCAL>
+    for crate::__private::Policy<COPY, OLD>
+{
+    type Policy = crate::__private::Policy<COPY, LOCAL>;
+}
+impl<T, const LOCAL: bool> SlotPolicy<LOCAL> for CopySlot<T> {
+    type Policy = crate::__private::Policy<true, LOCAL>;
+}
+impl<T, const LOCAL: bool> SlotPolicy<LOCAL> for TakeSlot<T> {
+    type Policy = crate::__private::Policy<false, LOCAL>;
+}
+impl<T, const LOCAL: bool> SlotPolicy<LOCAL> for LocalTakeSlot<T> {
+    type Policy = crate::__private::Policy<false, LOCAL>;
+}
+impl<T, const LOCAL: bool> SlotPolicy<LOCAL> for ReadSlot<T> {
+    type Policy = crate::__private::Policy<false, LOCAL>;
+}
+
 /// The explicit trait-object target of an opted-in registration.
 pub trait DynRegistered<Path, Key> {
     /// A single or generated combined trait-object type.

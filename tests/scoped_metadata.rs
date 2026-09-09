@@ -8,6 +8,50 @@ use systasis::{
 };
 
 #[test]
+fn slot_policy_preserves_copy_selection_and_adapts_owned_local_storage() {
+    use systasis::{__private::Select, scoped::SlotPolicy};
+    type Selected<S, T, const LOCAL: bool> = <<S as SlotPolicy<LOCAL>>::Policy as Select<T>>::Slot;
+    let copied: Selected<CopySlot<u32>, u32, false> = CopySlot::new(11);
+    assert_eq!(copied.resolve(), 11);
+    let copied_local: Selected<CopySlot<u32>, u32, true> = CopySlot::new(12);
+    assert_eq!(copied_local.resolve(), 12);
+    let local: Selected<TakeSlot<u32>, u32, true> = LocalTakeSlot::new(13);
+    assert_eq!(local.try_resolve().unwrap(), 13);
+    let synchronized: Selected<LocalTakeSlot<u32>, u32, false> = TakeSlot::new(14);
+    assert_eq!(synchronized.try_resolve().unwrap(), 14);
+    let readonly: Selected<ReadSlot<u32>, u32, false> = TakeSlot::new(15);
+    assert_eq!(readonly.try_resolve().unwrap(), 15);
+    type Rebound =
+        <systasis::__private::Policy<false, false> as systasis::scoped::RebindPolicy<true>>::Policy;
+    let rebound: <Rebound as Select<u32>>::Slot = LocalTakeSlot::new(16);
+    assert_eq!(rebound.try_resolve().unwrap(), 16);
+}
+
+#[test]
+fn unbounded_generic_slot_policy_stays_consumable_when_instantiated_with_copy() {
+    use systasis::{
+        __private::Select,
+        scoped::{Here, RegistrationPolicy, SlotPolicy},
+    };
+    struct Key;
+    struct Child<T>(core::marker::PhantomData<T>);
+    impl<T, const LOCAL: bool> RegistrationPolicy<Here, Key, LOCAL> for Child<T> {
+        type Policy = <TakeSlot<T> as SlotPolicy<LOCAL>>::Policy;
+    }
+    fn transfer<T>(
+        value: T,
+    ) -> <<Child<T> as RegistrationPolicy<Here, Key, false>>::Policy as Select<T>>::Slot {
+        <<Child<T> as RegistrationPolicy<Here, Key, false>>::Policy as Select<T>>::store(value)
+    }
+    let slot: TakeSlot<u32> = transfer(23);
+    assert_eq!(slot.try_resolve().unwrap(), 23);
+    assert!(matches!(
+        slot.try_resolve(),
+        Err(Error::ValueAlreadyConsumed)
+    ));
+}
+
+#[test]
 fn copy_dispatch_preserves_plain_references_and_repeatable_ownership() {
     let slot = CopySlot::new(17u32);
     assert_eq!(SlotAccess::<op::Owned>::access(&slot), 17);
