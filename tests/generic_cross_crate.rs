@@ -120,12 +120,48 @@ fn inspect_borrow<'a, T: ?Sized>(container: &generic_provider::borrowed::AppCont
 where &'a T: Copy {
     let _: &'a T = container.resolve_i_borrow();
 }
+mod composed_array {
+    use generic_provider::arrays::AppContainer as Imported;
+    type Alias<T, const N: usize> = Imported<T, N>;
+    trait ISelected {}
+    impl<T, const N: usize> ISelected for [T; N] {}
+    fn receive<T, const N: usize>(scope: &child::SubContainer<'_, T, N>) -> [T; N]
+    where [T; N]: Copy { scope.resolve_i_array() }
+    #[systasis::container]
+    pub fn run<T, const N: usize>(child: &Alias<T, N>)
+    where [T; N]: Copy + PartialEq {
+        let Ok(container) = systasis::systasis_container! {
+            register_container!(child: &Alias<T, N>);
+            register_value!({ let selected: resolve_type_from!(crate::IArray, child) = resolve_from!(crate::IArray, child); selected }: [T; N] as ISelected);
+        }.build();
+        assert!(receive(container.child()) == container.resolve_i_selected());
+    }
+}
+mod composed_borrow {
+    use generic_provider::borrowed::AppContainer as Imported;
+    type Alias<'a, T> = Imported<'a, T>;
+    trait ISelected {}
+    impl<T: ?Sized> ISelected for &T {}
+    fn receive<'a, T: ?Sized>(scope: &child::SubContainer<'_, 'a, T>) -> &'a T
+    where &'a T: Copy { scope.resolve_i_borrow() }
+    #[systasis::container]
+    pub fn run<'a, T: ?Sized>(child: &Alias<'a, T>)
+    where &'a T: Copy {
+        let Ok(container) = systasis::systasis_container! {
+            register_container!(child: &Alias<'a, T>);
+            register_value!({ let selected: resolve_type_from!(crate::IBorrow, child) = resolve_from!(crate::IBorrow, child); selected }: &'a T as ISelected);
+        }.build();
+        assert!(core::ptr::eq(receive(container.child()), container.resolve_i_selected()));
+    }
+}
 fn main() {
     fn inspect_private_factory(_: &generic_provider::private_factory::AppContainer) {}
     generic_provider::private_factory::run(inspect_private_factory);
     generic_provider::arrays::run([1u32, 2, 3], inspect_array);
     let owned = String::from("borrowed");
     generic_provider::borrowed::run(owned.as_str(), inspect_borrow);
+    generic_provider::arrays::run([1u32, 2, 3], composed_array::run);
+    generic_provider::borrowed::run(owned.as_str(), composed_borrow::run);
 }
 "#,
     )
@@ -134,9 +170,13 @@ fn main() {
         "generic_provider={}",
         target.join("libgeneric_provider.rlib").display()
     );
-    compile(
-        &target,
-        &caller,
-        &["--extern", &provider, "--emit=metadata"],
+    compile(&target, &caller, &["--extern", &provider]);
+    let output = Command::new(target.join("generic_caller"))
+        .output()
+        .expect("run cross-crate caller");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
