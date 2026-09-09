@@ -1,8 +1,43 @@
 use quote::{ToTokens, quote};
 use syn::{
+    ext::IdentExt,
     parse::{Parse, ParseStream},
     *,
 };
+
+/// The omitted namespace and explicit `default` identify the same registrations.
+#[derive(Clone, Default)]
+pub(crate) struct Namespace(pub(crate) Option<Ident>);
+
+impl Namespace {
+    fn named(name: Ident) -> Self {
+        Self((name.unraw() != "default").then_some(name))
+    }
+
+    fn registration(input: ParseStream<'_>) -> Result<Self> {
+        if input.parse::<Option<Token![in]>>()?.is_some() {
+            Ok(Self::named(input.parse()?))
+        } else {
+            Ok(Self::default())
+        }
+    }
+
+    pub(crate) fn query(input: ParseStream<'_>, from: bool) -> Result<Self> {
+        if from {
+            input.parse::<Token![,]>()?;
+            Ok(Self::named(input.parse()?))
+        } else {
+            Ok(Self::default())
+        }
+    }
+
+    pub(crate) fn key(&self, interface: &InterfaceGroup) -> String {
+        self.0.as_ref().map_or_else(
+            || interface.to_token_stream().to_string(),
+            |namespace| format!("{} in {}", interface.to_token_stream(), namespace.unraw()),
+        )
+    }
+}
 
 /// A registration's complete, order-independent interface identity.
 #[derive(Clone)]
@@ -38,6 +73,7 @@ pub(crate) struct Registration {
     pub(crate) value: Expr,
     pub(crate) ty: Type,
     pub(crate) interface: InterfaceGroup,
+    pub(crate) namespace: Namespace,
 }
 impl Parse for Registration {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
@@ -47,6 +83,7 @@ impl Parse for Registration {
         input.parse::<Token![as]>()?;
         let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
         let interface: InterfaceGroup = input.parse()?;
+        let namespace = Namespace::registration(input)?;
         Ok(Self {
             fresh: false,
             constructor: None,
@@ -55,6 +92,7 @@ impl Parse for Registration {
             value,
             ty,
             interface,
+            namespace,
         })
     }
 }
@@ -77,6 +115,7 @@ impl Parse for Registrations {
                 let ty = body.parse()?;
                 body.parse::<Token![as]>()?;
                 let interface = body.parse()?;
+                let namespace = Namespace::registration(&body)?;
                 let mut fallible = false;
                 let constructor = if name == "register_type_with" {
                     body.parse::<Token![,]>()?;
@@ -106,6 +145,7 @@ impl Parse for Registrations {
                     value: parse_quote!(()),
                     ty,
                     interface,
+                    namespace,
                 }
             } else {
                 body.parse()?

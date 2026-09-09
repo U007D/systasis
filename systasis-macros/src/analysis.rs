@@ -1,5 +1,4 @@
-use crate::parse::InterfaceGroup;
-use quote::ToTokens;
+use crate::parse::{InterfaceGroup, Namespace};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{
     parse::Parser,
@@ -28,23 +27,33 @@ impl VisitMut for Queries<'_> {
                 "try_resolve_dyn_ref",
             ]
             .iter()
-            .any(|name| query.mac.path.is_ident(name))
+            .any(|name| {
+                query.mac.path.is_ident(name) || query.mac.path.is_ident(&format!("{name}_from"))
+            })
         {
-            let interface = match syn::parse2::<InterfaceGroup>(query.mac.tokens.clone()) {
-                Ok(interface) => interface,
+            let method_name = query
+                .mac
+                .path
+                .get_ident()
+                .unwrap_or_else(|| unreachable!("recognized query has a single identifier"))
+                .to_string();
+            let method = method_name.strip_suffix("_from").unwrap_or(&method_name);
+            let parsed = (|input: syn::parse::ParseStream<'_>| {
+                let interface = input.parse::<InterfaceGroup>()?;
+                let namespace = Namespace::query(input, method_name.ends_with("_from"))?;
+                Ok(namespace.key(&interface))
+            })
+            .parse2(query.mac.tokens.clone());
+            let key = match parsed {
+                Ok(key) => key,
                 Err(error) => {
                     self.error = Some(error);
                     return;
                 }
             };
-            let key = interface.to_token_stream().to_string();
             if let Some(index) = self.indices.get(&key) {
                 self.dependencies.insert(*index);
 
-                let method =
-                    query.mac.path.get_ident().unwrap_or_else(|| {
-                        unreachable!("query path was checked to be an identifier")
-                    });
                 if [
                     "resolve_ref",
                     "try_resolve_ref",
@@ -52,8 +61,7 @@ impl VisitMut for Queries<'_> {
                     "resolve_dyn_ref",
                     "try_resolve_dyn_ref",
                 ]
-                .iter()
-                .any(|name| method == name)
+                .contains(&method)
                 {
                     self.borrowed.insert(*index);
                 }
@@ -88,22 +96,24 @@ impl VisitMut for TypeLookup<'_> {
     fn visit_type_mut(&mut self, ty: &mut Type) {
         if let Type::Macro(query) = ty
             && (query.mac.path.is_ident("registered_type")
-                || query.mac.path.is_ident("resolve_type"))
+                || query.mac.path.is_ident("resolve_type")
+                || query.mac.path.is_ident("resolve_type_from"))
         {
             let parsed = (|input: syn::parse::ParseStream<'_>| {
                 let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
                 let interface = input.parse::<InterfaceGroup>()?;
-                Ok((dynamic, interface))
+                let namespace =
+                    Namespace::query(input, query.mac.path.is_ident("resolve_type_from"))?;
+                Ok((dynamic, namespace.key(&interface)))
             })
             .parse2(query.mac.tokens.clone());
-            let (dynamic, interface) = match parsed {
+            let (dynamic, key) = match parsed {
                 Ok(parsed) => parsed,
                 Err(error) => {
                     self.error = Some(error);
                     return;
                 }
             };
-            let key = interface.to_token_stream().to_string();
             let Some(&index) = self.indices.get(&key) else {
                 self.error = Some(Error::new_spanned(query, "unregistered type lookup"));
                 return;

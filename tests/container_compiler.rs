@@ -30,6 +30,76 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "named_registration_is_not_default_dependency",
+            "",
+            "register_value!(String::new(): String as IValue in test); register_value!(try_resolve!(IValue)?: String as a::IValue);",
+            "",
+            Some("unregistered dependency"),
+        ),
+        (
+            "named_type_query_does_not_fall_back_to_default",
+            "",
+            "register_value!(String::new(): String as IValue); register_value!(String::new(): resolve_type_from!(IValue, test) as a::IValue);",
+            "",
+            Some("unregistered type lookup"),
+        ),
+        (
+            "named_dyn_query_requires_matching_opt_in",
+            "",
+            "register_value!(String::new(): String as dyn IValue); register_value!(String::new(): String as IValue in test); register_value!({ let _: Option<&resolve_type_from!(dyn IValue, test)> = None; 1 }: u32 as INumber);",
+            "",
+            Some("dyn type lookup requires an as dyn registration"),
+        ),
+        (
+            "namespace_borrow_excludes_only_matching_owned_accessor",
+            "",
+            "register_value!(String::new(): String as IValue in test); register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> { Ok(try_resolve_ref_from!(IValue, test)?.len()) });",
+            "built.unwrap().try_resolve_i_value_in_test();",
+            Some("E0599"),
+        ),
+        (
+            "namespace_borrow_preserves_other_namespace_owned_accessor",
+            "",
+            "register_value!(String::new(): String as IValue in test); register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> { Ok(try_resolve_ref_from!(IValue, test)?.len()) });",
+            "built.unwrap().try_resolve_i_value().unwrap();",
+            None,
+        ),
+        (
+            "named_registration_has_no_unsuffixed_accessor",
+            "",
+            "register_value!(String::new(): String as IValue in test);",
+            "built.unwrap().try_resolve_i_value();",
+            Some("E0599"),
+        ),
+        (
+            "namespace_cycle_is_rejected",
+            "",
+            "register_value!(try_resolve_from!(IValue, two)?: String as IValue in one); register_value!(try_resolve_from!(IValue, one)?: String as IValue in two);",
+            "",
+            Some("registration dependency cycle"),
+        ),
+        (
+            "namespace_method_name_collision",
+            "",
+            "register_value!(String::new(): String as IValue in test); register_value!(String::new(): String as IValueInTest);",
+            "",
+            Some("interfaces generate the same resolver name: resolve_i_value_in_test"),
+        ),
+        (
+            "default_alias_method_name_collision",
+            "",
+            "register_value!(String::new(): String as IValue); register_value!(String::new(): String as IValueInDefault);",
+            "",
+            Some("interfaces generate the same resolver name: resolve_i_value_in_default"),
+        ),
+        (
+            "operation_modifier_method_name_collision",
+            "",
+            "register_value!(String::new(): String as IValue); register_value!(String::new(): String as IValueRef);",
+            "",
+            Some("interfaces generate the same resolver name: resolve_i_value_ref"),
+        ),
+        (
             "combined_dyn_type_requires_group_opt_in",
             "",
             "register_value!(String::new(): String as IValue + a::IValue); register_value!({ let _: Option<&resolve_type!(dyn a::IValue + IValue)> = None; 1 }: u32 as INumber);",
@@ -362,6 +432,9 @@ fn container_diagnostics() {
         let source = format!(
             r#"
 trait IValue {{}}
+trait IValueInTest {{}} impl IValueInTest for String {{}}
+trait IValueInDefault {{}} impl IValueInDefault for String {{}}
+trait IValueRef {{}} impl IValueRef for String {{}}
 trait IGeneric {{ fn generic<T>(&self); }}
 impl IGeneric for String {{ fn generic<T>(&self) {{}} }}
 struct Borrowed<'a>(&'a str);

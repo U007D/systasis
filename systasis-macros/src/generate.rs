@@ -6,6 +6,59 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::{ext::IdentExt, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
 struct CallLifetime(Lifetime);
+
+/// Apply namespace suffixes after operation modifiers, and validate the complete
+/// public method names rather than only their interface-name portion.
+fn namespace_methods(
+    implementations: &mut [proc_macro2::TokenStream],
+    registration: &crate::parse::Registration,
+    known: &mut BTreeMap<String, proc_macro2::TokenStream>,
+) -> Result<()> {
+    let mut names = BTreeSet::new();
+    for implementation in implementations {
+        let mut file = syn::parse2::<File>(implementation.clone())?;
+        for item in &mut file.items {
+            let Item::Impl(implementation) = item else {
+                continue;
+            };
+            let mut aliases = Vec::new();
+            for item in &mut implementation.items {
+                let ImplItem::Fn(method) = item else {
+                    continue;
+                };
+                if let Some(namespace) = &registration.namespace.0 {
+                    method.sig.ident =
+                        format_ident!("{}_in_{}", method.sig.ident, namespace.unraw());
+                } else {
+                    let mut alias = method.clone();
+                    alias.sig.ident = format_ident!("{}_in_default", method.sig.ident);
+                    names.insert(alias.sig.ident.to_string());
+                    aliases.push(ImplItem::Fn(alias));
+                }
+                names.insert(method.sig.ident.to_string());
+            }
+            implementation.items.extend(aliases);
+        }
+        *implementation = file.into_token_stream();
+    }
+    let interface = &registration.interface;
+    let source = if let Some(namespace) = &registration.namespace.0 {
+        quote!(#interface in #namespace)
+    } else {
+        quote!(#interface)
+    };
+    for name in names {
+        if let Some(previous) = known.insert(name.clone(), source.clone()) {
+            let mut error = Error::new_spanned(
+                &source,
+                format!("interfaces generate the same resolver name: {name}"),
+            );
+            error.combine(Error::new_spanned(previous, "first conflicting interface"));
+            return Err(error);
+        }
+    }
+    Ok(())
+}
 // Follow only the receiver/postfix chain, not unrelated arguments or blocks.
 // The owner's statements must remain in the enclosing scope; only the build
 // expression is replaced with its published Result.
@@ -152,13 +205,13 @@ pub(crate) fn expand(
         let winners = registrations
             .iter()
             .enumerate()
-            .map(|(i, registration)| (registration.interface.to_token_stream().to_string(), i))
+            .map(|(i, registration)| (registration.namespace.key(&registration.interface), i))
             .collect::<BTreeMap<_, _>>();
         registrations = registrations
             .into_iter()
             .enumerate()
             .filter_map(|(i, registration)| {
-                (winners[&registration.interface.to_token_stream().to_string()] == i)
+                (winners[&registration.namespace.key(&registration.interface)] == i)
                     .then_some(registration)
             })
             .collect();
@@ -171,7 +224,7 @@ pub(crate) fn expand(
         let indices = registrations
             .iter()
             .enumerate()
-            .map(|(i, r)| (r.interface.to_token_stream().to_string(), i))
+            .map(|(i, r)| (r.namespace.key(&r.interface), i))
             .collect::<BTreeMap<_, _>>();
         let mut dependencies = Vec::new();
         let mut constructor_borrows = BTreeSet::new();
@@ -251,7 +304,7 @@ pub(crate) fn expand(
         let order = crate::graph::schedule(&dependencies).map_err(|cycle| {
             let names = cycle
                 .iter()
-                .map(|&i| registrations[i].interface.to_token_stream().to_string())
+                .map(|&i| registrations[i].namespace.key(&registrations[i].interface))
                 .collect::<Vec<_>>();
             Error::new_spanned(
                 registry,
@@ -392,8 +445,9 @@ pub(crate) fn expand(
         let mut implementations = Vec::new();
         let mut constructor_functions = Vec::new();
         let mut validation_calls = Vec::new();
-        let mut method_names = BTreeMap::<String, crate::parse::InterfaceGroup>::new();
+        let mut method_names = BTreeMap::<String, proc_macro2::TokenStream>::new();
         for (i, registration) in registrations.iter().enumerate() {
+            let first_implementation = implementations.len();
             let check = format_ident!("check_{i}");
             let ty = &registration.ty;
             let interface = &registration.interface;
@@ -454,16 +508,6 @@ pub(crate) fn expand(
                 })
                 .collect::<Vec<_>>()
                 .join("_");
-            if let Some(previous) =
-                method_names.insert(snake.clone(), registration.interface.clone())
-            {
-                let mut error = Error::new_spanned(
-                    &registration.interface,
-                    "interfaces generate the same resolver name",
-                );
-                error.combine(Error::new_spanned(previous, "first conflicting interface"));
-                return Err(error);
-            }
             let read = format_ident!("try_resolve_{snake}_ref");
             let write = format_ident!("try_resolve_{snake}_ref_mut");
             let take = format_ident!("try_resolve_{snake}");
@@ -517,6 +561,11 @@ pub(crate) fn expand(
                         pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments),*) }
                     }
                 ));
+                namespace_methods(
+                    &mut implementations[first_implementation..],
+                    registration,
+                    &mut method_names,
+                )?;
                 continue;
             }
             let others = parameters
@@ -650,6 +699,11 @@ pub(crate) fn expand(
                     where __Value: ::core::clone::Clone { self.#field.try_resolve_clone() }
                 }
             ));
+            namespace_methods(
+                &mut implementations[first_implementation..],
+                registration,
+                &mut method_names,
+            )?;
         }
         let imports = bindings.imports();
         field_types.push(generic_marker);
