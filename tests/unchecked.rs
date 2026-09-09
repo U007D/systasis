@@ -103,3 +103,33 @@ mod forbid_consumer {
         assert_eq!(container.try_resolve_i_value().unwrap(), "checked");
     }
 }
+
+mod returned_guard {
+    use super::*;
+    trait IGuard {}
+    impl IGuard for systasis::Ref<'_, String> {}
+
+    #[systasis::container]
+    #[test]
+    fn lazy_constructor_retains_the_unchecked_shared_guard() {
+        let value: String = "guarded".into();
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(value: String as IValue);
+            register_type_with!(systasis::Ref<'_, String> as IGuard, || {
+                // SAFETY: owned access is excluded by this constructor borrow;
+                // this test releases every mutable guard before resolving it.
+                unsafe { resolve_ref_unchecked!(IValue) }
+            });
+        }
+        .build();
+        let guard = container.resolve_i_guard();
+        assert_eq!(&*guard, "guarded");
+        assert!(matches!(
+            container.try_resolve_i_value_ref_mut(),
+            Err(Error::ValueAccessContention)
+        ));
+        drop(guard);
+        container.try_resolve_i_value_ref_mut().unwrap().push('!');
+        assert_eq!(&*container.resolve_i_guard(), "guarded!");
+    }
+}
