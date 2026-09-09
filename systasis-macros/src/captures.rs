@@ -59,13 +59,57 @@ impl Bindings {
         if pattern_names(pattern, &mut names) {
             self.uncertain = Some(pattern.to_token_stream());
         }
-        // A tuple/struct annotation describes the whole pattern, not each
-        // binding. Ref patterns likewise change the binding's annotated type.
-        let direct = matches!(pattern, Pat::Ident(binding)
-            if binding.by_ref.is_none() && binding.subpat.is_none());
         for name in names {
-            self.types
-                .insert(name, annotation.filter(|_| direct).cloned());
+            self.types.insert(name, None);
+        }
+        if let Some(annotation) = annotation {
+            self.observe_annotated_pattern(pattern, annotation);
+        }
+    }
+
+    /// Extract only types stated structurally in the annotation. In particular,
+    /// aliases, struct fields, and match ergonomics require Rust name/type
+    /// resolution and must not be guessed here.
+    fn observe_annotated_pattern(&mut self, pattern: &Pat, annotation: &Type) {
+        match (pattern, annotation) {
+            (_, Type::Paren(ty)) => self.observe_annotated_pattern(pattern, &ty.elem),
+            (_, Type::Group(ty)) => self.observe_annotated_pattern(pattern, &ty.elem),
+            (Pat::Paren(pattern), _) => {
+                self.observe_annotated_pattern(&pattern.pat, annotation);
+            }
+            (Pat::Ident(binding), _) if binding.by_ref.is_none() && binding.subpat.is_none() => {
+                self.types
+                    .insert(name(&binding.ident), Some(annotation.clone()));
+            }
+            (Pat::Tuple(pattern), Type::Tuple(ty)) => {
+                let rest = pattern
+                    .elems
+                    .iter()
+                    .position(|pat| matches!(pat, Pat::Rest(_)));
+                let explicit = pattern.elems.len() - usize::from(rest.is_some());
+                if explicit > ty.elems.len() || (rest.is_none() && explicit != ty.elems.len()) {
+                    return;
+                }
+                for (index, element) in pattern.elems.iter().enumerate() {
+                    if matches!(element, Pat::Rest(_)) {
+                        continue;
+                    }
+                    let type_index = if rest.is_some_and(|rest| index > rest) {
+                        ty.elems.len() - (pattern.elems.len() - index)
+                    } else {
+                        index
+                    };
+                    self.observe_annotated_pattern(element, &ty.elems[type_index]);
+                }
+            }
+            (Pat::Slice(pattern), Type::Array(ty)) => {
+                for element in &pattern.elems {
+                    // A `tail @ ..` binding is an array, not an element. Its
+                    // length would require evaluating/subtracting consts.
+                    self.observe_annotated_pattern(element, &ty.elem);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -200,7 +244,7 @@ impl Visitor<'_> {
         }
         let annotation = self.bindings.types.get(&key)?;
         let Some(ty) = annotation else {
-            self.reject(ident, "captured constructor bindings require an explicit type annotation on a simple binding");
+            self.reject(ident, "captured constructor bindings require an explicit type annotation from which the binding's type can be determined");
             return None;
         };
         let index = self
@@ -529,17 +573,81 @@ mod tests {
     }
 
     #[test]
-    fn destructured_capture_does_not_reuse_entire_pattern_type() {
+    fn destructured_parameter_capture_uses_element_types() {
         let function = parse_quote!(
             fn main((url, port): (String, u16)) {}
         );
-        let error = prepare(
-            &parse_quote!(|| url.clone()),
+        let result = prepare(
+            &parse_quote!(|| (url.clone(), port)),
             &Bindings::from_function(&function),
             &parse_quote!(__captures),
         )
-        .err()
-        .expect("destructured type extraction is unsupported");
-        assert!(error.to_string().contains("simple binding"));
+        .unwrap();
+        assert_eq!(capture_types(&result), ["String", "u16"]);
+    }
+
+    fn capture_types(plan: &Plan) -> Vec<String> {
+        plan.captures
+            .iter()
+            .map(|(_, ty)| ty.to_token_stream().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn nested_tuple_and_array_locals_preserve_each_binding_type() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&parse_quote!(
+            let ((url, port), [first, _, last]): ((String, u16), [u8; 3]) = inputs;
+        ));
+        let result = prepare(
+            &parse_quote!(|| (url.clone(), port, first, last)),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert_eq!(capture_types(&result), ["String", "u16", "u8", "u8"]);
+    }
+
+    #[test]
+    fn tuple_rest_aligns_suffix_types_and_array_rest_skips_elements() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&parse_quote!(
+            let (first, .., last): (u8, String, bool, u64) = tuple;
+        ));
+        bindings.observe_statement(&parse_quote!(
+            let [start, .., end]: [u16; COUNT] = array;
+        ));
+        let result = prepare(
+            &parse_quote!(|| (first, last, start, end)),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert_eq!(capture_types(&result), ["u8", "u64", "u16", "u16"]);
+    }
+
+    #[test]
+    fn unsupported_patterns_remain_untyped_instead_of_guessing() {
+        let statements: Vec<Stmt> = vec![
+            parse_quote!(let (value, _): Alias = input;),
+            parse_quote!(let (ref value, _): (String, u8) = input;),
+            parse_quote!(let [_, value @ ..]: [u8; 3] = input;),
+            parse_quote!(let (value, _): &(String, u8) = input;),
+            parse_quote!(let Record { value }: Record = input;),
+            parse_quote!(let (value, _, _): (u8, u16) = input;),
+        ];
+        for statement in statements {
+            let mut bindings = Bindings::default();
+            bindings.observe_statement(&parse_quote!(let value: OldType = input;));
+            bindings.observe_statement(&statement);
+            let error = prepare(
+                &parse_quote!(|| value),
+                &bindings,
+                &parse_quote!(__captures),
+            )
+            .err()
+            .expect("unsupported destructuring must not retain an earlier annotation");
+            assert!(error.to_string().contains("explicit type annotation"));
+        }
     }
 }
