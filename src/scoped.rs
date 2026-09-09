@@ -101,6 +101,14 @@ pub trait AsScope<Restrictions> {
     fn scope(&self) -> Self::Scope<'_>;
 }
 
+/// Add restrictions to an existing descriptor without extending its backing lifetime.
+pub trait ReScope<Restrictions> {
+    /// A descriptor retaining both the old and new exclusions.
+    type Scope;
+    /// Construct the more-restricted descriptor from its existing backing reference.
+    fn rescope(&self) -> Self::Scope;
+}
+
 /// Resolution through a restricted scope, borrowing the backing container.
 ///
 /// The explicit lifetime permits a returned guard to outlive the descriptor

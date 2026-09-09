@@ -3,8 +3,8 @@
 
 mod analysis;
 mod captures;
-#[allow(dead_code)] // Integrated by the next child-composition expansion step.
 mod child;
+mod child_queries;
 mod dyn_targets;
 mod generate;
 mod generic_policy;

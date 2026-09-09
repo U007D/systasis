@@ -199,7 +199,10 @@ pub(crate) fn expand(
                 "build accepts no arguments and at most one error type",
             ));
         }
-        let Registrations(mut registrations) = syn::parse2(registry.mac.tokens.clone())?;
+        let crate::child::Input {
+            registrations: Registrations(mut registrations),
+            mut children,
+        } = syn::parse2(registry.mac.tokens.clone())?;
         // Discard superseded declarations before examining their expressions,
         // types, or dependencies. The last declaration of an interface wins.
         let winners = registrations
@@ -215,6 +218,25 @@ pub(crate) fn expand(
                     .then_some(registration)
             })
             .collect();
+        let mut child_borrows = Vec::new();
+        for registration in &mut registrations {
+            let mut queries = crate::child_queries::Queries {
+                children: &children,
+                error: None,
+                borrowed: Vec::new(),
+            };
+            queries.visit_type_mut(&mut registration.ty);
+            queries.visit_expr_mut(&mut registration.value);
+            // Temporary initializer reads do not remove public ownership methods.
+            queries.borrowed.clear();
+            if let Some(constructor) = &mut registration.constructor {
+                queries.visit_expr_closure_mut(constructor);
+            }
+            child_borrows.extend(queries.borrowed);
+            if let Some(error) = queries.error {
+                return Err(error);
+            }
+        }
         let error_ty = build
             .turbofish
             .as_ref()
@@ -372,6 +394,13 @@ pub(crate) fn expand(
         let mut policies = Vec::new();
         let mut policy_checks = Vec::new();
         let mut lifetimes = Lifetimes(Vec::new());
+        for child in &mut children {
+            child
+                .ty
+                .lifetime
+                .get_or_insert_with(|| Lifetime::new("'_", Span::mixed_site()));
+            lifetimes.visit_type_reference_mut(&mut child.ty);
+        }
         for (i, registration) in registrations.iter_mut().enumerate() {
             let original = &registration.ty;
             let flag = &flags[i];
@@ -446,15 +475,42 @@ pub(crate) fn expand(
             .filter(|registration| !registration.fresh)
             .map(|registration| &registration.ty);
         let generic_marker = quote!(fn() -> (#(#marker_types,)* #(#stored_types,)*));
+        let child_masks = children
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                child_borrows
+                    .iter()
+                    .filter(|(child, _)| *child == index)
+                    .fold(
+                        quote!(::systasis::scoped::mask::Empty),
+                        |tail, (_, key)| quote!(::systasis::scoped::mask::Mask<#key, #tail>),
+                    )
+            })
+            .collect::<Vec<_>>();
+        let child_types = children
+            .iter()
+            .zip(&child_masks)
+            .map(|(child, mask)| {
+                let lifetime =
+                    child.ty.lifetime.as_ref().unwrap_or_else(|| {
+                        unreachable!("child lifetime was inserted before lifting")
+                    });
+                let ty = &child.ty.elem;
+                quote!(<#ty as ::systasis::scoped::AsScope<#mask>>::Scope<#lifetime>)
+            })
+            .collect::<Vec<_>>();
+        let child_tuple = quote!((#(#child_types,)*));
+        selected.push(child_tuple.clone());
         selected.push(generic_marker.clone());
-        let parameters = (0..=registrations.len())
+        let parameters = (0..=registrations.len() + 1)
             .map(|i| format_ident!("__Slot{i}"))
             .collect::<Vec<_>>();
         let mut field_types = Vec::new();
         let mut values = Vec::new();
         let mut implementations = Vec::new();
         let mut scoped_implementations = Vec::new();
-        let descriptor = crate::scopegen::descriptor(&parameters);
+        let descriptor = crate::scopegen::descriptor(&parameters, &children);
         let mut key_declarations = Vec::new();
         let scope_keys = registrations
             .iter()
@@ -606,14 +662,14 @@ pub(crate) fn expand(
                 };
                 let (impl_generics, _, where_clause) = generics.split_for_impl();
                 constructor_functions.push(quote!(
-                    pub(super) fn #helper #helper_generics (#(#helper_parameters),*) -> #helper_output #where_clause {
+                    pub(super) fn #helper #helper_generics (#(#helper_parameters,)* __systasis_children: &#call_lifetime #child_tuple) -> #helper_output #where_clause {
                         let #capture_root = #slot.captures();
                         #result
                     }
                 ));
                 implementations.push(quote!(
                     impl #impl_generics Generated<#(#selected),*> #where_clause {
-                        pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments),*) }
+                        pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments,)* &self._children) }
                     }
                 ));
                 namespace_methods(
@@ -804,9 +860,34 @@ pub(crate) fn expand(
             )?);
         }
         let imports = bindings.imports();
+        field_types.push(child_tuple.clone());
         field_types.push(generic_marker);
+        let child_parameter = &parameters[registrations.len()];
         let generic_parameter = parameters.last().unwrap();
         let (alias_parameters, alias_arguments, alias_where) = generics.split_for_impl();
+        let mut child_aliases = Vec::new();
+        let mut child_exports = Vec::new();
+        let mut child_accessors = Vec::new();
+        let mut child_values = Vec::new();
+        for (index, (child, ty)) in children.iter().zip(&child_types).enumerate() {
+            let name = &child.name;
+            if method_names.contains_key(&name.unraw().to_string()) {
+                return Err(Error::new_spanned(
+                    name,
+                    "child path conflicts with a generated resolver name",
+                ));
+            }
+            let alias = format_ident!("__SystasisChild{index}");
+            let position = Index::from(index);
+            let alias_type: Type = syn::parse2(ty.clone())?;
+            let child_generics = crate::child::scope_generics(&generics, &alias_type);
+            let (child_parameters, _, child_where) = child_generics.split_for_impl();
+            child_aliases.push(quote!(#[allow(type_alias_bounds)] pub type #alias #child_parameters #child_where = #ty;));
+            child_exports.push(quote!(pub mod #name { pub use super::__systasis_injected::#alias as SubContainer; }));
+            child_accessors.push(quote!(pub fn #name(&self) -> &#ty { &self._children.#position }));
+            let mask = &child_masks[index];
+            child_values.push(quote!(::systasis::scoped::AsScope::<#mask>::scope(#name)));
+        }
         let mut construction_type: Type = parse_quote!(AppContainer #alias_arguments);
         if let Type::Path(path) = &mut construction_type
             && let PathArguments::AngleBracketed(arguments) =
@@ -836,10 +917,13 @@ pub(crate) fn expand(
                 #(#key_declarations)*
                 pub struct Generated<#(#parameters),*> {
                     #(pub(super) #fields: #parameters,)*
+                    pub(super) _children: #child_parameter,
                     pub(super) _pin: ::core::marker::PhantomPinned,
                     pub(super) _parameters: ::core::marker::PhantomData<(#marker, #generic_parameter)>,
                 }
                 #(#implementations)*
+                impl #alias_parameters Generated<#(#selected),*> #alias_where { #(#child_accessors)* }
+                #(#child_aliases)*
                 #descriptor
                 #(#scoped_implementations)*
                 #[allow(type_alias_bounds)]
@@ -848,6 +932,7 @@ pub(crate) fn expand(
             /// The container generated from this module's registration declaration.
             #[allow(type_alias_bounds)]
             pub type AppContainer #alias_parameters #alias_where = __systasis_injected::Container #alias_arguments;
+            #(#child_exports)*
         ));
         let mut initialization = Vec::new();
         let mut capture_initialization = Vec::new();
@@ -915,11 +1000,12 @@ pub(crate) fn expand(
             #(#policy_checks)*
             #(#validation_calls)*
             #(#capture_initialization)*
+            let __systasis_children = (#(#child_values,)*);
             let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
             #(#initialization)*
             let #systasis_result_ident=match #systasis_error_ident {
                 ::core::option::Option::None=>{
-                    let container: #construction_type = AppContainer {#(#values,)*_pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
+                    let container: #construction_type = AppContainer {#(#values,)*_children: __systasis_children, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
                     ::core::result::Result::Ok(container)
                 },
                 ::core::option::Option::Some(error)=>{#(::systasis::__private::discard(#reverse);)* ::core::result::Result::Err(error)},
@@ -939,7 +1025,9 @@ pub(crate) fn expand(
     function.block.stmts = statements;
     let mut definitions: syn::File = syn::parse2(quote!(#emitted))?;
     for item in &mut definitions.items {
-        if let syn::Item::Mod(module) = item {
+        if let syn::Item::Mod(module) = item
+            && module.ident == "__systasis_injected"
+        {
             crate::rebase::generated_module(module);
         }
     }

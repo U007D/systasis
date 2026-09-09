@@ -57,7 +57,7 @@ pub(crate) fn replacements(
             };
             result.insert(
                 (index, method.into()),
-                parse_quote!(__systasis_injected::#function #turbofish (#(#arguments),*)),
+                parse_quote!(__systasis_injected::#function #turbofish (#(#arguments,)* &__systasis_children)),
             );
         } else {
             if registration.dynamic {

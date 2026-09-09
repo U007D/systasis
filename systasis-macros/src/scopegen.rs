@@ -107,17 +107,71 @@ fn metadata_at(
     )
 }
 
-pub(crate) fn descriptor(parameters: &[Ident]) -> TokenStream {
+pub(crate) fn descriptor(
+    parameters: &[Ident],
+    children: &[crate::child::ChildRegistration],
+) -> TokenStream {
+    let child_parameter = &parameters[parameters.len() - 2];
+    let child_parameters = children
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format_ident!("__Child{i}"))
+        .collect::<Vec<_>>();
+    let keys = children
+        .iter()
+        .map(|child| key(&child.name.unraw().to_string()))
+        .collect::<Vec<_>>();
+    let mask_bounds = keys
+        .iter()
+        .map(|key| quote!(__Restrictions: ::systasis::scoped::mask::ForChild<#key>));
+    let child_bounds = child_parameters.iter().zip(&keys).map(|(child,key)| quote!(#child: ::systasis::scoped::ReScope<<__Restrictions as ::systasis::scoped::mask::ForChild<#key>>::Out>));
+    let outputs = child_parameters.iter().zip(&keys).map(|(child,key)| quote!(<#child as ::systasis::scoped::ReScope<<__Restrictions as ::systasis::scoped::mask::ForChild<#key>>::Out>>::Scope));
+    let values = keys.iter().enumerate().map(|(i,key)| { let position = Index::from(i); quote!(::systasis::scoped::ReScope::<<__Restrictions as ::systasis::scoped::mask::ForChild<#key>>::Out>::rescope(&self.#position)) });
+    let restricted_body = if children.is_empty() {
+        quote!()
+    } else {
+        quote!((#(#values,)*))
+    };
+    let accessors = children
+        .iter()
+        .zip(&child_parameters)
+        .enumerate()
+        .map(|(i, (child, ty))| {
+            let name = &child.name;
+            let position = Index::from(i);
+            quote!(pub fn #name(&self) -> &#ty { &self.children.#position })
+        });
     quote!(
-        pub struct __SystasisScope<'__backing, __Container: ?Sized, __Restrictions> {
+        pub trait __ScopeChildren<__Restrictions> {
+            type Output;
+            fn restricted(&self) -> Self::Output;
+        }
+        impl<__Restrictions, #(#child_parameters),*> __ScopeChildren<__Restrictions> for (#(#child_parameters,)*)
+        where #(#mask_bounds,)* #(#child_bounds,)* {
+            type Output = (#(#outputs,)*);
+            fn restricted(&self) -> Self::Output { #restricted_body }
+        }
+        pub struct __SystasisScope<'__backing, __Container: ?Sized, __Restrictions, __Children = ()> {
             backing: &'__backing __Container,
             restrictions: ::core::marker::PhantomData<fn() -> __Restrictions>,
+            children: __Children,
         }
-        impl<#(#parameters,)* __Restrictions> ::systasis::scoped::AsScope<__Restrictions> for Generated<#(#parameters),*> {
-            type Scope<'__backing> = __SystasisScope<'__backing, Self, __Restrictions> where Self: '__backing;
+        impl<#(#parameters,)* __Restrictions> ::systasis::scoped::AsScope<__Restrictions> for Generated<#(#parameters),*>
+        where #child_parameter: __ScopeChildren<__Restrictions> {
+            type Scope<'__backing> = __SystasisScope<'__backing, Self, __Restrictions, <#child_parameter as __ScopeChildren<__Restrictions>>::Output> where Self: '__backing;
             fn scope(&self) -> Self::Scope<'_> {
-                __SystasisScope { backing: self, restrictions: ::core::marker::PhantomData }
+                __SystasisScope { backing: self, restrictions: ::core::marker::PhantomData, children: self._children.restricted() }
             }
+        }
+        impl<'__backing, #(#parameters,)* __Restrictions, __More, __Children> ::systasis::scoped::ReScope<__More> for __SystasisScope<'__backing, Generated<#(#parameters),*>, __Restrictions, __Children>
+        where #child_parameter: __ScopeChildren<::systasis::scoped::mask::Union<__Restrictions, __More>> {
+            type Scope = <Generated<#(#parameters),*> as ::systasis::scoped::AsScope<::systasis::scoped::mask::Union<__Restrictions, __More>>>::Scope<'__backing>;
+            fn rescope(&self) -> Self::Scope {
+                ::systasis::scoped::AsScope::<::systasis::scoped::mask::Union<__Restrictions, __More>>::scope(self.backing)
+            }
+        }
+        impl<'__backing, __Container: ?Sized, __Restrictions, #(#child_parameters),*> __SystasisScope<'__backing, __Container, __Restrictions, (#(#child_parameters,)*)> {
+            #(#accessors)*
         }
     )
 }
@@ -443,6 +497,8 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                         unreachable!("finite generic parameters cannot exhaust identifier suffixes")
                     });
                 scoped.params.push(parse_quote!(#restrictions));
+                let scope_children = crate::dyn_targets::value_parameter(&scoped);
+                scoped.params.push(parse_quote!(#scope_children));
                 scoped
                     .make_where_clause()
                     .predicates
@@ -471,7 +527,7 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                     quote!(self.backing.#name())
                 };
                 emitted.push(quote!(
-                    impl #scope_parameters __SystasisScope<#backing, #root, #restrictions> #scope_where {
+                    impl #scope_parameters __SystasisScope<#backing, #root, #restrictions, #scope_children> #scope_where {
                         #(#docs)*
                         pub #safety fn #name(&self) -> #output { #call }
                     }
@@ -492,7 +548,7 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                         format_ident!("Resolve")
                     };
                     emitted.push(quote!(
-                        impl #dispatch_parameters ::systasis::scoped::#dispatch<#backing, #path, #key, ::systasis::scoped::op::#operation> for __SystasisScope<#backing, #root, #restrictions> #dispatch_where {
+                        impl #dispatch_parameters ::systasis::scoped::#dispatch<#backing, #path, #key, ::systasis::scoped::op::#operation> for __SystasisScope<#backing, #root, #restrictions, #scope_children> #dispatch_where {
                             type Output = #result;
                             #safety fn resolve(&self) -> Self::Output { <#output as ::systasis::scoped::Identity>::into_identity(#call) }
                         }
