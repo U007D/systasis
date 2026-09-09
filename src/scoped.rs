@@ -7,6 +7,36 @@ use crate::{Ref, RefMut};
 
 pub mod key;
 pub mod mask;
+
+/// Equality witness used to retain ordinary Rust visibility in metadata impls.
+pub trait Identity {
+    /// The original type, without wrapping a runtime value.
+    type Type: ?Sized;
+    /// Return the original value through the associated-type equality.
+    fn into_identity(self) -> Self::Type
+    where
+        Self: Sized,
+        Self::Type: Sized;
+}
+impl<T: ?Sized> Identity for T {
+    type Type = T;
+    fn into_identity(self) -> T
+    where
+        Self: Sized,
+    {
+        self
+    }
+}
+
+/// Lifetime-specific metadata underlying the public generic associated types.
+pub trait MetadataAt<'a, Path, Key, Kind> {
+    /// The selected value, result, or trait-object target.
+    type Value: ?Sized;
+}
+/// Identifies concrete registration metadata rather than an operation result.
+pub struct RegisteredValue;
+/// Identifies opted-in trait-object metadata.
+pub struct DynamicTarget;
 use core::cell::{Ref as LocalRef, RefMut as LocalRefMut};
 use core::marker::PhantomData;
 
@@ -82,6 +112,19 @@ pub trait Resolve<'backing, Path, Key, Operation> {
     fn resolve(&self) -> Self::Output;
 }
 
+/// Explicit forwarding of an already-authorized unchecked scope operation.
+#[cfg(feature = "resolve_unchecked")]
+pub trait UnsafeResolve<'backing, Path, Key, Operation> {
+    /// The operation's owned value or retained guard.
+    type Output;
+    /// Perform synchronized nonblocking access without returning access errors.
+    ///
+    /// # Safety
+    /// The value must be present and the selected lock acquisition must succeed.
+    /// This operation must not bypass the scope's compile-time exclusions.
+    unsafe fn resolve(&self) -> Self::Output;
+}
+
 /// Type-level operation names; none select a runtime dispatch branch.
 pub mod op {
     /// Repeatable ownership from Copy storage or a fresh constructor.
@@ -102,6 +145,15 @@ pub mod op {
     pub struct DynShared;
     /// Checked shared guard mapped to an opted-in trait-object target.
     pub struct TryDynShared;
+    /// Unchecked ownership transfer under the slot's existing synchronization.
+    #[cfg(feature = "resolve_unchecked")]
+    pub struct UncheckedOwned;
+    /// Unchecked shared acquisition retaining its guard.
+    #[cfg(feature = "resolve_unchecked")]
+    pub struct UncheckedShared;
+    /// Unchecked exclusive acquisition retaining its guard.
+    #[cfg(feature = "resolve_unchecked")]
+    pub struct UncheckedExclusive;
 }
 
 /// Value metadata for ordinary slots; factories provide their own output GATs.
