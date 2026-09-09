@@ -2,6 +2,35 @@
 
 ## Current generated-container checks
 
+### Allocation observations
+
+`tests/allocations.rs` has thirteen passing checks on std and no_std runtime
+backends, including Miri. Eight workload tests observe no alloc, alloc_zeroed
+or realloc calls during construction, checked resolution, explicit cloning,
+returned guards, nested scopes, failed-build cleanup and owner destruction.
+Copy cloning has an observable nonallocating Clone implementation; read-only
+storage coverage exercises the runtime primitive, not a generated registration.
+Five instrumentation controls check all allocator entry points, an empty window,
+thread isolation, unwind cleanup and rejection of nested measurement windows.
+
+The user approved the test-only System-forwarding allocator on 2026-09-09.
+Its unsafe operations and review are described in [SAFETY.md](SAFETY.md).
+Counts are per-thread allocator calls within the measured closure, not bytes or
+an optimizer-independent proof. Values returned from the closure drop outside
+the window; lifecycle fixtures enclose the hidden container owner's whole scope
+so its destruction is measured. The no-allocation assertion deliberately permits
+deallocation of preexisting caller state. It does not assert zero allocator events.
+Host no_std tests still use std for the test harness and counting allocator;
+they are not an allocator installation on embedded hardware.
+
+Reproduce on stable with `cargo +stable test --offline --locked --test allocations`,
+then add `--release`, `--no-default-features`, or both. Miri uses
+`cargo +nightly miri test --offline --locked --test allocations`, repeated with
+`--no-default-features`. Debug/release positive controls detect if a changed
+optimizer or standard library stops exercising an expected allocator hook.
+
+### Other integration evidence
+
 Portable atomics (3a55999) use optional portable-atomic 1.15.0 with its
 critical-section feature, without enabling either unsafe platform assumption.
 Feature-tree inspection for thumbv6m confirms no runtime std feature. The
@@ -207,6 +236,6 @@ was published; no persistent patch or lockfile change was retained.
   fails to link without the application's critical-section acquire/release
   symbols. This is an intended diagnostic check, not a successful fallback link.
   No test installs a pretend platform implementation or validates physical hardware.
-- Remaining semantic identity cases, full allocation/performance validation and
+- Remaining semantic identity cases, broader allocation/performance validation and
   packaged-consumer testing remain. Container generation, composition, scheduling and unchecked access have the
   tested coverage recorded at the top of this document.

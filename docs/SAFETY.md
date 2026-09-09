@@ -1,5 +1,24 @@
 # Checked storage safety
 
+## Test-only allocator instrumentation
+
+`tests/allocation_cases/counter.rs` contains the separately approved counting
+allocator: one unsafe `GlobalAlloc` implementation and four unsafe calls
+forwarding unchanged to `std::alloc::System`. It is linked only into the
+`allocations` test binary; library unsafe code and dependencies are unchanged.
+Pointers, layouts, allocation ownership and failure results are forwarded intact.
+The hooks only update thread-local `Cell` counters with saturating arithmetic;
+they do not format, assert, lock or unwind. Rust's
+[allocator re-entrance contract](https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#re-entrance)
+guarantees that thread-local storage does not invoke the global allocator.
+
+Assertions run in tests, not allocator hooks. A scoped measurement clears its
+state during unwinding; another thread cannot modify that thread's counters.
+Positive controls exercise each of the four allocator entry points. These are
+observations of allocator calls, including attempted allocations, not bytes or
+live allocations. Optimization can remove allocations. No safety argument relies
+on observing a particular count. See VALIDATION.md for measured workloads.
+
 ## Storage policies
 
 - CopySlot stores a repeatably copied value directly, without synchronization.

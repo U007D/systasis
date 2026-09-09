@@ -49,7 +49,12 @@ The default-off `resolve_unchecked` feature adds unsafe nonblocking accessors
 for consumable values. Guards and ownership exclusions are preserved; see
 [safety contracts](docs/SAFETY.md) and [examples under test](tests/unchecked.rs).
 
-Still pending: remaining identity/capture cases, allocation/performance checks,
+Allocation regression tests cover nonallocating construction, resolution,
+cloning, nested scopes, failed-build cleanup and owner destruction. They measure
+specified workloads, not arbitrary caller constructors or Clone implementations.
+See [the test driver](tests/allocations.rs) and [evidence](docs/VALIDATION.md).
+
+Still pending: remaining identity/capture cases, broader performance checks,
 packaged-consumer checks and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.
