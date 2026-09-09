@@ -11,6 +11,8 @@ mod generate;
 mod generic_policy;
 mod graph;
 mod parse;
+#[cfg(test)]
+mod parse_properties;
 mod rebase;
 mod requirements;
 mod scopegen;
