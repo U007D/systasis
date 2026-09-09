@@ -363,7 +363,7 @@ impl VisitMut for Visitor<'_> {
                     }
                     self.bind(&local.pat);
                 }
-                Stmt::Macro(invocation) => self.reject(invocation, "constructor capture analysis cannot inspect opaque macros; compute macro inputs in explicitly typed bindings before the container"),
+                Stmt::Macro(invocation) => self.reject(invocation, "constructor capture analysis cannot inspect opaque macros"),
                 Stmt::Expr(expression, _) => self.visit_expr_mut(expression),
                 Stmt::Item(_) => {}
             }
@@ -393,7 +393,7 @@ impl VisitMut for Visitor<'_> {
             return;
         }
         match expression {
-            Expr::Macro(invocation) => self.reject(invocation, "constructor capture analysis cannot inspect opaque macros; compute macro inputs in explicitly typed bindings before the container"),
+            Expr::Macro(invocation) => self.reject(invocation, "constructor capture analysis cannot inspect opaque macros"),
             Expr::Verbatim(tokens) => self.reject(tokens, "constructor capture analysis cannot inspect this syntax"),
             Expr::ForLoop(loop_) => {
                 self.visit_expr_mut(&mut loop_.expr);
