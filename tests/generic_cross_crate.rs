@@ -74,6 +74,18 @@ pub mod arrays {
     }
 }
 pub trait IBorrow {}
+pub mod private_factory {
+    struct Service;
+    trait IService {}
+    impl IService for Service {}
+    #[systasis::container]
+    pub fn run(use_container: impl FnOnce(&AppContainer)) {
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(Service as IService, || Service);
+        }.build();
+        use_container(container);
+    }
+}
 impl<T: ?Sized> IBorrow for &T {}
 pub mod borrowed {
     #[systasis::container]
@@ -109,6 +121,8 @@ where &'a T: Copy {
     let _: &'a T = container.resolve_i_borrow();
 }
 fn main() {
+    fn inspect_private_factory(_: &generic_provider::private_factory::AppContainer) {}
+    generic_provider::private_factory::run(inspect_private_factory);
     generic_provider::arrays::run([1u32, 2, 3], inspect_array);
     let owned = String::from("borrowed");
     generic_provider::borrowed::run(owned.as_str(), inspect_borrow);

@@ -14,8 +14,9 @@ fn generated_unchecked_access_retains_nonblocking_guards() {
         register_value!(value: String as IValue);
     }
     .build();
+    let scope = systasis::scoped::AsScope::<systasis::scoped::mask::Empty>::scope(container);
     // SAFETY: the freshly built value is present and no incompatible guard exists.
-    let read = unsafe { container.resolve_i_value_ref_unchecked() };
+    let read = unsafe { scope.resolve_i_value_ref_unchecked() };
     assert_eq!(&*read, "value");
     assert!(matches!(
         container.try_resolve_i_value(),
@@ -23,7 +24,7 @@ fn generated_unchecked_access_retains_nonblocking_guards() {
     ));
     drop(read);
     // SAFETY: the shared guard was released; the value remains present.
-    let mut write = unsafe { container.resolve_i_value_ref_mut_unchecked() };
+    let mut write = unsafe { scope.resolve_i_value_ref_mut_unchecked() };
     write.push('!');
     assert!(matches!(
         container.try_resolve_i_value_ref(),
@@ -31,7 +32,7 @@ fn generated_unchecked_access_retains_nonblocking_guards() {
     ));
     drop(write);
     // SAFETY: all guards are released and nothing has consumed the value.
-    assert_eq!(unsafe { container.resolve_i_value_unchecked() }, "value!");
+    assert_eq!(unsafe { scope.resolve_i_value_unchecked() }, "value!");
     assert!(matches!(
         container.try_resolve_i_value(),
         Err(Error::ValueAlreadyConsumed)

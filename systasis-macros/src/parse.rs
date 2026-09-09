@@ -91,6 +91,7 @@ impl ToTokens for InterfaceGroup {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Registration {
     pub(crate) fresh: bool,
     pub(crate) constructor: Option<ExprClosure>,

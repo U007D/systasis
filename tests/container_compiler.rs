@@ -40,6 +40,27 @@ fn container_diagnostics() {
     );
 
     let cases = [
+        (
+            "scope_cannot_restore_restricted_owned_accessor",
+            "",
+            "register_value!(String::new(): String as IValue);",
+            "type M = systasis::scoped::mask::Mask<__systasis_injected::__SystasisRestrictionKey0, systasis::scoped::mask::Empty>; let scope = systasis::scoped::AsScope::<M>::scope(built.unwrap()); scope.try_resolve_i_value();",
+            Some("E0599"),
+        ),
+        (
+            "scope_cannot_consume_indirectly_through_factory",
+            "",
+            "register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> { Ok(try_resolve!(IValue)?.len()) });",
+            "type M = systasis::scoped::mask::Mask<__systasis_injected::__SystasisRestrictionKey0, systasis::scoped::mask::Empty>; let scope = systasis::scoped::AsScope::<M>::scope(built.unwrap()); scope.try_resolve_i_size();",
+            Some("E0599"),
+        ),
+        (
+            "scope_does_not_expose_backing_container",
+            "",
+            "register_value!(String::new(): String as IValue);",
+            "let scope = systasis::scoped::AsScope::<systasis::scoped::mask::Empty>::scope(built.unwrap()); scope.backing;",
+            Some("E0616"),
+        ),
         #[cfg(feature = "resolve_unchecked")]
         (
             "unchecked_method_requires_unsafe",

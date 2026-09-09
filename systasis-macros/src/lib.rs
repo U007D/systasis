@@ -12,6 +12,7 @@ mod graph;
 mod parse;
 mod rebase;
 mod requirements;
+mod scopegen;
 mod wiring;
 
 /// Generate a stored-value container declared inside this function.

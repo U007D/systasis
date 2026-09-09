@@ -312,6 +312,7 @@ pub(crate) fn expand(
             )
         })?;
         let transitive = crate::wiring::transitive(&dependencies, &order);
+        let consumed = crate::scopegen::consumed_dependencies(&registrations, &indices, &order)?;
         let mut build_queries = crate::wiring::replacements(
             &registrations,
             &transitive,
@@ -437,7 +438,14 @@ pub(crate) fn expand(
                 }
             })
             .collect::<Vec<_>>();
-        let generic_marker = quote!(fn() -> (#(#marker_types,)*));
+        // Stored payload types already occur in the selected storage aliases.
+        // Retain their spelling here so projection normalization does not make
+        // scope metadata appear to expose a type absent from its implementing type.
+        let stored_types = registrations
+            .iter()
+            .filter(|registration| !registration.fresh)
+            .map(|registration| &registration.ty);
+        let generic_marker = quote!(fn() -> (#(#marker_types,)* #(#stored_types,)*));
         selected.push(generic_marker.clone());
         let parameters = (0..=registrations.len())
             .map(|i| format_ident!("__Slot{i}"))
@@ -445,6 +453,29 @@ pub(crate) fn expand(
         let mut field_types = Vec::new();
         let mut values = Vec::new();
         let mut implementations = Vec::new();
+        let mut scoped_implementations = Vec::new();
+        let descriptor = crate::scopegen::descriptor(&parameters);
+        let mut key_declarations = Vec::new();
+        let scope_keys = registrations
+            .iter()
+            .enumerate()
+            .map(|(index, registration)| {
+                let (key, path, restriction) = crate::scopegen::keys(registration);
+                let key_name = format_ident!("__SystasisKey{index}");
+                let path_name = format_ident!("__SystasisPath{index}");
+                let restriction_name = format_ident!("__SystasisRestrictionKey{index}");
+                key_declarations.push(quote!(
+                    pub type #key_name = #key;
+                    pub type #path_name = #path;
+                    pub type #restriction_name = #restriction;
+                ));
+                (
+                    parse_quote!(#key_name),
+                    parse_quote!(#path_name),
+                    parse_quote!(#restriction_name),
+                )
+            })
+            .collect::<Vec<(Type, Type, Type)>>();
         let mut constructor_functions = Vec::new();
         let mut validation_calls = Vec::new();
         let mut method_names = BTreeMap::<String, proc_macro2::TokenStream>::new();
@@ -510,6 +541,28 @@ pub(crate) fn expand(
                 })
                 .collect::<Vec<_>>()
                 .join("_");
+            let (scope_key, scope_path, scope_mask_key) = &scope_keys[i];
+            let consumed_keys = consumed[i]
+                .iter()
+                .map(|&index| scope_keys[index].2.clone())
+                .collect::<Vec<_>>();
+            let scope_entry = crate::scopegen::Entry {
+                registration,
+                snake: &snake,
+                key: scope_key,
+                path: scope_path,
+                own_mask_key: scope_mask_key,
+                consumed_keys: &consumed_keys,
+            };
+            scoped_implementations.push(crate::scopegen::value_metadata(
+                &scope_entry,
+                &parameters,
+                i,
+                &generics,
+                &selected,
+                &initializer_types[i],
+                dynamic[i].as_ref(),
+            ));
             let read = format_ident!("try_resolve_{snake}_ref");
             let write = format_ident!("try_resolve_{snake}_ref_mut");
             let take = format_ident!("try_resolve_{snake}");
@@ -568,6 +621,10 @@ pub(crate) fn expand(
                     registration,
                     &mut method_names,
                 )?;
+                scoped_implementations.push(crate::scopegen::resolvers(
+                    &implementations[first_implementation..],
+                    &scope_entry,
+                )?);
                 continue;
             }
             let others = parameters
@@ -741,6 +798,10 @@ pub(crate) fn expand(
                 registration,
                 &mut method_names,
             )?;
+            scoped_implementations.push(crate::scopegen::resolvers(
+                &implementations[first_implementation..],
+                &scope_entry,
+            )?);
         }
         let imports = bindings.imports();
         field_types.push(generic_marker);
@@ -772,12 +833,15 @@ pub(crate) fn expand(
                 #(#const_markers)*
                 #(#dynamic_declarations)*
                 #(#constructor_functions)*
+                #(#key_declarations)*
                 pub struct Generated<#(#parameters),*> {
                     #(pub(super) #fields: #parameters,)*
                     pub(super) _pin: ::core::marker::PhantomPinned,
                     pub(super) _parameters: ::core::marker::PhantomData<(#marker, #generic_parameter)>,
                 }
                 #(#implementations)*
+                #descriptor
+                #(#scoped_implementations)*
                 #[allow(type_alias_bounds)]
                 pub type Container #alias_parameters #alias_where = Generated<#(#field_types),*>;
             }
