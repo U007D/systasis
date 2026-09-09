@@ -33,18 +33,7 @@ pub(crate) fn generate(
 
     let name = format_ident!("__SystasisDyn{index}", span = Span::mixed_site());
     // Avoid colliding with an explicitly authored enclosing generic parameter.
-    let value = (0..)
-        .map(|suffix| format_ident!("__SystasisDynValue{suffix}", span = Span::mixed_site()))
-        .find(|candidate| {
-            !generics.params.iter().any(|parameter| match parameter {
-                GenericParam::Type(parameter) => parameter.ident == *candidate,
-                GenericParam::Const(parameter) => parameter.ident == *candidate,
-                GenericParam::Lifetime(_) => false,
-            })
-        })
-        .unwrap_or_else(|| {
-            unreachable!("the finite parameter list cannot exhaust identifier suffixes")
-        });
+    let value = value_parameter(generics);
     let (parameters, arguments, constraints) = generics.split_for_impl();
     let mut blanket_generics = generics.clone();
     blanket_generics.params.push(parse_quote!(#value: ?Sized));
@@ -61,6 +50,21 @@ pub(crate) fn generate(
         },
         ty: parse_quote!(dyn #name #arguments + #object_lifetime),
     }
+}
+
+pub(crate) fn value_parameter(generics: &Generics) -> syn::Ident {
+    (0..)
+        .map(|suffix| format_ident!("__SystasisDynValue{suffix}", span = Span::mixed_site()))
+        .find(|candidate| {
+            !generics.params.iter().any(|parameter| match parameter {
+                GenericParam::Type(parameter) => parameter.ident == *candidate,
+                GenericParam::Const(parameter) => parameter.ident == *candidate,
+                GenericParam::Lifetime(_) => false,
+            })
+        })
+        .unwrap_or_else(|| {
+            unreachable!("the finite parameter list cannot exhaust identifier suffixes")
+        })
 }
 
 #[cfg(test)]

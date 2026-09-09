@@ -30,18 +30,43 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "combined_dyn_type_requires_group_opt_in",
+            "",
+            "register_value!(String::new(): String as IValue + a::IValue); register_value!({ let _: Option<&resolve_type!(dyn a::IValue + IValue)> = None; 1 }: u32 as INumber);",
+            "",
+            Some("dyn type lookup requires an as dyn registration"),
+        ),
+        (
+            "combined_dyn_member_query_is_not_whole_group",
+            "",
+            "register_value!(String::new(): String as dyn IValue + a::IValue); register_value!({ let _ = try_resolve_dyn_ref!(IValue)?; 1 }: u32 as INumber);",
+            "",
+            Some("unregistered dependency"),
+        ),
+        (
+            "combined_dyn_constructor_borrow_removes_owned_accessor",
+            "",
+            "register_value!(String::new(): String as dyn IValue + a::IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { let _ = try_resolve_dyn_ref!(a::IValue + IValue)?; Ok(1) });",
+            "built.unwrap().try_resolve_i_value_i_value();",
+            Some("E0599"),
+        ),
+        (
             "generic_wrapper_needs_whole_type_copy_bound",
             "",
             "",
             "mod generic { trait IValue {} #[derive(Clone, Copy)] struct Wrapper<T>(T); impl<T> IValue for Wrapper<T> {} #[systasis::container] fn run<T: Copy>(value: Wrapper<T>) { let Ok(container) = systasis::systasis_container! { register_value!(value: Wrapper<T> as IValue); }.build(); } }",
-            Some("generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type"),
+            Some(
+                "generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type",
+            ),
         ),
         (
             "generic_supertrait_needs_explicit_copy_bound",
             "",
             "",
             "mod generic { trait IValue: Copy {} #[systasis::container] fn run<T: IValue>(value: T) { let Ok(container) = systasis::systasis_container! { register_value!(value: T as IValue); }.build(); } }",
-            Some("generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type"),
+            Some(
+                "generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type",
+            ),
         ),
         (
             "generic_unbounded_has_no_copy_accessor",
@@ -116,11 +141,11 @@ fn container_diagnostics() {
             Some("E0277"),
         ),
         (
-            "combined_dyn_is_not_yet_implemented",
+            "combined_dyn_requires_every_trait_to_be_dyn_safe_even_if_unused",
             "",
-            "register_value!(String::new(): String as dyn IValue + a::IValue);",
+            "register_value!(String::new(): String as dyn IValue + IGeneric);",
             "",
-            Some("combined dyn trait accessors are not implemented yet"),
+            Some("E0038"),
         ),
         (
             "normalized_group_override",

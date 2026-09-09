@@ -47,12 +47,6 @@ impl Parse for Registration {
         input.parse::<Token![as]>()?;
         let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
         let interface: InterfaceGroup = input.parse()?;
-        if dynamic && interface.0.len() > 1 {
-            return Err(Error::new_spanned(
-                &interface,
-                "combined dyn trait accessors are not implemented yet",
-            ));
-        }
         Ok(Self {
             fresh: false,
             constructor: None,

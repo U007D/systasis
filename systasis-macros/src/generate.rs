@@ -179,7 +179,37 @@ pub(crate) fn expand(
             .iter()
             .map(|r| r.ty.clone())
             .collect::<Vec<_>>();
-        let dynamic = registrations.iter().map(|r| r.dynamic).collect::<Vec<_>>();
+        let mut dynamic_declarations = Vec::new();
+        let dynamic = registrations
+            .iter()
+            .enumerate()
+            .map(|(index, registration)| {
+                registration.dynamic.then(|| {
+                    let target = crate::dyn_targets::generate(
+                        index,
+                        &registration.interface,
+                        original_generics,
+                        &parse_quote!('_),
+                    );
+                    dynamic_declarations.push(target.declarations);
+                    let mut ty = target.ty;
+                    if registration.interface.0.len() > 1 {
+                        let Type::TraitObject(object) = &mut ty else {
+                            unreachable!("dyn target generator returns a trait object type")
+                        };
+                        for bound in &mut object.bounds {
+                            if let TypeParamBound::Trait(bound) = bound {
+                                bound
+                                    .path
+                                    .segments
+                                    .insert(0, parse_quote!(__systasis_injected));
+                            }
+                        }
+                    }
+                    ty
+                })
+            })
+            .collect::<Vec<_>>();
         for registration in &mut registrations {
             let mut lookup = TypeLookup {
                 indices: &indices,
@@ -235,6 +265,7 @@ pub(crate) fn expand(
             true,
             local_policy,
             &turbofish,
+            &dynamic,
         );
         let mut runtime_queries = crate::wiring::replacements(
             &registrations,
@@ -242,6 +273,7 @@ pub(crate) fn expand(
             false,
             local_policy,
             &turbofish,
+            &dynamic,
         );
         for &index in &constructor_borrows {
             build_queries.remove(&(index, "try_resolve".into()));
@@ -530,38 +562,71 @@ pub(crate) fn expand(
                 .collect::<Vec<_>>();
             if registration.dynamic {
                 let interface = &registration.interface;
+                let target = dynamic[i].as_ref().unwrap_or_else(|| {
+                    unreachable!("every opted-in registration has a generated dyn target")
+                });
+                let dyn_lifetime = (0..)
+                    .map(|suffix| {
+                        Lifetime::new(&format!("'__systasis_dyn_{suffix}"), Span::mixed_site())
+                    })
+                    .find(|candidate| {
+                        !generics
+                            .lifetimes()
+                            .any(|parameter| parameter.lifetime.ident == candidate.ident)
+                    })
+                    .unwrap_or_else(|| {
+                        unreachable!(
+                            "the finite lifetime parameter list cannot exhaust identifier suffixes"
+                        )
+                    });
+                let mut target = target.clone();
+                CallLifetime(dyn_lifetime.clone()).visit_type_mut(&mut target);
                 let dyn_ref = format_ident!("try_resolve_{snake}_dyn_ref");
                 let copy_dyn_ref = format_ident!("resolve_{snake}_dyn_ref");
                 let mut dyn_generics = generics.clone();
-                dyn_generics.params.push(parse_quote!(__Value));
+                let dyn_value = crate::dyn_targets::value_parameter(&generics);
+                dyn_generics.params.push(parse_quote!(#dyn_value));
                 for parameter in &others {
                     if Some(*parameter) != parameters.last() {
                         dyn_generics.params.push(parse_quote!(#parameter));
                     }
                 }
+                // Mapping guards requires a projection valid for every input
+                // reference lifetime. First recovering the declared type keeps
+                // its lifetime relations visible, unlike an erased __Value.
+                // Actual slots store exactly that type, so Borrow<T> for T
+                // supplies this bound without a caller-written implementation.
+                let dyn_bounds: [WherePredicate; 2] = [
+                    parse_quote!(#dyn_value: ::core::borrow::Borrow<#ty>),
+                    parse_quote!(#ty: #interface),
+                ];
                 dyn_generics
                     .make_where_clause()
                     .predicates
-                    .push(parse_quote!(__Value: #interface));
+                    .extend(dyn_bounds);
                 let (dyn_parameters, _, dyn_where) = dyn_generics.split_for_impl();
                 let mut copy_dyn_generics = dyn_generics.clone();
                 copy_dyn_generics
                     .make_where_clause()
                     .predicates
-                    .push(parse_quote!(__Value: ::core::marker::Copy));
+                    .push(parse_quote!(#dyn_value: ::core::marker::Copy));
                 let (copy_dyn_parameters, _, copy_dyn_where) = copy_dyn_generics.split_for_impl();
                 let mut dyn_take_args = take_args.clone();
                 let mut dyn_copy_args = copy_args.clone();
+                dyn_take_args[i] = quote!(#slot_type<#dyn_value>);
+                dyn_copy_args[i] = quote!(::systasis::__private::CopySlot<#dyn_value>);
                 *dyn_take_args.last_mut().unwrap() = generic_marker.clone();
                 *dyn_copy_args.last_mut().unwrap() = generic_marker.clone();
                 implementations.push(quote!(
                     impl #dyn_parameters Generated<#(#dyn_take_args),*> #dyn_where {
-                        pub fn #dyn_ref(&self) -> ::core::result::Result<#read_type<'_, dyn #interface + '_>, ::systasis::__private::Error> {
-                            self.#field.try_resolve_ref().map(|guard| #read_type::map(guard, |value| value as &(dyn #interface + '_)))
+                        pub fn #dyn_ref<#dyn_lifetime>(&#dyn_lifetime self) -> ::core::result::Result<#read_type<#dyn_lifetime, #target>, ::systasis::__private::Error> {
+                            self.#field.try_resolve_ref().map(|guard| #read_type::map(guard, |value| <#dyn_value as ::core::borrow::Borrow<#ty>>::borrow(value) as &(#target)))
                         }
                     }
                     impl #copy_dyn_parameters Generated<#(#dyn_copy_args),*> #copy_dyn_where {
-                        pub fn #copy_dyn_ref(&self) -> &(dyn #interface + '_) { self.#field.resolve_ref() }
+                        pub fn #copy_dyn_ref<#dyn_lifetime>(&#dyn_lifetime self) -> &#dyn_lifetime (#target) {
+                            <#dyn_value as ::core::borrow::Borrow<#ty>>::borrow(self.#field.resolve_ref())
+                        }
                     }
                 ));
             }
@@ -614,6 +679,7 @@ pub(crate) fn expand(
                 use ::systasis::__private::CopyFallback as _;
                 #(#constants)*
                 #(#const_markers)*
+                #(#dynamic_declarations)*
                 #(#constructor_functions)*
                 pub struct Generated<#(#parameters),*> {
                     #(pub(super) #fields: #parameters,)*

@@ -79,7 +79,7 @@ impl VisitMut for Queries<'_> {
 pub(crate) struct TypeLookup<'a> {
     pub(crate) indices: &'a BTreeMap<String, usize>,
     pub(crate) types: &'a [Type],
-    pub(crate) dynamic: &'a [bool],
+    pub(crate) dynamic: &'a [Option<Type>],
     pub(crate) active: Vec<usize>,
     pub(crate) dependencies: BTreeSet<usize>,
     pub(crate) error: Option<Error>,
@@ -109,15 +109,15 @@ impl VisitMut for TypeLookup<'_> {
                 return;
             };
             if dynamic {
-                if !self.dynamic[index] {
+                let Some(target) = &self.dynamic[index] else {
                     self.error = Some(Error::new_spanned(
                         query,
                         "dyn type lookup requires an as dyn registration",
                     ));
                     return;
-                }
+                };
                 self.dependencies.insert(index);
-                *ty = parse_quote!(dyn #interface);
+                *ty = parse_quote!((#target));
                 return;
             }
             if self.active.contains(&index) {

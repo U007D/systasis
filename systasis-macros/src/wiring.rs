@@ -32,6 +32,7 @@ pub(crate) fn replacements(
     building: bool,
     local_policy: bool,
     turbofish: &Option<proc_macro2::TokenStream>,
+    dynamic: &[Option<syn::Type>],
 ) -> BTreeMap<(usize, String), Expr> {
     let slot = |index| {
         let name = format_ident!("__systasis_slot_{index}", span = Span::mixed_site());
@@ -61,7 +62,9 @@ pub(crate) fn replacements(
         } else {
             if registration.dynamic {
                 let owner: Expr = slot(index);
-                let interface = &registration.interface;
+                let target = dynamic[index].as_ref().unwrap_or_else(|| {
+                    unreachable!("every opted-in registration has a generated dyn target")
+                });
                 let guard: syn::Path = if local_policy {
                     parse_quote!(::core::cell::Ref)
                 } else {
@@ -70,11 +73,11 @@ pub(crate) fn replacements(
                 result.insert(
                     (index, "resolve_dyn_ref".into()),
                     parse_quote!(
-                        (#owner.resolve_ref() as &(dyn #interface + '_))
+                        (#owner.resolve_ref() as &(#target))
                     ),
                 );
                 result.insert((index, "try_resolve_dyn_ref".into()), parse_quote!(
-                    #owner.try_resolve_ref().map(|guard| #guard::map(guard, |value| value as &(dyn #interface + '_)))
+                    #owner.try_resolve_ref().map(|guard| #guard::map(guard, |value| value as &(#target)))
                 ));
             }
             for method in [

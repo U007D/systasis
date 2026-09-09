@@ -3,6 +3,7 @@
 
 mod analysis;
 mod captures;
+mod dyn_targets;
 mod generate;
 mod generic_policy;
 mod graph;
