@@ -12,6 +12,12 @@ including `.build()?` success/failure and chained Result methods.
 These safe-only changes add neither unsafe code nor dependencies; Miri was not
 rerun. The Miri counts below describe the earlier revision, not these additions.
 
+Follow-up dyn query wiring passes the focused `dyn_container` and
+`container_compiler` suites on both backends, plus both full-target Clippy runs.
+There are now five dyn tests and 27 downstream compiler cases. Queries work
+during initialization and repeated construction; negative cases check missing
+dyn opt-in and preservation of constructor-borrow ownership exclusions.
+
 Production commits bff03b7 through 678d63d add stored-value generation, owned
 dependencies, Default constructors, overrides, checked access and cloning,
 single-trait dyn access, build inference, and import/initializer hygiene.
