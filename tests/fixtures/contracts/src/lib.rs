@@ -17,6 +17,17 @@ pub mod generated {
     }
 }
 
+/// Generic code generation is also compiled by the embedded-target checks.
+pub mod generic_generated {
+    #[systasis::container]
+    pub fn round_trip<T: Copy + crate::generated::IValue>(input: T) -> T {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(input: T as crate::generated::IValue);
+        }.build();
+        container.resolve_i_value()
+    }
+}
+
 #[cfg(feature = "bad-local-sync")]
 pub fn local_slot_cannot_be_shared() {
     fn sync<T: Sync>() {}
