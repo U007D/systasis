@@ -199,3 +199,27 @@ mod array_capture {
         assert_eq!(container.resolve_i_service().0, "firstlast");
     }
 }
+
+mod import_types {
+    pub(crate) type Configuration = String;
+}
+
+mod imported_capture {
+    use super::*;
+
+    #[systasis::container]
+    #[test]
+    fn absolute_function_local_imports_remain_available_to_capture_storage() {
+        use crate::import_types::Configuration as Config;
+        let config: Config = String::from("imported");
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(Service as IService, move || {
+                use ::std::string::String as OutputString;
+                let output: OutputString = config.clone();
+                Service(output)
+            });
+        }
+        .build();
+        assert_eq!(container.resolve_i_service().0, "imported");
+    }
+}

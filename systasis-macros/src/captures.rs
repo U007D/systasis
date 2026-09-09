@@ -16,6 +16,7 @@ use syn::{
 pub(crate) struct Bindings {
     types: BTreeMap<String, Option<Type>>,
     uncertain: Option<proc_macro2::TokenStream>,
+    imports: Vec<syn::ItemUse>,
 }
 
 impl Bindings {
@@ -33,12 +34,29 @@ impl Bindings {
                 if let Some(ident) = item_name(item) {
                     bindings.types.remove(&name(ident));
                 }
-                if matches!(item, Item::Use(_) | Item::Macro(_)) {
+                if let Item::Use(import) = item {
+                    let mut names = BTreeSet::new();
+                    let absolute = import.leading_colon.is_some()
+                        || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate");
+                    if absolute
+                        && import_names(&import.tree, &mut names)
+                        && names.iter().all(|name| !bindings.types.contains_key(name))
+                    {
+                        bindings.imports.push(import.clone());
+                    } else {
+                        bindings.uncertain = Some(item.to_token_stream());
+                    }
+                }
+                if matches!(item, Item::Macro(_)) {
                     bindings.uncertain = Some(item.to_token_stream());
                 }
             }
         }
         bindings
+    }
+
+    pub(crate) fn imports(&self) -> &[syn::ItemUse] {
+        &self.imports
     }
 
     /// Call in source order, only for statements preceding the container.
@@ -150,6 +168,24 @@ pub(crate) fn prepare(
 
 fn name(ident: &Ident) -> String {
     ident.to_string().trim_start_matches("r#").to_owned()
+}
+
+// Explicit import names can be preserved without resolving a glob's members.
+fn import_names(tree: &syn::UseTree, output: &mut BTreeSet<String>) -> bool {
+    match tree {
+        syn::UseTree::Path(path) => import_names(&path.tree, output),
+        syn::UseTree::Name(binding) if binding.ident != "self" => {
+            output.insert(name(&binding.ident));
+            true
+        }
+        syn::UseTree::Name(_) => false,
+        syn::UseTree::Rename(binding) => {
+            output.insert(name(&binding.rename));
+            true
+        }
+        syn::UseTree::Group(group) => group.items.iter().all(|item| import_names(item, output)),
+        syn::UseTree::Glob(_) => false,
+    }
 }
 
 /// Return true for opaque patterns whose introduced names are unknown.
@@ -284,7 +320,25 @@ impl VisitMut for Visitor<'_> {
                 if let Some(ident) = item_name(item) {
                     scope.insert(name(ident));
                 }
-                if matches!(item, Item::Use(_) | Item::Macro(_)) {
+                if let Item::Use(import) = item {
+                    let mut imported = BTreeSet::new();
+                    let absolute = import.leading_colon.is_some()
+                        || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate");
+                    if !absolute
+                        || !import_names(&import.tree, &mut imported)
+                        || imported
+                            .iter()
+                            .any(|name| self.bindings.types.contains_key(name))
+                    {
+                        self.reject(
+                            item,
+                            "constructor capture analysis cannot resolve this block-local import",
+                        );
+                    } else {
+                        scope.extend(imported);
+                    }
+                }
+                if matches!(item, Item::Macro(_)) {
                     self.reject(item, "constructor capture analysis cannot inspect block-local imports or item macros");
                 }
             }
@@ -462,6 +516,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.captures[0].1.to_token_stream().to_string(), "String");
+    }
+
+    #[test]
+    fn absolute_imports_are_preserved_without_guessing_namespace_collisions() {
+        let function = parse_quote!(
+            fn main(config: String) {
+                use crate::settings::Config;
+            }
+        );
+        let bindings = Bindings::from_function(&function);
+        assert_eq!(bindings.imports().len(), 1);
+        assert!(
+            prepare(
+                &parse_quote!(|| config.clone()),
+                &bindings,
+                &parse_quote!(__captures)
+            )
+            .is_ok()
+        );
+
+        let function = parse_quote!(
+            fn main(Config: String) {
+                use crate::settings::Config;
+            }
+        );
+        assert!(
+            prepare(
+                &parse_quote!(|| Config),
+                &Bindings::from_function(&function),
+                &parse_quote!(__captures)
+            )
+            .is_err()
+        );
     }
 
     #[test]

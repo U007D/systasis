@@ -474,10 +474,13 @@ pub(crate) fn expand(
                 }
             ));
         }
+        let imports = bindings.imports();
+        let (_, alias_arguments, _) = generics.split_for_impl();
         emitted = ::core::option::Option::Some(quote!(
             #[allow(non_snake_case, unused_imports, dead_code)]
             mod __systasis_injected {
                 use super::*;
+                #(#imports)*
                 use ::systasis::__private::CopyFallback as _;
                 #(#constants)*
                 #(#constructor_functions)*
@@ -487,9 +490,10 @@ pub(crate) fn expand(
                     pub(super) _parameters: ::core::marker::PhantomData<#marker>,
                 }
                 #(#implementations)*
+                pub type Container #generics = Generated<#(#field_types),*>;
             }
             /// The container generated from this module's registration declaration.
-            pub type AppContainer #generics = __systasis_injected::Generated<#(#field_types),*>;
+            pub type AppContainer #generics = __systasis_injected::Container #alias_arguments;
         ));
         let mut initialization = Vec::new();
         let mut capture_initialization = Vec::new();
