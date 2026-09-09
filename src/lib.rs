@@ -15,5 +15,7 @@ pub use storage::{Ref, RefMut};
 /// Runtime support for generated code; not a stable hand-written API.
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::storage::{CopySlot, LocalTakeSlot, ReadSlot, TakeSlot};
+    pub use crate::storage::{
+        CopyFallback, CopySlot, LocalTakeSlot, Pick, Policy, ReadSlot, Select, TakeSlot,
+    };
 }

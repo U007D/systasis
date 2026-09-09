@@ -2,6 +2,8 @@
 
 mod local;
 pub use local::LocalTakeSlot;
+mod policy;
+pub use policy::{CopyFallback, Pick, Policy, Select};
 
 #[cfg(not(feature = "std"))]
 mod spin;
