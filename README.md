@@ -42,9 +42,11 @@ child's ownership exclusions retained. Nested accessors and `_from` queries
 follow child paths, for example `try_resolve_ref_from!(IValue, branch::primary)`.
 Children are built and owned independently; composition does not transfer them.
 See [nested examples](tests/nested_children.rs) and [child namespaces](tests/child_namespaces.rs).
-Container aliases and import renames work. Interface lookup keys currently
-normalize source spelling, not semantic equivalence of differently spelled
-trait re-exports or generic instantiations; that remains an implementation gap.
+Container aliases and import renames work. Resolver arguments identify registrations
+only inside the selected container or subcontainer. No trait import is required
+for a child query; unrelated surrounding names do not affect it. A missing
+registration is an error, with no fallback to an outside trait or alias.
+Registration type/interface annotations still refer to ordinary Rust types/traits.
 
 The default-off `resolve_unchecked` feature adds unsafe nonblocking accessors
 for consumable values. Guards and ownership exclusions are preserved; see
@@ -55,7 +57,7 @@ cloning, nested scopes, failed-build cleanup and owner destruction. They measure
 specified workloads, not arbitrary caller constructors or Clone implementations.
 See [the test driver](tests/allocations.rs) and [evidence](docs/VALIDATION.md).
 
-Still pending: remaining identity/capture cases, broader performance checks,
+Still pending: remaining capture cases, compile-time scaling checks,
 and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.
