@@ -1,5 +1,7 @@
+use quote::ToTokens;
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{
+    parse::Parser,
     visit_mut::{self, VisitMut},
     *,
 };
@@ -27,7 +29,14 @@ impl VisitMut for Queries<'_> {
             .iter()
             .any(|name| query.mac.path.is_ident(name))
         {
-            let key = query.mac.tokens.to_string();
+            let interface = match syn::parse2::<Path>(query.mac.tokens.clone()) {
+                Ok(interface) => interface,
+                Err(error) => {
+                    self.error = Some(error);
+                    return;
+                }
+            };
+            let key = interface.to_token_stream().to_string();
             if let Some(index) = self.indices.get(&key) {
                 self.dependencies.insert(*index);
 
@@ -69,6 +78,7 @@ impl VisitMut for Queries<'_> {
 pub(crate) struct TypeLookup<'a> {
     pub(crate) indices: &'a BTreeMap<String, usize>,
     pub(crate) types: &'a [Type],
+    pub(crate) dynamic: &'a [bool],
     pub(crate) active: Vec<usize>,
     pub(crate) dependencies: BTreeSet<usize>,
     pub(crate) error: Option<Error>,
@@ -79,11 +89,36 @@ impl VisitMut for TypeLookup<'_> {
             && (query.mac.path.is_ident("registered_type")
                 || query.mac.path.is_ident("resolve_type"))
         {
-            let key = query.mac.tokens.to_string();
+            let parsed = (|input: syn::parse::ParseStream<'_>| {
+                let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
+                let interface = input.parse::<Path>()?;
+                Ok((dynamic, interface))
+            })
+            .parse2(query.mac.tokens.clone());
+            let (dynamic, interface) = match parsed {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    self.error = Some(error);
+                    return;
+                }
+            };
+            let key = interface.to_token_stream().to_string();
             let Some(&index) = self.indices.get(&key) else {
                 self.error = Some(Error::new_spanned(query, "unregistered type lookup"));
                 return;
             };
+            if dynamic {
+                if !self.dynamic[index] {
+                    self.error = Some(Error::new_spanned(
+                        query,
+                        "dyn type lookup requires an as dyn registration",
+                    ));
+                    return;
+                }
+                self.dependencies.insert(index);
+                *ty = parse_quote!(dyn #interface);
+                return;
+            }
             if self.active.contains(&index) {
                 self.error = Some(Error::new_spanned(query, "registered type lookup cycle"));
                 return;

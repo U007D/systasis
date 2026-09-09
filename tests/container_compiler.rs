@@ -30,6 +30,20 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "dyn_type_query_requires_opt_in",
+            "",
+            "register_value!(String::new(): String as IValue); register_value!({ let _: Option<&resolve_type!(dyn IValue)> = None; 1 }: u32 as INumber);",
+            "",
+            Some("dyn type lookup requires an as dyn registration"),
+        ),
+        (
+            "dyn_type_query_requires_registration",
+            "",
+            "register_value!({ let _: Option<&resolve_type!(dyn IValue)> = None; 1 }: u32 as INumber);",
+            "",
+            Some("unregistered type lookup"),
+        ),
+        (
             "dyn_query_requires_opt_in",
             "",
             "register_value!(String::new(): String as IValue); register_value!({ let _guard = try_resolve_dyn_ref!(IValue)?; 1 }: u32 as INumber);",

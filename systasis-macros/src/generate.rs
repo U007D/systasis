@@ -168,10 +168,12 @@ pub(crate) fn expand(
             .iter()
             .map(|r| r.ty.clone())
             .collect::<Vec<_>>();
+        let dynamic = registrations.iter().map(|r| r.dynamic).collect::<Vec<_>>();
         for registration in &mut registrations {
             let mut lookup = TypeLookup {
                 indices: &indices,
                 types: &original_types,
+                dynamic: &dynamic,
                 active: Vec::new(),
                 dependencies: BTreeSet::new(),
                 error: None,
