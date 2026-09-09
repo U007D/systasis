@@ -6,6 +6,41 @@ impl IValue for u32 {}
 trait IOutput {}
 impl IOutput for u32 {}
 
+mod unavailable {
+    trait IValue {}
+    impl IValue for String {}
+
+    #[systasis::container]
+    #[test]
+    fn selected_slot_errors_do_not_fall_back_to_caller_values() {
+        use systasis::app_container::Error;
+        let outside = String::from("outside");
+        let _: &dyn IValue = &outside;
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(String::from("selected"): String as IValue);
+            register_type_with!(String as IOutput, try || -> Result<String, Error> {
+                try_resolve!(IValue)
+            });
+        }
+        .build();
+        let guard = container.try_resolve_i_value_ref().unwrap();
+        assert!(matches!(
+            container.try_resolve_i_output(),
+            Err(Error::ValueAccessContention)
+        ));
+        drop(guard);
+        assert_eq!(container.try_resolve_i_output().unwrap(), "selected");
+        assert!(matches!(
+            container.try_resolve_i_output(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
+        assert_eq!(outside, "outside");
+    }
+
+    trait IOutput {}
+    impl IOutput for String {}
+}
+
 #[systasis::container]
 #[test]
 fn local_and_named_queries_ignore_initializer_type_shadowing() {
@@ -157,7 +192,7 @@ fn main() {{ leaf::run(outer); }}
 "#
         );
         let path = target.join(format!("{name}.rs"));
-        fs::write(&path, source).unwrap();
+        fs::write(&path, &source).unwrap();
         let output = Command::new("rustc")
             .args(["--edition=2024", "--emit=metadata", "--error-format=short"])
             .arg(path)
@@ -176,9 +211,28 @@ fn main() {{ leaf::run(outer); }}
             .output()
             .unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
+        fs::write(target.join(format!("{name}.stderr")), &output.stderr).unwrap();
         assert!(
             !output.status.success() && stderr.contains(diagnostic),
             "{name}: {stderr}"
+        );
+        let error_line = if name == "child" {
+            assert!(stderr.contains("the trait bound `__SystasisScope<'_, ..., ...>: Resolve<'_, ..., ..., ...>` is not satisfied"), "{stderr}");
+            source
+                .lines()
+                .position(|line| line == "#[systasis::container]")
+                .unwrap()
+                + 1
+        } else {
+            source
+                .lines()
+                .position(|line| line.contains(query))
+                .unwrap()
+                + 1
+        };
+        assert!(
+            stderr.contains(&format!("{name}.rs:{error_line}:")),
+            "{stderr}"
         );
     }
 }
