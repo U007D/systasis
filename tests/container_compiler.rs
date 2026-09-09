@@ -30,6 +30,69 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "constructor_borrow_removes_owned_accessor",
+            "",
+            "register_value!(String::new(): String as IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { Ok(try_resolve_ref!(IValue)?.len() as u32) });",
+            "built.unwrap().try_resolve_i_value();",
+            Some("E0599"),
+        ),
+        (
+            "constructor_borrow_prevents_build_consumption",
+            "",
+            "register_value!(String::new(): String as IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { Ok(try_resolve_ref!(IValue)?.len() as u32) }); register_value!(try_resolve!(IValue)?.len() as usize: usize as ISize);",
+            "",
+            Some("requested resolver is unavailable"),
+        ),
+        (
+            "untyped_constructor_capture",
+            "",
+            "register_type_with!(String as IValue, move || untyped.clone());",
+            "",
+            Some("captured constructor bindings require an explicit type annotation"),
+        ),
+        (
+            "capture_is_moved",
+            "",
+            "register_type_with!(String as IValue, move || config.clone());",
+            "drop(config);",
+            Some("E0382"),
+        ),
+        (
+            "constructor_cannot_consume_capture",
+            "",
+            "register_type_with!(String as IValue, move || config);",
+            "",
+            Some("E0507"),
+        ),
+        (
+            "fallible_constructor_requires_annotation",
+            "",
+            "register_type_with!(String as IValue, try || None);",
+            "",
+            Some("fallible constructor requires an explicit return type"),
+        ),
+        (
+            "wrong_fallible_output",
+            "",
+            "register_type_with!(String as IValue, try || -> Option<u32> { Some(1) });",
+            "",
+            Some("E0271"),
+        ),
+        (
+            "factory_has_no_clone",
+            "",
+            "register_type_with!(String as IValue, || String::new());",
+            "built.unwrap().try_resolve_i_value_clone();",
+            Some("E0599"),
+        ),
+        (
+            "capture_controls_send",
+            "require(Send)",
+            "register_type_with!(String as IValue, move || local_config.as_ref().clone());",
+            "",
+            Some("E0277"),
+        ),
+        (
             "non_dyn_safe_opt_in",
             "",
             "register_value!(String::new(): String as dyn IGeneric);",
@@ -151,11 +214,15 @@ impl IGeneric for String {{ fn generic<T>(&self) {{}} }}
 struct Borrowed<'a>(&'a str);
 impl IValue for String {{}}
 trait INumber {{}}
+trait ISize {{}} impl ISize for usize {{}}
 impl INumber for u32 {{}}
 mod a {{ pub trait IValue {{}} impl IValue for String {{}} }}
 mod b {{ pub trait IValue {{}} impl IValue for String {{}} }}
 #[systasis::container({requirements})]
 fn main() {{
+    let config: String = String::from("config");
+    let untyped = String::from("untyped");
+    let local_config: std::rc::Rc<String> = std::rc::Rc::new(String::from("local"));
     let built = systasis::systasis_container! {{ {registrations} }}.build::<systasis::app_container::Error>();
     {after}
 }}

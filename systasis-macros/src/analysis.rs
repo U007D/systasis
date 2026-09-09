@@ -1,4 +1,3 @@
-use quote::format_ident;
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{
     visit_mut::{self, VisitMut},
@@ -7,7 +6,9 @@ use syn::{
 pub(crate) struct Queries<'a> {
     pub(crate) indices: &'a BTreeMap<String, usize>,
     pub(crate) dependencies: BTreeSet<usize>,
+    pub(crate) borrowed: BTreeSet<usize>,
     pub(crate) error: Option<Error>,
+    pub(crate) replacements: Option<&'a BTreeMap<(usize, String), Expr>>,
 }
 impl VisitMut for Queries<'_> {
     fn visit_expr_mut(&mut self, expression: &mut Expr) {
@@ -28,15 +29,26 @@ impl VisitMut for Queries<'_> {
             if let Some(index) = self.indices.get(&key) {
                 self.dependencies.insert(*index);
 
-                let owner = format_ident!(
-                    "__systasis_slot_{index}",
-                    span = proc_macro2::Span::mixed_site()
-                );
                 let method =
                     query.mac.path.get_ident().unwrap_or_else(|| {
                         unreachable!("query path was checked to be an identifier")
                     });
-                *expression = parse_quote!(#owner.as_ref().unwrap_or_else(|| ::core::unreachable!("topological predecessor initialized before dependent")).#method());
+                if ["resolve_ref", "try_resolve_ref", "try_resolve_ref_mut"]
+                    .iter()
+                    .any(|name| method == name)
+                {
+                    self.borrowed.insert(*index);
+                }
+                if let Some(replacements) = self.replacements {
+                    if let Some(replacement) = replacements.get(&(*index, method.to_string())) {
+                        *expression = replacement.clone();
+                    } else {
+                        self.error = Some(Error::new_spanned(
+                            query,
+                            "requested resolver is unavailable for this constructor",
+                        ));
+                    }
+                }
             } else {
                 self.error = Some(Error::new_spanned(query, "unregistered dependency"));
             }

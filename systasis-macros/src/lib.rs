@@ -2,10 +2,12 @@
 #![forbid(unsafe_code)]
 
 mod analysis;
+mod captures;
 mod generate;
 mod graph;
 mod parse;
 mod requirements;
+mod wiring;
 
 /// Generate a stored-value container declared inside this function.
 #[proc_macro_attribute]

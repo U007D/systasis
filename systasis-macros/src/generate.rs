@@ -5,6 +5,14 @@ use quote::{ToTokens, format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{ext::IdentExt, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
+struct CallLifetime(Lifetime);
+impl VisitMut for CallLifetime {
+    fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
+        if lifetime.ident == "_" {
+            *lifetime = self.0.clone();
+        }
+    }
+}
 impl VisitMut for Lifetimes {
     fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
         if lifetime.ident == "_" {
@@ -55,7 +63,11 @@ pub(crate) fn expand(
     };
     let mut emitted = None;
     let mut statements = Vec::new();
-    for statement in &function.block.stmts {
+    let mut bindings = crate::captures::Bindings::from_function(&function);
+    for (statement_index, statement) in function.block.stmts.iter().enumerate() {
+        if statement_index > 0 {
+            bindings.observe_statement(&function.block.stmts[statement_index - 1]);
+        }
         let Stmt::Local(local) = statement else {
             statements.push(statement.clone());
             continue;
@@ -128,6 +140,7 @@ pub(crate) fn expand(
             .map(|(i, r)| (r.interface.to_token_stream().to_string(), i))
             .collect::<BTreeMap<_, _>>();
         let mut dependencies = Vec::new();
+        let mut constructor_borrows = BTreeSet::new();
         let original_types = registrations
             .iter()
             .map(|r| r.ty.clone())
@@ -142,15 +155,24 @@ pub(crate) fn expand(
             };
             lookup.visit_type_mut(&mut registration.ty);
             lookup.visit_expr_mut(&mut registration.value);
+            if let Some(closure) = &mut registration.constructor {
+                lookup.visit_expr_closure_mut(closure);
+            }
             if let Some(error) = lookup.error {
                 return Err(error);
             }
             let mut queries = Queries {
                 indices: &indices,
                 dependencies: lookup.dependencies,
+                borrowed: BTreeSet::new(),
                 error: None,
+                replacements: None,
             };
             queries.visit_expr_mut(&mut registration.value);
+            if let Some(closure) = &mut registration.constructor {
+                queries.visit_expr_closure_mut(closure);
+                constructor_borrows.extend(&queries.borrowed);
+            }
             if let Some(error) = queries.error {
                 return Err(error);
             }
@@ -170,6 +192,36 @@ pub(crate) fn expand(
                 format!("registration dependency cycle: {}", names.join(" -> ")),
             )
         })?;
+        let transitive = crate::wiring::transitive(&dependencies, &order);
+        let mut build_queries = crate::wiring::replacements(&registrations, &transitive, true);
+        let mut runtime_queries = crate::wiring::replacements(&registrations, &transitive, false);
+        for &index in &constructor_borrows {
+            build_queries.remove(&(index, "try_resolve".into()));
+            runtime_queries.remove(&(index, "try_resolve".into()));
+        }
+        let capture_root = Ident::new("__systasis_captures", Span::mixed_site());
+        let mut factories = BTreeMap::new();
+        for (index, registration) in registrations.iter_mut().enumerate() {
+            let mut queries = Queries {
+                indices: &indices,
+                dependencies: BTreeSet::new(),
+                borrowed: BTreeSet::new(),
+                error: None,
+                replacements: Some(&build_queries),
+            };
+            queries.visit_expr_mut(&mut registration.value);
+            if let Some(closure) = &mut registration.constructor {
+                queries.replacements = Some(&runtime_queries);
+                queries.visit_expr_closure_mut(closure);
+                factories.insert(
+                    index,
+                    crate::captures::prepare(closure, &bindings, &capture_root)?,
+                );
+            }
+            if let Some(error) = queries.error {
+                return Err(error);
+            }
+        }
         let slots = (0..registrations.len())
             .map(|i| format_ident!("__systasis_slot_{i}", span = Span::mixed_site()))
             .collect::<Vec<_>>();
@@ -186,8 +238,7 @@ pub(crate) fn expand(
             let original = &registration.ty;
             let flag = &flags[i];
             let interface = &registration.interface;
-            let default_bound = registration
-                .fresh
+            let default_bound = (registration.fresh && registration.constructor.is_none())
                 .then(|| quote!(+ ::core::default::Default));
             constants.push({
                 quote!(pub(super) const #flag: bool = {
@@ -198,10 +249,23 @@ pub(crate) fn expand(
             });
             lifetimes.visit_type_mut(&mut registration.ty);
         }
+        let mut capture_types = BTreeMap::new();
+        for (&index, factory) in &factories {
+            let mut types = factory
+                .captures
+                .iter()
+                .map(|(_, ty)| ty.clone())
+                .collect::<Vec<_>>();
+            for ty in &mut types {
+                lifetimes.visit_type_mut(ty);
+            }
+            capture_types.insert(index, types);
+        }
         let selected = registrations.iter().enumerate().map(|(i,r)| {
             let ty = &r.ty;
             let flag = &flags[i];
-            if r.fresh { quote!(::systasis::__private::FreshSlot<#ty>) }
+            if let Some(types) = capture_types.get(&i) { quote!(::systasis::__private::FactorySlot<(#(#types,)*)>) }
+            else if r.fresh { quote!(::systasis::__private::FreshSlot<#ty>) }
             else { quote!(<::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<#ty>>::Slot) }
         }).collect::<Vec<_>>();
         let mut generics = function.sig.generics.clone();
@@ -214,6 +278,7 @@ pub(crate) fn expand(
         let mut field_types = Vec::new();
         let mut values = Vec::new();
         let mut implementations = Vec::new();
+        let mut constructor_functions = Vec::new();
         let mut method_names = BTreeMap::<String, Path>::new();
         for (i, registration) in registrations.iter().enumerate() {
             let field = &fields[i];
@@ -257,6 +322,54 @@ pub(crate) fn expand(
             let copy_ref = format_ident!("resolve_{snake}_ref");
             let clone = format_ident!("resolve_{snake}_clone");
             let try_clone = format_ident!("try_resolve_{snake}_clone");
+            if let Some(factory) = factories.get(&i) {
+                let helper = format_ident!("construct_{i}");
+                let output = match &factory.closure.output {
+                    ReturnType::Default => initializer_types[i].clone(),
+                    ReturnType::Type(_, ty) => (**ty).clone(),
+                };
+                let closure = &factory.closure;
+                let call_lifetime = Lifetime::new("'__systasis_call", Span::mixed_site());
+                let mut helper_output = output.clone();
+                CallLifetime(call_lifetime.clone()).visit_type_mut(&mut helper_output);
+                let mut helper_generics = generics.clone();
+                helper_generics
+                    .params
+                    .insert(0, parse_quote!(#call_lifetime));
+                let arguments = crate::wiring::arguments(i, &transitive);
+                let helper_parameters = arguments.iter().map(|&index| {
+                    let parameter = &slots[index];
+                    let ty = &selected[index];
+                    quote!(#parameter: &#call_lifetime #ty)
+                });
+                let call_arguments = arguments.iter().map(|&index| {
+                    let field = &fields[index];
+                    quote!(&self.#field)
+                });
+                let method = if registration.fallible { &take } else { &copy };
+                let registered = &initializer_types[i];
+                let result = if registration.fallible {
+                    quote!(::systasis::__private::check_fallible::<#registered, #output>(::systasis::__private::invoke(#closure)))
+                } else {
+                    quote!({
+                        let __systasis_output: #registered = ::systasis::__private::invoke(#closure);
+                        __systasis_output
+                    })
+                };
+                let (impl_generics, _, where_clause) = generics.split_for_impl();
+                constructor_functions.push(quote!(
+                    pub(super) fn #helper #helper_generics (#(#helper_parameters),*) -> #helper_output #where_clause {
+                        let #capture_root = #slot.captures();
+                        #result
+                    }
+                ));
+                implementations.push(quote!(
+                    impl #impl_generics Generated<#(#selected),*> #where_clause {
+                        pub fn #method(&self) -> #output { #helper(#(#call_arguments),*) }
+                    }
+                ));
+                continue;
+            }
             let others = parameters
                 .iter()
                 .enumerate()
@@ -313,6 +426,9 @@ pub(crate) fn expand(
                     }
                 ));
             }
+            let take_method = (!constructor_borrows.contains(&i)).then(|| quote!(
+                pub fn #take(&self) -> ::core::result::Result<__Value,::systasis::__private::Error> { self.#field.try_resolve() }
+            ));
             implementations.push(quote!(
                 impl<__Value: ::core::default::Default, #(#others),*> Generated<#(#fresh_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
@@ -325,7 +441,7 @@ pub(crate) fn expand(
                 impl<#lifetime __Value, #(#others),*> Generated<#(#take_args),*> {
                     pub fn #read(&self) -> ::core::result::Result<#read_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref() }
                     pub fn #write(&self) -> ::core::result::Result<#write_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref_mut() }
-                    pub fn #take(&self) -> ::core::result::Result<__Value,::systasis::__private::Error> { self.#field.try_resolve() }
+                    #take_method
                     pub fn #try_clone(&self) -> ::core::result::Result<__Value,::systasis::__private::Error>
                     where __Value: ::core::clone::Clone { self.#field.try_resolve_clone() }
                 }
@@ -337,6 +453,7 @@ pub(crate) fn expand(
                 use super::*;
                 use ::systasis::__private::CopyFallback as _;
                 #(#constants)*
+                #(#constructor_functions)*
                 pub struct Generated<#(#parameters),*> {
                     #(pub(super) #fields: #parameters,)*
                     pub(super) _pin: ::core::marker::PhantomPinned,
@@ -348,13 +465,35 @@ pub(crate) fn expand(
             pub type AppContainer #generics = __systasis_injected::Generated<#(#field_types),*>;
         ));
         let mut initialization = Vec::new();
+        let mut capture_initialization = Vec::new();
+        for (&index, factory) in &factories {
+            let owner = format_ident!(
+                "__systasis_capture_owner_{index}",
+                span = Span::mixed_site()
+            );
+            let captures = factory.captures.iter().map(|(name, _)| name);
+            let types = factory.captures.iter().map(|(_, ty)| ty);
+            capture_initialization.push(quote!(
+                let #owner = {
+                    let __systasis_input: (#(#types,)*) = (#(#captures,)*);
+                    ::systasis::__private::FactorySlot::new(__systasis_input)
+                };
+            ));
+        }
         for i in &order {
             let slot = &slots[*i];
             let value = &registrations[*i].value;
             let flag = &flags[*i];
             let ty = &initializer_types[*i];
             let interface = &registrations[*i].interface;
-            let stored = if registrations[*i].fresh {
+            let capture_owner =
+                format_ident!("__systasis_capture_owner_{i}", span = Span::mixed_site());
+            let skipped_capture = factories
+                .contains_key(i)
+                .then(|| quote!(::systasis::__private::discard(#capture_owner);));
+            let stored = if factories.contains_key(i) {
+                quote!(#capture_owner)
+            } else if registrations[*i].fresh {
                 quote!(::systasis::__private::FreshSlot::<#ty>::new())
             } else {
                 quote!({
@@ -366,7 +505,7 @@ pub(crate) fn expand(
                 })
             };
             initialization.push(quote!(let (#slot,#systasis_error_ident)=match #systasis_error_ident {
-                ::core::option::Option::Some(error)=>(::core::option::Option::None,::core::option::Option::Some(error)),
+                ::core::option::Option::Some(error)=>{#skipped_capture (::core::option::Option::None,::core::option::Option::Some(error))},
                 ::core::option::Option::None=>::systasis::__private::split((|| -> ::core::result::Result<_, #error_ty> {
                     // An empty match coerces into the contextual error type.
                     // It cannot execute: this expression constructs Ok, whose
@@ -392,6 +531,7 @@ pub(crate) fn expand(
         let macro_path = &registry.mac.path;
         let generated: Block = syn::parse2(quote!({
             #macro_path!(@__systasis_marker);
+            #(#capture_initialization)*
             let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
             #(#initialization)*
             let #systasis_result_ident=match #systasis_error_ident {
