@@ -203,4 +203,90 @@ fn generic_fresh_and_captured_constructors() {
     fresh::run::<std::rc::Rc<()>>();
     captured::run(String::from("captured"), String::from("captured"));
     constructor_dependency::run::<String>().unwrap();
+    fallible::run::<String, &'static str>(Ok(String::from("ok")));
+    captured_reference::run("captured borrow");
+    returned_guard::run(String::from("guarded")).unwrap();
+    generic_interfaces::run(42u32);
+    generic_dyn::run(String::from("dynamic"));
+}
+
+mod fallible {
+    use super::*;
+    #[systasis::container]
+    pub fn run<T: Clone, E: Clone>(value: Result<T, E>) {
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(T as IValue, try || -> Result<T, E> { value.clone() });
+        }
+        .build();
+        let _: Result<T, E> = container.try_resolve_i_value();
+        let _: Result<T, E> = container.try_resolve_i_value();
+    }
+}
+
+mod captured_reference {
+    use super::*;
+    #[systasis::container]
+    pub fn run<'a>(value: &'a str) {
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(&'a str as IValue, || value);
+        }
+        .build();
+        assert_eq!(container.resolve_i_value(), value);
+    }
+}
+
+mod returned_guard {
+    use super::*;
+    trait IGuard {}
+    impl<T> IGuard for systasis::Ref<'_, T> {}
+    #[systasis::container]
+    pub fn run<T>(value: T) -> Result<(), Error> {
+        let container = systasis::systasis_container! {
+            register_value!(value: T as IValue);
+            register_type_with!(systasis::Ref<'_, T> as IGuard, try || -> Result<systasis::Ref<'_, T>, Error> { try_resolve_ref!(IValue) });
+        }.build::<Error>()?;
+        let guard = container.try_resolve_i_guard()?;
+        assert!(matches!(
+            container.try_resolve_i_value_ref_mut(),
+            Err(Error::ValueAccessContention)
+        ));
+        drop(guard);
+        assert!(container.try_resolve_i_value_ref_mut().is_ok());
+        Ok(())
+    }
+}
+
+mod generic_interfaces {
+    trait IFirst<T> {}
+    trait ISecond<T> {}
+    impl<T> IFirst<T> for T {}
+    impl<T> ISecond<T> for T {}
+    #[systasis::container]
+    pub fn run<T: Copy>(value: T) {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(value: T as IFirst<T> + ISecond<T>);
+        }
+        .build();
+        let _: T = container.resolve_i_first_i_second();
+    }
+}
+
+mod generic_dyn {
+    trait IValue<T> {
+        fn get(&self) -> &T;
+    }
+    impl<T> IValue<T> for T {
+        fn get(&self) -> &T {
+            self
+        }
+    }
+    #[systasis::container]
+    pub fn run<T>(value: T) {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(value: T as dyn IValue<T>);
+        }
+        .build();
+        let guard = container.try_resolve_i_value_dyn_ref().unwrap();
+        let _: &T = IValue::<T>::get(&*guard);
+    }
 }

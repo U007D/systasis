@@ -532,13 +532,35 @@ pub(crate) fn expand(
                 let interface = &registration.interface;
                 let dyn_ref = format_ident!("try_resolve_{snake}_dyn_ref");
                 let copy_dyn_ref = format_ident!("resolve_{snake}_dyn_ref");
+                let mut dyn_generics = generics.clone();
+                dyn_generics.params.push(parse_quote!(__Value));
+                for parameter in &others {
+                    if Some(*parameter) != parameters.last() {
+                        dyn_generics.params.push(parse_quote!(#parameter));
+                    }
+                }
+                dyn_generics
+                    .make_where_clause()
+                    .predicates
+                    .push(parse_quote!(__Value: #interface));
+                let (dyn_parameters, _, dyn_where) = dyn_generics.split_for_impl();
+                let mut copy_dyn_generics = dyn_generics.clone();
+                copy_dyn_generics
+                    .make_where_clause()
+                    .predicates
+                    .push(parse_quote!(__Value: ::core::marker::Copy));
+                let (copy_dyn_parameters, _, copy_dyn_where) = copy_dyn_generics.split_for_impl();
+                let mut dyn_take_args = take_args.clone();
+                let mut dyn_copy_args = copy_args.clone();
+                *dyn_take_args.last_mut().unwrap() = generic_marker.clone();
+                *dyn_copy_args.last_mut().unwrap() = generic_marker.clone();
                 implementations.push(quote!(
-                    impl<__Value: #interface, #(#others),*> Generated<#(#take_args),*> {
+                    impl #dyn_parameters Generated<#(#dyn_take_args),*> #dyn_where {
                         pub fn #dyn_ref(&self) -> ::core::result::Result<#read_type<'_, dyn #interface + '_>, ::systasis::__private::Error> {
                             self.#field.try_resolve_ref().map(|guard| #read_type::map(guard, |value| value as &(dyn #interface + '_)))
                         }
                     }
-                    impl<__Value: #interface + ::core::marker::Copy, #(#others),*> Generated<#(#copy_args),*> {
+                    impl #copy_dyn_parameters Generated<#(#dyn_copy_args),*> #copy_dyn_where {
                         pub fn #copy_dyn_ref(&self) -> &(dyn #interface + '_) { self.#field.resolve_ref() }
                     }
                 ));
