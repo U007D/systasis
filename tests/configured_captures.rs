@@ -119,3 +119,55 @@ mod lifecycle {
 fn wholly_discarded_function() {
     undefined!();
 }
+
+mod ancestor {
+    trait IValue {}
+    impl IValue for u32 {}
+
+    fn ordinary() -> u32 {
+        #[cfg(any())]
+        {
+            #[cfg(invalid_predicate(foo))]
+            let ignored: u8 = missing;
+        }
+        3
+    }
+
+    #[systasis::container]
+    #[test]
+    fn inactive_ancestors_do_not_evaluate_descendant_predicates() {
+        #[cfg(any())]
+        {
+            #[cfg(invalid_predicate(foo))]
+            let ignored: u8 = missing;
+        }
+        #[cfg_attr(all(), cfg(any()))]
+        if undefined {
+            #[cfg(invalid_predicate(foo))]
+            let ignored: u8 = missing;
+        }
+        let values: [u32; 1] = [
+            #[cfg(any())]
+            {
+                #[cfg(invalid_predicate(foo))]
+                let ignored: u8 = missing;
+                undefined
+            },
+            3,
+        ];
+        let value: u32 = match values[0] {
+            #[cfg(any())]
+            _ => {
+                #[cfg(invalid_predicate(foo))]
+                let ignored: u8 = missing;
+                undefined
+            }
+            value => value,
+        };
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(u32 as IValue, move || value);
+        }
+        .build();
+        assert_eq!(container.resolve_i_value(), ordinary());
+    }
+}
