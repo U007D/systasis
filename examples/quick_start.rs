@@ -62,7 +62,8 @@ fn main() {
                 PathBuf::from("/etc/app/config.toml"),
             )
         });
-    }.build();
+    }
+    .build();
 
     let config = container.resolve_i_config();
     println!("Config path: {:?}", config.path());

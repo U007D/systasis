@@ -44,18 +44,25 @@ Exact-arity tuple aliases are supported, including nested reference layers and
 private capture types. Generated capture records retain ordinary typed fields;
 no extra generic parameter or wrapper is required in caller code. See
 [tuple-alias regressions](../tests/capture_tuple_aliases.rs).
-Sequence projections also support generic array elements, concrete owned
-array-alias remainders, and generic shared/mutable slice-alias remainders.
+Sequence projections also support generic array elements, concrete owned/borrowed
+array-alias remainders, and shared/mutable slice-alias remainders.
 They retain the exact array or slice type rather than coercing arrays to slices.
-Borrowed/generic array remainder aliases and argument-free aliases hiding slices
-remain unresolved in this implementation. See
+Generic-argument array remainder aliases remain unresolved in this implementation. See
 [sequence-alias regressions](../tests/capture_sequence_aliases.rs).
 Struct-field types and tuple aliases with unknown-arity rest patterns remain
 unresolved. See [capture-pattern regressions](../tests/capture_patterns.rs).
 Explicit imports are preserved where their names do not conflict with capture
 candidates and they do not depend on unhoisted function-local items. This includes
 ordinary `use std::...` and function-local imports of `systasis_container`.
-Glob imports and imports depending on function-local modules remain unsupported.
+Closure-local glob imports remain with their original body. They are supported
+where no referenced outer binding could be shadowed by that glob. A glob in one
+block does not disable captures in a sibling block. Generated constructor queries
+use private context fields and anchored helper paths, so imported names cannot
+replace their local or child storage. Ambiguous outer references still produce
+an implementation-limit diagnostic; the macro does not inspect a glob's exports.
+See [glob regressions](../tests/capture_globs.rs).
+Enclosing-function globs and imports depending on function-local modules remain
+unsupported.
 Local `cfg` and selection-producing `cfg_attr` attributes are selected by rustc
 before capture analysis. Conditional statement ancestors are selected before
 their contents, so a disabled block does not expose its nested predicates.

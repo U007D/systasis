@@ -33,11 +33,22 @@ enabled invalid-predicate errors, erased helper-name collisions, sibling modules
 and nameable AppContainer signatures. No compiler invocation is added to normal
 container expansion; the extra rustc calls belong to the test driver.
 
-Array/slice alias projections (6864c69) pass five tests per backend, covering
-generic array elements, concrete owned array remainders, generic shared/mutable
+Array/slice alias projections (6864c69/c522b6b) pass eight tests per backend, covering
+generic array elements, concrete owned/borrowed array remainders, shared/mutable
 slice remainders, exact drops and uncaptured element reuse. A named generic
 container returns the same borrowed slice by pointer identity. Unsupported
 alias shapes remain listed in [capture limits](CAPTURE_LIMITS.md).
+
+Closure-local glob checks (361cee5/9eaa1fb) cover imported constants/functions,
+sibling captures, returned guards and precise ambiguity diagnostics. Eight tests
+pass per backend. Independent review found that glob-imported items could replace
+generated storage names even with mixed-site identifiers. Constructor queries now
+access a private borrowed context through self, with anchored helper paths.
+Regressions cover local slots, direct/indirect child queries, a caller initializer
+binding named like generated child storage, and unrelated original generics.
+A generated-AST check prevents adding blanket outlives bounds to those generics;
+only the referenced storage types must outlive the call. The thirteen allocation
+checks still pass per backend after this safe generated-code change.
 
 Async guard checks (cc4ffe3/2603e3d) use safe manual polling without an executor
 dependency. Both backends verify shared/exclusive contention while suspended,
