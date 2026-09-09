@@ -7,6 +7,46 @@ use core::marker::PhantomData;
 #[doc(hidden)]
 pub struct Pick<T>(PhantomData<fn() -> T>);
 
+impl<T> Pick<T> {
+    pub const NEW: Self = Self(PhantomData);
+}
+
+/// Evidence distinguishes compiler-known Copy from an unconstrained generic.
+#[doc(hidden)]
+pub struct CopyKnown;
+#[doc(hidden)]
+pub struct CopyUnknown;
+
+#[doc(hidden)]
+pub trait DetectCopy {
+    type Evidence;
+    fn evidence(self) -> Self::Evidence;
+}
+
+impl<T> DetectCopy for &Pick<T> {
+    type Evidence = CopyUnknown;
+    fn evidence(self) -> Self::Evidence {
+        CopyUnknown
+    }
+}
+
+impl<T: Copy> DetectCopy for &&Pick<T> {
+    type Evidence = CopyKnown;
+    fn evidence(self) -> Self::Evidence {
+        CopyKnown
+    }
+}
+
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type"
+)]
+pub trait ValidGenericFallback {}
+impl ValidGenericFallback for CopyUnknown {}
+
+#[doc(hidden)]
+pub fn verify_generic_fallback<E: ValidGenericFallback>(_: E) {}
+
 impl<T: Copy> Pick<T> {
     /// The registered type is Copy at this use site.
     pub const IS_COPY: bool = true;

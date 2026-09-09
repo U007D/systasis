@@ -30,6 +30,13 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "known_copy_requires_explicit_policy",
+            "",
+            "",
+            "fn check<T: Copy>() { use systasis::__private::DetectCopy as _; systasis::__private::verify_generic_fallback((&&systasis::__private::Pick::<T>::NEW).evidence()); } check::<u32>();",
+            Some("generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type"),
+        ),
+        (
             "group_has_no_individual_accessor",
             "",
             "register_value!(String::new(): String as IValue + a::IValue);",

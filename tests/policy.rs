@@ -41,3 +41,20 @@ fn generic_probe_does_not_change_at_monomorphization() {
     assert!(!unbounded::<u32>());
     assert!(bounded::<u32>());
 }
+
+#[test]
+fn generic_evidence_uses_bounds_instead_of_monomorphized_type() {
+    use systasis::__private::{CopyKnown, CopyUnknown, DetectCopy, verify_generic_fallback};
+    #[allow(clippy::needless_borrow)] // Both receiver levels are intentional for autoref selection.
+    fn unbounded<T>() -> CopyUnknown {
+        let evidence = (&&Pick::<T>::NEW).evidence();
+        verify_generic_fallback(evidence);
+        (&&Pick::<T>::NEW).evidence()
+    }
+    fn bounded<T: Copy>() -> CopyKnown {
+        (&&Pick::<T>::NEW).evidence()
+    }
+    let _: CopyUnknown = unbounded::<u32>();
+    let _: CopyUnknown = unbounded::<String>();
+    let _: CopyKnown = bounded::<u32>();
+}

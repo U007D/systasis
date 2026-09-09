@@ -21,7 +21,8 @@ pub mod __private {
     pub use crate::factory::FactorySlot;
     pub use crate::fresh::FreshSlot;
     pub use crate::storage::{
-        CopyFallback, CopySlot, LocalTakeSlot, Pick, Policy, ReadSlot, Select, TakeSlot,
+        CopyFallback, CopyKnown, CopySlot, CopyUnknown, DetectCopy, LocalTakeSlot, Pick, Policy,
+        ReadSlot, Select, TakeSlot, verify_generic_fallback,
     };
     pub use crate::{Ref, RefMut, app_container::Error};
 
