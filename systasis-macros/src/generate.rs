@@ -48,12 +48,23 @@ pub(crate) fn expand(
     local_policy: bool,
     requirements: &[Ident],
 ) -> Result<proc_macro2::TokenStream> {
-    if !function.sig.generics.params.is_empty() {
-        return Err(Error::new_spanned(
-            &function.sig.generics,
-            "generic container functions are not implemented yet",
-        ));
-    }
+    let original_generics = &function.sig.generics;
+    let type_arguments = original_generics
+        .params
+        .iter()
+        .filter_map(|parameter| match parameter {
+            GenericParam::Type(parameter) => {
+                let name = &parameter.ident;
+                Some(quote!(#name))
+            }
+            GenericParam::Const(parameter) => {
+                let name = &parameter.ident;
+                Some(quote!(#name))
+            }
+            GenericParam::Lifetime(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let turbofish = (!type_arguments.is_empty()).then(|| quote!(::<#(#type_arguments),*>));
     let systasis_error_ident = Ident::new("__systasis_error", Span::mixed_site());
     let systasis_value_ident = Ident::new("__systasis_value", Span::mixed_site());
     let systasis_result_ident = Ident::new("__systasis_result", Span::mixed_site());
@@ -218,10 +229,20 @@ pub(crate) fn expand(
             )
         })?;
         let transitive = crate::wiring::transitive(&dependencies, &order);
-        let mut build_queries =
-            crate::wiring::replacements(&registrations, &transitive, true, local_policy);
-        let mut runtime_queries =
-            crate::wiring::replacements(&registrations, &transitive, false, local_policy);
+        let mut build_queries = crate::wiring::replacements(
+            &registrations,
+            &transitive,
+            true,
+            local_policy,
+            &turbofish,
+        );
+        let mut runtime_queries = crate::wiring::replacements(
+            &registrations,
+            &transitive,
+            false,
+            local_policy,
+            &turbofish,
+        );
         for &index in &constructor_borrows {
             build_queries.remove(&(index, "try_resolve".into()));
             runtime_queries.remove(&(index, "try_resolve".into()));
@@ -260,20 +281,28 @@ pub(crate) fn expand(
             .map(|i| format_ident!("COPY_{i}"))
             .collect::<Vec<_>>();
         let mut constants = Vec::new();
+        let mut policies = Vec::new();
+        let mut policy_checks = Vec::new();
         let mut lifetimes = Lifetimes(Vec::new());
         for (i, registration) in registrations.iter_mut().enumerate() {
             let original = &registration.ty;
             let flag = &flags[i];
-            let interface = &registration.interface;
-            let default_bound = (registration.fresh && registration.constructor.is_none())
-                .then(|| quote!(+ ::core::default::Default));
-            constants.push({
-                quote!(pub(super) const #flag: bool = {
-                    fn __systasis_check<T: #interface #default_bound>() {}
-                    let _ = __systasis_check::<#original>;
-                    ::systasis::__private::Pick::<#original>::IS_COPY
-                };)
-            });
+            if crate::generic_policy::depends_on_generics(original, original_generics) {
+                let copy =
+                    crate::generic_policy::has_explicit_copy_bound(original, original_generics);
+                policies.push(quote!(#copy));
+                if !copy && !registration.fresh {
+                    policy_checks.push(quote!({
+                        use ::systasis::__private::DetectCopy as _;
+                        ::systasis::__private::verify_generic_fallback(
+                            (&&::systasis::__private::Pick::<#original>::NEW).evidence()
+                        );
+                    }));
+                }
+            } else {
+                policies.push(quote!({__systasis_injected::#flag}));
+                constants.push(quote!(pub(super) const #flag: bool = ::systasis::__private::Pick::<#original>::IS_COPY;));
+            }
             lifetimes.visit_type_mut(&mut registration.ty);
         }
         let mut capture_types = BTreeMap::new();
@@ -288,26 +317,83 @@ pub(crate) fn expand(
             }
             capture_types.insert(index, types);
         }
-        let selected = registrations.iter().enumerate().map(|(i,r)| {
+        let mut selected = registrations.iter().enumerate().map(|(i,r)| {
             let ty = &r.ty;
-            let flag = &flags[i];
+            let policy = &policies[i];
             if let Some(types) = capture_types.get(&i) { quote!(::systasis::__private::FactorySlot<(#(#types,)*)>) }
             else if r.fresh { quote!(::systasis::__private::FreshSlot<#ty>) }
-            else { quote!(<::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<#ty>>::Slot) }
+            else { quote!(<::systasis::__private::Policy<#policy, #local_policy> as ::systasis::__private::Select<#ty>>::Slot) }
         }).collect::<Vec<_>>();
         let mut generics = function.sig.generics.clone();
         for lifetime in &lifetimes.0 {
             generics.params.insert(0, parse_quote!(#lifetime));
         }
-        let parameters = (0..registrations.len())
+        let mut const_markers = Vec::new();
+        let marker_types = generics
+            .params
+            .iter()
+            .map(|parameter| match parameter {
+                GenericParam::Type(parameter) => {
+                    let name = &parameter.ident;
+                    quote!(*const #name)
+                }
+                GenericParam::Lifetime(parameter) => {
+                    let name = &parameter.lifetime;
+                    quote!(&#name ())
+                }
+                GenericParam::Const(parameter) => {
+                    let name = &parameter.ident;
+                    let ty = &parameter.ty;
+                    let marker_name = format_ident!("__Const_{name}");
+                    const_markers.push(quote!(pub struct #marker_name<const __VALUE: #ty>;));
+                    quote!(__systasis_injected::#marker_name<#name>)
+                }
+            })
+            .collect::<Vec<_>>();
+        let generic_marker = quote!(fn() -> (#(#marker_types,)*));
+        selected.push(generic_marker.clone());
+        let parameters = (0..=registrations.len())
             .map(|i| format_ident!("__Slot{i}"))
             .collect::<Vec<_>>();
         let mut field_types = Vec::new();
         let mut values = Vec::new();
         let mut implementations = Vec::new();
         let mut constructor_functions = Vec::new();
+        let mut validation_calls = Vec::new();
         let mut method_names = BTreeMap::<String, crate::parse::InterfaceGroup>::new();
         for (i, registration) in registrations.iter().enumerate() {
+            let check = format_ident!("check_{i}");
+            let ty = &registration.ty;
+            let interface = &registration.interface;
+            let mut checked = generics.clone();
+            let inherited = checked
+                .type_params_mut()
+                .filter_map(|parameter| {
+                    if parameter.bounds.is_empty() {
+                        return None;
+                    }
+                    let name = &parameter.ident;
+                    let bounds = core::mem::take(&mut parameter.bounds);
+                    Some(parse_quote!(#name: #bounds))
+                })
+                .collect::<Vec<WherePredicate>>();
+            checked.make_where_clause().predicates.extend(inherited);
+            checked
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!(#ty: #interface));
+            if registration.fresh && registration.constructor.is_none() {
+                checked
+                    .make_where_clause()
+                    .predicates
+                    .push(parse_quote!(#ty: ::core::default::Default));
+            }
+            let (checked_parameters, _, checked_where) = checked.split_for_impl();
+            constructor_functions.push(quote!(
+                pub(super) fn #check #checked_parameters (_: ::core::marker::PhantomData<#ty>) #checked_where {}
+            ));
+            let original = &initializer_types[i];
+            validation_calls.push(quote!(__systasis_injected::#check #turbofish (::core::marker::PhantomData::<#original>);));
             let field = &fields[i];
             let slot = &slots[i];
             let storage = &selected[i];
@@ -396,7 +482,7 @@ pub(crate) fn expand(
                 ));
                 implementations.push(quote!(
                     impl #impl_generics Generated<#(#selected),*> #where_clause {
-                        pub fn #method(&self) -> #output { #helper(#(#call_arguments),*) }
+                        pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments),*) }
                     }
                 ));
                 continue;
@@ -479,7 +565,25 @@ pub(crate) fn expand(
             ));
         }
         let imports = bindings.imports();
-        let (_, alias_arguments, _) = generics.split_for_impl();
+        field_types.push(generic_marker);
+        let generic_parameter = parameters.last().unwrap();
+        let (alias_parameters, alias_arguments, alias_where) = generics.split_for_impl();
+        let mut construction_type: Type = parse_quote!(AppContainer #alias_arguments);
+        if let Type::Path(path) = &mut construction_type
+            && let PathArguments::AngleBracketed(arguments) =
+                &mut path.path.segments.last_mut().unwrap().arguments
+        {
+            for argument in &mut arguments.args {
+                if let GenericArgument::Lifetime(lifetime) = argument
+                    && lifetimes
+                        .0
+                        .iter()
+                        .any(|lifted| lifted.ident == lifetime.ident)
+                {
+                    *lifetime = Lifetime::new("'_", lifetime.span());
+                }
+            }
+        }
         emitted = ::core::option::Option::Some(quote!(
             #[allow(non_snake_case, unused_imports, dead_code)]
             mod __systasis_injected {
@@ -487,17 +591,20 @@ pub(crate) fn expand(
                 #(#imports)*
                 use ::systasis::__private::CopyFallback as _;
                 #(#constants)*
+                #(#const_markers)*
                 #(#constructor_functions)*
                 pub struct Generated<#(#parameters),*> {
                     #(pub(super) #fields: #parameters,)*
                     pub(super) _pin: ::core::marker::PhantomPinned,
-                    pub(super) _parameters: ::core::marker::PhantomData<#marker>,
+                    pub(super) _parameters: ::core::marker::PhantomData<(#marker, #generic_parameter)>,
                 }
                 #(#implementations)*
-                pub type Container #generics = Generated<#(#field_types),*>;
+                #[allow(type_alias_bounds)]
+                pub type Container #alias_parameters #alias_where = Generated<#(#field_types),*>;
             }
             /// The container generated from this module's registration declaration.
-            pub type AppContainer #generics = __systasis_injected::Container #alias_arguments;
+            #[allow(type_alias_bounds)]
+            pub type AppContainer #alias_parameters #alias_where = __systasis_injected::Container #alias_arguments;
         ));
         let mut initialization = Vec::new();
         let mut capture_initialization = Vec::new();
@@ -518,9 +625,8 @@ pub(crate) fn expand(
         for i in &order {
             let slot = &slots[*i];
             let value = &registrations[*i].value;
-            let flag = &flags[*i];
+            let policy = &policies[*i];
             let ty = &initializer_types[*i];
-            let interface = &registrations[*i].interface;
             let capture_owner =
                 format_ident!("__systasis_capture_owner_{i}", span = Span::mixed_site());
             let skipped_capture = factories
@@ -533,10 +639,7 @@ pub(crate) fn expand(
             } else {
                 quote!({
                     let __systasis_input: #ty = { #value };
-                    {
-                        fn __systasis_check<T: #interface>(value: T) -> T { value }
-                        <::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy> as ::systasis::__private::Select<#ty>>::store(__systasis_check(__systasis_input))
-                    }
+                    <::systasis::__private::Policy<#policy, #local_policy> as ::systasis::__private::Select<#ty>>::store(__systasis_input)
                 })
             };
             initialization.push(quote!(let (#slot,#systasis_error_ident)=match #systasis_error_ident {
@@ -566,11 +669,16 @@ pub(crate) fn expand(
         let macro_path = &registry.mac.path;
         let generated: Block = syn::parse2(quote!({
             #macro_path!(@__systasis_marker);
+            #(#policy_checks)*
+            #(#validation_calls)*
             #(#capture_initialization)*
             let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
             #(#initialization)*
             let #systasis_result_ident=match #systasis_error_ident {
-                ::core::option::Option::None=>::core::result::Result::Ok(AppContainer {#(#values,)*_pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData}),
+                ::core::option::Option::None=>{
+                    let container: #construction_type = AppContainer {#(#values,)*_pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
+                    ::core::result::Result::Ok(container)
+                },
                 ::core::option::Option::Some(error)=>{#(::systasis::__private::discard(#reverse);)* ::core::result::Result::Err(error)},
             };
             let (#systasis_value_ident,#systasis_error_ident)=::systasis::__private::split(#systasis_result_ident);

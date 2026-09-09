@@ -77,17 +77,18 @@ pub(crate) fn has_explicit_copy_bound(ty: &Type, generics: &Generics) -> bool {
     }
 
     let registered = ty.to_token_stream().to_string();
-    generics.type_params().any(|parameter| {
-        parameter.ident.to_string() == registered && parameter.bounds.iter().any(is_copy)
-    }) || generics.where_clause.as_ref().is_some_and(|clause| {
-        clause.predicates.iter().any(|predicate| {
-            let syn::WherePredicate::Type(predicate) = predicate else {
-                return false;
-            };
-            predicate.bounded_ty.to_token_stream().to_string() == registered
-                && predicate.bounds.iter().any(is_copy)
+    generics
+        .type_params()
+        .any(|parameter| parameter.ident == registered && parameter.bounds.iter().any(is_copy))
+        || generics.where_clause.as_ref().is_some_and(|clause| {
+            clause.predicates.iter().any(|predicate| {
+                let syn::WherePredicate::Type(predicate) = predicate else {
+                    return false;
+                };
+                predicate.bounded_ty.to_token_stream().to_string() == registered
+                    && predicate.bounds.iter().any(is_copy)
+            })
         })
-    })
 }
 
 #[cfg(test)]

@@ -31,6 +31,7 @@ pub(crate) fn replacements(
     dependencies: &[BTreeSet<usize>],
     building: bool,
     local_policy: bool,
+    turbofish: &Option<proc_macro2::TokenStream>,
 ) -> BTreeMap<(usize, String), Expr> {
     let slot = |index| {
         let name = format_ident!("__systasis_slot_{index}", span = Span::mixed_site());
@@ -55,7 +56,7 @@ pub(crate) fn replacements(
             };
             result.insert(
                 (index, method.into()),
-                parse_quote!(__systasis_injected::#function(#(#arguments),*)),
+                parse_quote!(__systasis_injected::#function #turbofish (#(#arguments),*)),
             );
         } else {
             if registration.dynamic {

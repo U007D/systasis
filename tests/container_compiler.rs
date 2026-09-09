@@ -30,11 +30,62 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "generic_wrapper_needs_whole_type_copy_bound",
+            "",
+            "",
+            "mod generic { trait IValue {} #[derive(Clone, Copy)] struct Wrapper<T>(T); impl<T> IValue for Wrapper<T> {} #[systasis::container] fn run<T: Copy>(value: Wrapper<T>) { let Ok(container) = systasis::systasis_container! { register_value!(value: Wrapper<T> as IValue); }.build(); } }",
+            Some("generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type"),
+        ),
+        (
+            "generic_supertrait_needs_explicit_copy_bound",
+            "",
+            "",
+            "mod generic { trait IValue: Copy {} #[systasis::container] fn run<T: IValue>(value: T) { let Ok(container) = systasis::systasis_container! { register_value!(value: T as IValue); }.build(); } }",
+            Some("generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type"),
+        ),
+        (
+            "generic_unbounded_has_no_copy_accessor",
+            "",
+            "",
+            "mod generic { trait IValue {} impl<T> IValue for T {} #[systasis::container] fn run<T>(value: T) { let Ok(container) = systasis::systasis_container! { register_value!(value: T as IValue); }.build(); container.resolve_i_value(); } }",
+            Some("E0599"),
+        ),
+        (
+            "generic_copy_has_no_take_accessor",
+            "",
+            "",
+            "mod generic { trait IValue {} impl<T> IValue for T {} #[systasis::container] fn run<T: Copy>(value: T) { let Ok(container) = systasis::systasis_container! { register_value!(value: T as IValue); }.build(); container.try_resolve_i_value(); } }",
+            Some("E0599"),
+        ),
+        (
+            "generic_registered_interface_bound_is_checked",
+            "",
+            "",
+            "mod generic { trait IValue {} #[systasis::container] fn run<T>(value: T) { let Ok(container) = systasis::systasis_container! { register_value!(value: T as IValue); }.build(); } }",
+            Some("E0277"),
+        ),
+        (
+            "generic_stored_value_requires_send_bound",
+            "",
+            "",
+            "mod generic { trait IValue {} impl<T> IValue for T {} #[systasis::container(require(Send))] fn run<T>(value: T) { let Ok(container) = systasis::systasis_container! { register_value!(value: T as IValue); }.build(); } }",
+            Some("E0277"),
+        ),
+        (
+            "generic_capture_requires_sync_bound",
+            "",
+            "",
+            "mod generic { trait IValue {} impl<T> IValue for T {} #[systasis::container(require(Sync))] fn run<T: Clone>(value: T) { let Ok(container) = systasis::systasis_container! { register_type_with!(T as IValue, || value.clone()); }.build(); } }",
+            Some("E0277"),
+        ),
+        (
             "known_copy_requires_explicit_policy",
             "",
             "",
             "fn check<T: Copy>() { use systasis::__private::DetectCopy as _; systasis::__private::verify_generic_fallback((&&systasis::__private::Pick::<T>::NEW).evidence()); } check::<u32>();",
-            Some("generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type"),
+            Some(
+                "generic registration: Copy is known indirectly; add an explicit Copy bound on the registered type",
+            ),
         ),
         (
             "group_has_no_individual_accessor",
