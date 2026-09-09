@@ -679,11 +679,16 @@ pub(crate) fn expand(
                     .push(parse_quote!(#ty: ::core::default::Default));
             }
             let (checked_parameters, _, checked_where) = checked.split_for_impl();
+            // Carry the caller's child references into this proof function:
+            // their well-formed input types imply nested outlives relations
+            // that a where-clause alone does not make available in the body.
+            let checked_children = children.iter().map(|child| &child.ty);
+            let checked_child_values = children.iter().map(|child| &child.name);
             constructor_functions.push(quote!(
-                pub(super) fn #check #checked_parameters (_: ::core::marker::PhantomData<#ty>) #checked_where {}
+                pub(super) fn #check #checked_parameters (_: ::core::marker::PhantomData<#ty>, _: (#(#checked_children,)*)) #checked_where {}
             ));
             let original = &initializer_types[i];
-            validation_calls.push(quote!(__systasis_injected::#check #turbofish (::core::marker::PhantomData::<#original>);));
+            validation_calls.push(quote!(__systasis_injected::#check #turbofish (::core::marker::PhantomData::<#original>, (#(#checked_child_values,)*));));
             let field = &fields[i];
             let slot = &slots[i];
             let storage = &selected[i];

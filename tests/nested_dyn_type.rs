@@ -104,7 +104,7 @@ mod borrowed_payload {
             needs_relationship(branch);
         }
         #[systasis::container(require(!Sync))]
-        pub fn run<'a, 'data: 'a>(branch: &middle::AppContainer<'a, 'data>) -> Result<u32, Error> {
+        pub fn run<'a, 'data>(branch: &middle::AppContainer<'a, 'data>) -> Result<u32, Error> {
             ordinary_rust_control(branch);
             let container = systasis::systasis_container! {
                 register_container!(branch: &middle::AppContainer<'a, 'data>);
