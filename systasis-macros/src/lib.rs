@@ -7,6 +7,7 @@ mod generate;
 mod generic_policy;
 mod graph;
 mod parse;
+mod rebase;
 mod requirements;
 mod wiring;
 

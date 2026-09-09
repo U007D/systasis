@@ -716,5 +716,11 @@ pub(crate) fn expand(
         statements.extend(generated.stmts);
     }
     function.block.stmts = statements;
-    ::core::result::Result::Ok(quote!(#emitted #function))
+    let mut definitions: syn::File = syn::parse2(quote!(#emitted))?;
+    for item in &mut definitions.items {
+        if let syn::Item::Mod(module) = item {
+            crate::rebase::generated_module(module);
+        }
+    }
+    ::core::result::Result::Ok(quote!(#definitions #function))
 }
