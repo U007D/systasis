@@ -7,6 +7,15 @@ executable doctests: stored Copy/non-Copy access with a lazy captured constructo
 an exactly typed fallible constructor, and owned dependency injection. All three
 pass on std and no_std. The standalone scope-injection example also runs on both
 backends, passing a nameable restricted child reference to an ordinary function.
+The requirements' complete quick example also runs on both backends, retaining
+its private implementation types and inline registration shape.
+
+Tuple-alias capture support (ee235a1) passes six integration/driver checks on each
+backend: nested shared/mutable binding modes, selected ownership and exact drops,
+discarded overrides, authored generic parameters, and a separately compiled
+consumer of a container with private captures. The negative fixture checks that
+generated capture helpers remain private. A unit test generates an arity-64
+projection from its authored pattern; implementations are not a fixed arity list.
 
 Async guard checks (cc4ffe3/2603e3d) use safe manual polling without an executor
 dependency. Both backends verify shared/exclusive contention while suspended,

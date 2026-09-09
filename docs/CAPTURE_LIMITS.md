@@ -40,13 +40,20 @@ rest bindings are supported for literal lengths, simple concrete const paths and
 arithmetic, and borrowed slices. Generic-dependent remainder expressions are not
 synthesized; other const-expression shapes still need work. See
 [rest-capture regressions](../tests/capture_rest.rs).
-Struct-field types and aliases hiding a destructured shape remain unresolved.
-See [capture-pattern regressions](../tests/capture_patterns.rs).
+Exact-arity tuple aliases are supported, including nested reference layers and
+private capture types. Generated capture records retain ordinary typed fields;
+no extra generic parameter or wrapper is required in caller code. See
+[tuple-alias regressions](../tests/capture_tuple_aliases.rs).
+Struct-field types and tuple aliases with unknown-arity rest patterns remain
+unresolved. See [capture-pattern regressions](../tests/capture_patterns.rs).
 Explicit imports are preserved where their names do not conflict with capture
 candidates and they do not depend on unhoisted function-local items. This includes
 ordinary `use std::...` and function-local imports of `systasis_container`.
 Glob imports and imports depending on function-local modules remain unsupported.
-Cfg-controlled local bindings also need correction: analysis can select a type
-annotation from a binding that rustc later removes. A discarded enclosing
-function is a different case and does not demonstrate active-body cfg support.
+Local `cfg` and selection-producing `cfg_attr` attributes are selected by rustc
+before capture analysis. Tests cover conflicting binding annotations, nested
+ordinary blocks, and constructor ownership on both backends. Conditional
+ancestor blocks, opaque macro bodies and other conditional syntax still require
+separate handling; this is not general cfg support. See
+[configured-capture regressions](../tests/configured_captures.rs).
 These are implementation limitations, not changes to the agreed requirements.

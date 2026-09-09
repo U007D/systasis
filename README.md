@@ -23,11 +23,13 @@ Custom constructors own explicitly typed captured bindings and run on resolution
 Fallible constructors preserve their annotated return type. Returned values may
 borrow captures or retain dependency guards; storing such borrowed results inside
 the container remains deferred. See [constructor tests](tests/custom_constructor.rs).
-Capture analysis supports explicitly typed tuple/array destructuring, explicit
-and implicit reference bindings, and elided reference lifetimes in typed function parameters.
+Capture analysis supports explicitly typed tuple/array destructuring, exact-arity
+tuple aliases, explicit and implicit reference bindings, and elided reference
+lifetimes in typed function parameters.
 Explicit imports are preserved when they do not conflict with
 capture names or depend on unhoisted function-local items. Opaque macros, glob imports,
-struct/alias destructuring and cfg-controlled capture bindings remain
+struct destructuring, unknown-arity tuple-alias rest patterns, and some
+cfg-controlled capture cases remain
 implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
 Array/slice rest captures support literal lengths, simple concrete const paths
 and arithmetic, and borrowed slices.
