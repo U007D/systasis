@@ -21,6 +21,8 @@ impl VisitMut for Queries<'_> {
                 "try_resolve_clone",
                 "resolve_ref",
                 "resolve_clone",
+                "resolve_dyn_ref",
+                "try_resolve_dyn_ref",
             ]
             .iter()
             .any(|name| query.mac.path.is_ident(name))
@@ -33,9 +35,15 @@ impl VisitMut for Queries<'_> {
                     query.mac.path.get_ident().unwrap_or_else(|| {
                         unreachable!("query path was checked to be an identifier")
                     });
-                if ["resolve_ref", "try_resolve_ref", "try_resolve_ref_mut"]
-                    .iter()
-                    .any(|name| method == name)
+                if [
+                    "resolve_ref",
+                    "try_resolve_ref",
+                    "try_resolve_ref_mut",
+                    "resolve_dyn_ref",
+                    "try_resolve_dyn_ref",
+                ]
+                .iter()
+                .any(|name| method == name)
                 {
                     self.borrowed.insert(*index);
                 }

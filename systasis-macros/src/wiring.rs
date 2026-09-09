@@ -30,6 +30,7 @@ pub(crate) fn replacements(
     registrations: &[Registration],
     dependencies: &[BTreeSet<usize>],
     building: bool,
+    local_policy: bool,
 ) -> BTreeMap<(usize, String), Expr> {
     let slot = |index| {
         let name = format_ident!("__systasis_slot_{index}", span = Span::mixed_site());
@@ -57,6 +58,24 @@ pub(crate) fn replacements(
                 parse_quote!(__systasis_injected::#function(#(#arguments),*)),
             );
         } else {
+            if registration.dynamic {
+                let owner: Expr = slot(index);
+                let interface = &registration.interface;
+                let guard: syn::Path = if local_policy {
+                    parse_quote!(::core::cell::Ref)
+                } else {
+                    parse_quote!(::systasis::__private::Ref)
+                };
+                result.insert(
+                    (index, "resolve_dyn_ref".into()),
+                    parse_quote!(
+                        (#owner.resolve_ref() as &(dyn #interface + '_))
+                    ),
+                );
+                result.insert((index, "try_resolve_dyn_ref".into()), parse_quote!(
+                    #owner.try_resolve_ref().map(|guard| #guard::map(guard, |value| value as &(dyn #interface + '_)))
+                ));
+            }
             for method in [
                 "resolve",
                 "try_resolve",

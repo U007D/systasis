@@ -30,6 +30,20 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "dyn_query_requires_opt_in",
+            "",
+            "register_value!(String::new(): String as IValue); register_value!({ let _guard = try_resolve_dyn_ref!(IValue)?; 1 }: u32 as INumber);",
+            "",
+            Some("requested resolver is unavailable"),
+        ),
+        (
+            "dyn_constructor_borrow_removes_owned_accessor",
+            "",
+            "register_value!(String::new(): String as dyn IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { let _guard = try_resolve_dyn_ref!(IValue)?; Ok(1) });",
+            "built.unwrap().try_resolve_i_value();",
+            Some("E0599"),
+        ),
+        (
             "constructor_borrow_removes_owned_accessor",
             "",
             "register_value!(String::new(): String as IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { Ok(try_resolve_ref!(IValue)?.len() as u32) });",

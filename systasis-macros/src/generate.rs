@@ -216,8 +216,10 @@ pub(crate) fn expand(
             )
         })?;
         let transitive = crate::wiring::transitive(&dependencies, &order);
-        let mut build_queries = crate::wiring::replacements(&registrations, &transitive, true);
-        let mut runtime_queries = crate::wiring::replacements(&registrations, &transitive, false);
+        let mut build_queries =
+            crate::wiring::replacements(&registrations, &transitive, true, local_policy);
+        let mut runtime_queries =
+            crate::wiring::replacements(&registrations, &transitive, false, local_policy);
         for &index in &constructor_borrows {
             build_queries.remove(&(index, "try_resolve".into()));
             runtime_queries.remove(&(index, "try_resolve".into()));
