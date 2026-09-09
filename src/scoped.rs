@@ -4,6 +4,9 @@
 //! child references. Their implementations carry Rust types through aliases.
 
 use crate::{Ref, RefMut};
+
+pub mod key;
+pub mod mask;
 use core::cell::{Ref as LocalRef, RefMut as LocalRefMut};
 use core::marker::PhantomData;
 
