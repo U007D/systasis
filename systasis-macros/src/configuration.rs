@@ -1,54 +1,165 @@
 //! Let rustc select conditional local declarations before capture analysis.
 
 use proc_macro2::TokenStream;
-use quote::quote;
-use syn::{ItemFn, Meta, Stmt, Token, parse_quote, punctuated::Punctuated, visit_mut::VisitMut};
+use quote::{format_ident, quote};
+use std::collections::BTreeSet;
+use syn::{
+    Attribute, ItemFn, ItemStruct, Meta, Stmt, Token, parse_quote, punctuated::Punctuated,
+    visit_mut::VisitMut,
+};
 
-/// Split only the first conditional local. The compiler discards one branch
-/// before re-entry, so independent conditions do not create an eager product
-/// of configurations. Each stage copies the function twice; long condition
-/// chains still incur expansion depth and cumulative token-processing costs.
+/// rustc selects unit fields before invoking the derive. The following erase
+/// attribute removes the temporary struct after the derive emits the function.
+/// Expansion depth does not depend on the number of conditional statements.
 pub(crate) fn select(
     function: &ItemFn,
     arguments: &TokenStream,
 ) -> syn::Result<Option<TokenStream>> {
-    let mut present = function.clone();
-    let mut selection = Selection {
-        present: true,
-        condition: None,
-        error: None,
-    };
-    selection.visit_block_mut(&mut present.block);
+    let mut selection = Selection::new(None);
+    selection.visit_block_mut(&mut function.block.clone());
     if let Some(error) = selection.error {
         return Err(error);
     }
-    let Some(condition) = selection.condition else {
+    if selection.fields.is_empty() {
         return Ok(None);
-    };
-    let mut absent = function.clone();
-    let mut removal = Selection {
-        present: false,
-        condition: None,
-        error: None,
-    };
-    removal.visit_block_mut(&mut absent.block);
-    if let Some(error) = removal.error {
-        return Err(error);
     }
+    let fields = selection.fields;
+    let name = format_ident!("__SystasisConfiguration_{}", function.sig.ident);
     Ok(Some(quote! {
-        #[cfg(#condition)]
-        #[::systasis::container(#arguments)]
-        #present
-        #[cfg(not(#condition))]
-        #[::systasis::container(#arguments)]
-        #absent
+        #[derive(::systasis::__private::__SystasisSelectConfiguration)]
+        #[::systasis::__private::__systasis_erase_configuration]
+        #[__systasis_configuration_source(#function)]
+        #[__systasis_configuration_args(#arguments)]
+        struct #name { #(#fields)* }
     }))
 }
 
+pub(crate) fn resume(input: ItemStruct) -> syn::Result<TokenStream> {
+    let attribute = |name: &str| {
+        input
+            .attrs
+            .iter()
+            .find(|attr| attr.path().is_ident(name))
+            .ok_or_else(|| {
+                syn::Error::new_spanned(&input, "missing internal configuration metadata")
+            })
+    };
+    let mut function: ItemFn = attribute("__systasis_configuration_source")?.parse_args()?;
+    let requirements: crate::requirements::Requirements =
+        attribute("__systasis_configuration_args")?.parse_args()?;
+    let active = input
+        .fields
+        .iter()
+        .filter_map(|field| field.ident.as_ref())
+        .map(ToString::to_string)
+        .collect();
+    let mut selection = Selection::new(Some(active));
+    selection.visit_block_mut(&mut function.block);
+    if let Some(error) = selection.error {
+        return Err(error);
+    }
+    crate::generate::expand(function, requirements.local, &requirements.positive)
+}
+
 struct Selection {
-    present: bool,
-    condition: Option<Meta>,
+    next: usize,
+    fields: Vec<TokenStream>,
+    active: Option<BTreeSet<String>>,
+    gates: Vec<Attribute>,
     error: Option<syn::Error>,
+}
+
+impl Selection {
+    fn new(active: Option<BTreeSet<String>>) -> Self {
+        Self {
+            next: 0,
+            fields: Vec::new(),
+            active,
+            gates: Vec::new(),
+            error: None,
+        }
+    }
+
+    fn condition(&mut self, condition: &Attribute) -> bool {
+        let name = format_ident!("selected_{}", self.next);
+        self.next += 1;
+        let gates = &self.gates;
+        // Separate ordered attributes preserve cfg's suppression of subsequent
+        // invalid predicates. Combining them into all(...) would not do that.
+        self.fields.push(quote!(#(#gates)* #condition #name: (),));
+        self.active
+            .as_ref()
+            .is_none_or(|active| active.contains(&name.to_string()))
+    }
+
+    fn attributes(&mut self, attributes: Vec<Attribute>) -> syn::Result<(bool, Vec<Attribute>)> {
+        let before = self.gates.len();
+        let mut present = true;
+        let mut output = Vec::new();
+        for attribute in attributes {
+            let gate = selection_meta(&attribute.meta)?;
+            if attribute.path().is_ident("cfg") {
+                // Keep predicate tokens opaque: rustc diagnoses malformed cfg
+                // only when its preceding ancestry has not discarded the field.
+                present &= self.condition(&attribute);
+            } else if attribute.path().is_ident("cfg_attr") && gate.is_some() {
+                let (condition, children) = cfg_attr_arguments(&attribute.meta)?;
+                let enabled = self.condition(&parse_quote!(#[cfg(#condition)]));
+                self.gates.push(parse_quote!(#[cfg(#condition)]));
+                let (child_present, expanded) = self.attributes(
+                    children
+                        .into_iter()
+                        .map(|meta| parse_quote!(#[#meta]))
+                        .collect(),
+                )?;
+                self.gates.pop();
+                if enabled {
+                    present &= child_present;
+                    output.extend(expanded);
+                }
+            } else {
+                output.push(attribute);
+            }
+            if let Some(gate) = gate {
+                self.gates.push(parse_quote!(#[#gate]));
+            }
+        }
+        self.gates.truncate(before);
+        Ok((present, output))
+    }
+}
+
+fn cfg_attr_arguments(meta: &Meta) -> syn::Result<(Meta, Vec<Meta>)> {
+    let Meta::List(list) = meta else {
+        return Err(syn::Error::new_spanned(meta, "expected cfg_attr arguments"));
+    };
+    let mut entries = list
+        .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?
+        .into_iter();
+    let condition = entries
+        .next()
+        .ok_or_else(|| syn::Error::new_spanned(meta, "cfg_attr requires a condition"))?;
+    Ok((condition, entries.collect()))
+}
+
+/// Copy only configuration predicates onto helper fields, never caller macros
+/// or unrelated attributes that belong on the original statement.
+fn selection_meta(meta: &Meta) -> syn::Result<Option<Meta>> {
+    if meta.path().is_ident("cfg") {
+        return Ok(Some(meta.clone()));
+    }
+    if !selects_source(meta) {
+        return Ok(None);
+    }
+    let (condition, children) = cfg_attr_arguments(meta)?;
+    let selected = children
+        .iter()
+        .map(selection_meta)
+        .collect::<syn::Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    Ok(Some(parse_quote!(cfg_attr(#condition, #(#selected),*))))
 }
 
 fn selects_source(meta: &Meta) -> bool {
@@ -110,59 +221,52 @@ fn expression_attributes(expression: &mut syn::Expr) -> Option<&mut Vec<syn::Att
 
 impl VisitMut for Selection {
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
-        for index in 0..block.stmts.len() {
-            if self.condition.is_some() || self.error.is_some() {
-                return;
-            }
-            let attributes = match &mut block.stmts[index] {
-                Stmt::Local(local) => Some(&mut local.attrs),
-                Stmt::Expr(expression, _) => expression_attributes(expression),
-                Stmt::Macro(statement) => Some(&mut statement.attrs),
-                Stmt::Item(_) => None,
-            };
-            if let Some(attributes) = attributes
-                && let Some(position) = attributes
-                    .iter()
-                    .position(|attr| selects_source(&attr.meta))
-            {
-                let attribute = attributes.remove(position);
-                if attribute.path().is_ident("cfg") {
-                    match attribute.parse_args::<Meta>() {
-                        Ok(condition) => self.condition = Some(condition),
-                        Err(error) => self.error = Some(error),
-                    }
-                    if !self.present {
-                        block.stmts.remove(index);
-                    }
-                } else {
-                    match attribute.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-                    {
-                        Ok(entries) => {
-                            let mut entries = entries.into_iter();
-                            let Some(condition) = entries.next() else {
-                                self.error = Some(syn::Error::new_spanned(
-                                    attribute,
-                                    "cfg_attr requires a condition",
-                                ));
-                                return;
-                            };
-                            self.condition = Some(condition);
-                            if self.present {
-                                // Rust inserts cfg_attr's attributes at its original
-                                // position; appending would reorder caller attributes.
-                                attributes.splice(
-                                    position..position,
-                                    entries.map(|meta| parse_quote!(#[#meta])),
-                                );
-                            }
+        block.stmts = std::mem::take(&mut block.stmts)
+            .into_iter()
+            .filter_map(|mut statement| {
+                if self.error.is_some() {
+                    return Some(statement);
+                }
+                let before = self.gates.len();
+                let attributes = match &mut statement {
+                    Stmt::Local(local) => Some(&mut local.attrs),
+                    Stmt::Expr(expression, _) => expression_attributes(expression),
+                    Stmt::Macro(statement) => Some(&mut statement.attrs),
+                    Stmt::Item(_) => None,
+                };
+                let mut present = true;
+                if let Some(attributes) = attributes {
+                    let original = attributes
+                        .iter()
+                        .map(|attr| selection_meta(&attr.meta))
+                        .collect::<syn::Result<Vec<_>>>();
+                    match original.and_then(|gates| {
+                        self.attributes(std::mem::take(attributes))
+                            .map(|result| (gates, result))
+                    }) {
+                        Ok((gates, (enabled, expanded))) => {
+                            present = enabled;
+                            *attributes = expanded;
+                            self.gates.extend(
+                                gates
+                                    .into_iter()
+                                    .flatten()
+                                    .map(|meta| parse_quote!(#[#meta])),
+                            );
                         }
-                        Err(error) => self.error = Some(error),
+                        Err(error) => {
+                            self.error = Some(error);
+                            return Some(statement);
+                        }
                     }
                 }
-                return;
-            }
-            self.visit_stmt_mut(&mut block.stmts[index]);
-        }
+                // Both passes traverse discarded descendants to keep selector IDs
+                // aligned; their fields inherit the ancestor's disabling attributes.
+                self.visit_stmt_mut(&mut statement);
+                self.gates.truncate(before);
+                present.then_some(statement)
+            })
+            .collect();
     }
 
     // Nested items cannot capture this function's locals. Their own compiler
@@ -219,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn selects_one_local_per_active_expansion() {
+    fn selects_all_locals_in_one_pass() {
         let mut function: ItemFn = parse_quote!(
             fn example() {
                 #[cfg(any())]
@@ -228,14 +332,10 @@ mod tests {
                 let second: u32 = 2;
             }
         );
-        let mut selection = Selection {
-            present: false,
-            condition: None,
-            error: None,
-        };
+        let mut selection = Selection::new(Some(BTreeSet::new()));
         selection.visit_block_mut(&mut function.block);
-        assert_eq!(function.block.stmts.len(), 1);
-        assert!(function.to_token_stream().to_string().contains("cfg"));
+        assert_eq!(function.block.stmts.len(), 0);
+        assert_eq!(selection.fields.len(), 2);
     }
 
     #[test]
@@ -248,11 +348,7 @@ mod tests {
                 let value: u32 = 1;
             }
         );
-        let mut selection = Selection {
-            present: true,
-            condition: None,
-            error: None,
-        };
+        let mut selection = Selection::new(None);
         selection.visit_block_mut(&mut function.block);
         let Stmt::Local(local) = &function.block.stmts[0] else {
             panic!("fixture is a local")
@@ -268,7 +364,6 @@ mod tests {
             [
                 "# [allow (dead_code)]",
                 "# [allow (unused_variables)]",
-                "# [cfg (all ())]",
                 "# [allow (unused_mut)]",
                 "# [allow (unused_assignments)]"
             ]
