@@ -2,6 +2,14 @@
 
 ## Current generated-container checks
 
+Combined dyn groups (df66c32) pass seven focused tests on both backends, including
+associated bindings, generic targets, independent lifetimes and returned guards.
+A further scoped-thread test verifies Send read guards for explicitly Sync dyn
+targets and successful consumption after guard release. Source-relative path
+rebasing (0f568ed/11c854e) passes module-collision and local-import regressions.
+The combined implementation passed full workspace std/no_std suites and Clippy;
+the last added returned-guard/thread/import cases also passed focused checks.
+
 Generic integration commits 99b9d7f/e2b639a preserve declaration-site Copy policy
 and authored alias parameters for stored values, fresh constructors, typed
 captures, returned guards and single-trait dyn access. Dedicated behavior,

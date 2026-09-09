@@ -10,7 +10,7 @@ for the generated registration macros.
 
 The generated path supports stored values, fresh Default and custom constructors, owned
 dependency injection, concrete registered-type lookup, overrides, dependency
-layers, checked access, cloning, static multi-trait groups, single-trait dyn access, and optional Send/Sync
+layers, checked access, cloning, multi-trait groups, explicit dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
 Services and their constructors remain ordinary generic Rust; dependencies are
 transferred by value, without hidden wrappers or field rewriting.
@@ -20,17 +20,18 @@ Fallible constructors preserve their annotated return type. Returned values may
 borrow captures or retain dependency guards; storing such borrowed results inside
 the container remains deferred. See [constructor tests](tests/custom_constructor.rs).
 Capture analysis supports explicitly typed tuple/array destructuring and explicit
-reference patterns. Absolute, non-glob function-local imports are preserved when
-they do not conflict with capture names. Opaque macros, other local imports,
+reference patterns. Non-glob imports anchored with `::`, `crate`, `self`, or
+`super` are preserved when they do not conflict with capture names. Opaque macros, other local imports,
 struct/alias destructuring and implicit reference-pattern binding modes remain
 implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
 
 Generic enclosing functions preserve authored type, const and lifetime parameters
 in `AppContainer`, with registration-site Copy policy. See
 [generic tests](tests/generic_container.rs) and [cross-crate checks](tests/generic_cross_crate.rs).
-Relative-path handling and differently spelled equivalent Copy bounds remain gaps.
+Source-relative paths are preserved when hoisted. Differently spelled equivalent
+Copy bounds remain a recognition gap.
 
-Still pending: combined dyn trait groups, named namespaces and composition,
+Still pending: named namespaces and composition,
 unchecked generation, and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.

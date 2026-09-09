@@ -35,6 +35,7 @@ Those alternatives would need separate evaluation and user approval.
 Tuple/array annotations and explicit reference patterns can supply individual
 binding types. Struct-field types, aliases hiding a destructured shape, and
 implicit reference-pattern binding modes still require further work.
-Absolute, explicit imports are preserved where their names do not conflict with
-capture candidates. Other function-local imports remain incompletely supported.
+Explicit imports anchored with `::`, `crate`, `self`, or `super` are preserved
+where their names do not conflict with capture candidates. Other function-local
+imports remain incompletely supported.
 These are implementation limitations, not changes to the agreed requirements.
