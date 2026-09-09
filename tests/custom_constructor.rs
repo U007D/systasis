@@ -159,3 +159,43 @@ mod returned_guard {
         Ok(())
     }
 }
+
+mod tuple_capture {
+    use super::*;
+
+    #[systasis::container(require(Send, Sync))]
+    fn check((prefix, .., suffix): (String, u8, String)) {
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(Service as IService, move || Service(prefix.clone() + &suffix));
+        }
+        .build();
+        assert_eq!(container.resolve_i_service().0, "prefix-suffix");
+        assert_eq!(container.resolve_i_service().0, "prefix-suffix");
+    }
+
+    #[test]
+    fn typed_destructured_parameters_supply_capture_types() {
+        check((String::from("prefix-"), 0, String::from("suffix")));
+    }
+}
+
+mod array_capture {
+    use super::*;
+
+    #[systasis::container]
+    #[test]
+    fn typed_array_bindings_move_only_the_captured_elements() {
+        let [first, middle, last]: [String; 3] = [
+            String::from("first"),
+            String::from("middle"),
+            String::from("last"),
+        ];
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(Service as IService, move || Service(first.clone() + &last));
+        }
+        .build();
+        assert_eq!(middle, "middle");
+        assert_eq!(container.resolve_i_service().0, "firstlast");
+        assert_eq!(container.resolve_i_service().0, "firstlast");
+    }
+}
