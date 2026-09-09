@@ -35,7 +35,8 @@ Those alternatives would need separate evaluation and user approval.
 Tuple/array annotations and explicit reference patterns can supply individual
 binding types. Struct-field types, aliases hiding a destructured shape, and
 implicit reference-pattern binding modes still require further work.
-Explicit imports anchored with `::`, `crate`, `self`, or `super` are preserved
-where their names do not conflict with capture candidates. Other function-local
-imports remain incompletely supported.
+Explicit imports are preserved where their names do not conflict with capture
+candidates and they do not depend on unhoisted function-local items. This includes
+ordinary `use std::...` and function-local imports of `systasis_container`.
+Glob imports and imports depending on function-local modules remain unsupported.
 These are implementation limitations, not changes to the agreed requirements.

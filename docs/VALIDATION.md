@@ -2,6 +2,13 @@
 
 ## Current generated-container checks
 
+Local namespaces (58bc418/c577507) pass full workspace std/no_std tests and
+both Clippy configurations. Coverage includes seven public behavior tests,
+two parser tests and ten compiler cases. Child composition is not yet implemented.
+Ordinary explicit constructor imports (ac9dc3b) pass seventeen capture unit
+tests and eleven constructor tests on both backends; function-local module
+imports remain rejected because those modules are not hoisted.
+
 Combined dyn groups (df66c32) pass seven focused tests on both backends, including
 associated bindings, generic targets, independent lifetimes and returned guards.
 A further scoped-thread test verifies Send read guards for explicitly Sync dyn
