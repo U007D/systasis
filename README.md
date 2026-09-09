@@ -20,10 +20,10 @@ Fallible constructors preserve their annotated return type. Returned values may
 borrow captures or retain dependency guards; storing such borrowed results inside
 the container remains deferred. See [constructor tests](tests/custom_constructor.rs).
 Capture analysis supports explicitly typed tuple/array destructuring, explicit
-reference patterns and elided reference lifetimes in typed function parameters.
+and implicit reference bindings, and elided reference lifetimes in typed function parameters.
 Explicit imports are preserved when they do not conflict with
 capture names or depend on unhoisted function-local items. Opaque macros, glob imports,
-struct/alias destructuring and implicit reference-pattern binding modes remain
+struct/alias destructuring and bound rest patterns remain
 implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
 
 Generic enclosing functions preserve authored type, const and lifetime parameters
@@ -57,7 +57,7 @@ cloning, nested scopes, failed-build cleanup and owner destruction. They measure
 specified workloads, not arbitrary caller constructors or Clone implementations.
 See [the test driver](tests/allocations.rs) and [evidence](docs/VALIDATION.md).
 
-Still pending: remaining capture cases, compile-time scaling checks,
+Still pending: remaining capture cases, documentation/example completeness,
 and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.

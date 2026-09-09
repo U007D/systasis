@@ -33,8 +33,11 @@ Those alternatives would need separate evaluation and user approval.
 ## Other remaining gaps
 
 Tuple/array annotations and explicit reference patterns can supply individual
-binding types. Struct-field types, aliases hiding a destructured shape, and
-implicit reference-pattern binding modes still require further work.
+binding types. Implicit reference bindings from structurally annotated tuples
+and arrays are also supported, including nested shared/mutable reference layers.
+Their original patterns remain in place for rustc's edition checks. Struct-field
+types, aliases hiding a destructured shape, and bound rest patterns still need
+further work. See [capture-pattern regressions](../tests/capture_patterns.rs).
 Explicit imports are preserved where their names do not conflict with capture
 candidates and they do not depend on unhoisted function-local items. This includes
 ordinary `use std::...` and function-local imports of `systasis_container`.

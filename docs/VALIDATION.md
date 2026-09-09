@@ -31,6 +31,20 @@ optimizer or standard library stops exercising an expected allocator hook.
 
 ### Other integration evidence
 
+Container-only lookup (1a67b28/653426b) passes four tests per backend. Local,
+named, nested, type and dyn queries ignore unrelated surrounding names. Missing
+registrations do not fall back to outside traits or aliases; the Rust driver
+checks the intended diagnostics and retains stderr under target/resolver-scope.
+Runtime contention and consumption likewise return the selected slot's error
+despite an available caller-owned value. These are accepted semantics, not
+failed interface-alias support. Registration annotations retain Rust name resolution.
+
+Implicit capture binding modes pass five integration tests per backend and two
+additional capture-analysis unit tests. Explicitly typed reference-to-tuple/array
+patterns preserve shared/mutable bindings, nested reference layers, caller input
+reuse after container destruction, and returned references to captured data.
+No new unsafe code, dependency or user annotation is introduced.
+
 Capture elision (c1ce92c) passes four regressions on each backend: a captured
 reference parameter, independent references including a nested generic capture,
 and function-pointer/Fn signature lifetimes that must remain higher-ranked.
@@ -59,9 +73,18 @@ iterations after warmup, black-boxed inputs/results, checksum checks and exact
 payload-drop counts. Output records toolchain, host, features and min/median/max
 ns per iteration. Both runtime backends pass the release checks on the recorded
 aarch64 macOS host. There is no speed threshold or hard real-time claim;
-compile-time scaling and broader workloads remain separate verification work.
+broader workloads remain separate verification work.
 Run `cargo +stable test --release --test performance --offline --locked --
 --ignored --nocapture`, then add `--no-default-features` before `--` for spin.
+
+`tests/codegen_scaling.rs` (25bb42e) separately measures stable compiler invocations
+for 1/8/32 flat registrations and child nesting depths 1/2/3. It warms dependency
+artifacts, then checks and builds/links distinct input crates for three samples
+per case; each executable validates resolution and nameable container/scope types.
+Both backends pass. Output records source/executable sizes and separate metadata
+check and build/link durations, not expanded-token size or a universal scaling
+law. No timing threshold is enforced. Run `cargo +stable test --test codegen_scaling
+--offline --locked -- --ignored --nocapture`, adding `--no-default-features` for spin.
 
 Portable atomics (3a55999) use optional portable-atomic 1.15.0 with its
 critical-section feature, without enabling either unsafe platform assumption.
@@ -88,8 +111,8 @@ all-feature and no_std unchecked-enabled suites pass; both Clippy configurations
 pass. The subsequently added `child_unchecked` test passes natively and under
 Miri on both backends, checking guard retention, contention and consumption.
 No new dependency or unsafe storage mechanism was introduced. Cross-crate child
-composition has the dedicated evidence recorded above. Semantic equivalence of
-differently spelled interface keys still needs implementation and validation.
+composition has the dedicated evidence recorded above. Resolver query names are
+container-relative under the later clarification, not caller-scope Rust aliases.
 
 Reproduce the new Miri check with `cargo +nightly miri test --offline
 --features resolve_unchecked --test child_unchecked`, adding
@@ -280,6 +303,6 @@ The no_std library is executed by a std host binary, not on embedded hardware.
   fails to link without the application's critical-section acquire/release
   symbols. This is an intended diagnostic check, not a successful fallback link.
   No test installs a pretend platform implementation or validates physical hardware.
-- Remaining semantic identity cases and broader allocation/performance validation
-  remain. Container generation, composition, scheduling and unchecked access have the
+- Remaining capture cases, documentation/example coverage and broader performance
+  validation remain. Container generation, composition, scheduling and unchecked access have the
   tested coverage recorded at the top of this document.
