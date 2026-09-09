@@ -2,6 +2,13 @@
 
 ## Current generated-container checks
 
+Static group registration (90ff0d7) passes seven public-API tests on each backend,
+with whole-group/member distinction and override diagnostics. Additional tests
+exercise all six permutations of three traits and qualified names with an
+associated-type binding. Generic-policy evidence helpers (6aac5bb) pass four
+policy tests per backend and an intended indirect-Copy diagnostic. Generic
+container generation is being integrated; helper tests alone do not establish it.
+
 Capture follow-ups b7e99c6 through f7059c0 add structural tuple/array type
 extraction, explicit reference patterns, and absolute local-import preservation.
 Eleven custom-constructor tests pass on each backend. Full workspace tests and

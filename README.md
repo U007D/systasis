@@ -10,7 +10,7 @@ for the generated registration macros.
 
 The generated path supports stored values, fresh Default and custom constructors, owned
 dependency injection, concrete registered-type lookup, overrides, dependency
-layers, checked access, cloning, single-trait dyn access, and optional Send/Sync
+layers, checked access, cloning, static multi-trait groups, single-trait dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
 Services and their constructors remain ordinary generic Rust; dependencies are
 transferred by value, without hidden wrappers or field rewriting.
@@ -26,7 +26,7 @@ struct/alias destructuring and implicit reference-pattern binding modes remain
 implementation gaps, not new API rules.
 
 Still pending: generic enclosing functions,
-interface groups, named namespaces and composition, unchecked generation,
+combined dyn trait groups, named namespaces and composition, unchecked generation,
 and embedded validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.
