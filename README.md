@@ -35,8 +35,11 @@ Local namespace queries use the documented `_from` forms and public methods use
 `_in_namespace` suffixes; omitted and explicit `default` select the same registrations.
 See [namespace tests](tests/namespaces.rs).
 
-Still pending: subcontainer composition,
-unchecked generation, and hardware validation. Container-stored services retaining internal borrows are
+The default-off `resolve_unchecked` feature adds unsafe nonblocking accessors
+for consumable values. Guards and ownership exclusions are preserved; see
+[safety contracts](docs/SAFETY.md) and [examples under test](tests/unchecked.rs).
+
+Still pending: subcontainer composition and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.
 

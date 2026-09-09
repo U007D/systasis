@@ -12,8 +12,8 @@
 - TakeSlot supports synchronized mutable/consuming access through &self.
   std uses parking_lot 0.12.5 with send_guard; no_std uses spin.
 
-Automatic per-field selection is not implemented: the production generator is
-still a stub. Selection must consider every access path, including independently
+The generator selects plain Copy storage or consumable storage using the
+registration-site Copy policy. Selection must consider every access path, including independently
 shared subcontainers. Absence of require(Sync) is not proof of single-threaded
 use and must not silently disable the container's natural Sync capability.
 Local guard types and synchronized guard types differ; generated injection
@@ -64,6 +64,20 @@ Taking requires exclusive borrowing. ReadSlot has no mutation/taking methods.
 Forgetting any guard can retain contention; it cannot enable incompatible access.
 
 ## Verification
+
+The default-off `resolve_unchecked` feature adds unsafe owned/shared/mutable
+accessors for consumable slots. They call the same checked acquisition functions,
+then return the success value. Caller-precondition violations reach justified
+`unreachable!` diagnostics; no `unwrap_unchecked` or additional payload pointer
+operation is introduced. Generated methods forward the caller's preconditions
+through explicit unsafe calls. Registration-time queries do not add an unsafe
+block on the caller's behalf. Copy/fresh storage gains no unchecked accessor,
+and constructor-borrow ownership exclusions remain in force.
+
+Four feature-enabled behavior tests pass natively and under Miri for std and
+no_std, including local RefCell guards and a `forbid(unsafe_code)` consumer using
+only checked access. Compiler tests reject calls outside unsafe context and
+methods excluded by storage policy or constructor borrowing. No dependency changed.
 
 Native Rust-driven compiler tests reject lifetime escape, mutable lifetime
 substitution, sharing local storage, sending local guards, and taking ReadSlot.

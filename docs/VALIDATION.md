@@ -2,6 +2,12 @@
 
 ## Current generated-container checks
 
+Unchecked generation (694a7a4) passes four behavior tests natively and under Miri
+on both backends. Feature-enabled compiler cases verify unsafe context, Copy/fresh
+method absence and constructor-borrow ownership exclusion. Both feature-enabled
+Clippy configurations pass; the full std feature-enabled workspace suite passed
+before the final forbid-unsafe consumer regression was added.
+
 Local namespaces (58bc418/c577507) pass full workspace std/no_std tests and
 both Clippy configurations. Coverage includes seven public behavior tests,
 two parser tests and ten compiler cases. Child composition is not yet implemented.
