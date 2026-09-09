@@ -187,6 +187,6 @@ with Clippy. Runs here set `CARGO_BUILD_RUSTC_WRAPPER=`; Clippy additionally use
   Its proc-macro dependencies build for the host.
 - Cross-compilation is not firmware linking or physical-board testing. Neither
   portable-atomic integration nor the temporary hardware feature exists yet.
-- Scoped composition, full allocation/performance validation and packaged-consumer
-  testing remain. Container generation, scheduling and unchecked access have the
+- Remaining semantic identity cases, full allocation/performance validation and
+  packaged-consumer testing remain. Container generation, composition, scheduling and unchecked access have the
   tested coverage recorded at the top of this document.
