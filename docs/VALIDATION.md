@@ -1,5 +1,13 @@
 # Runtime foundation validation
 
+Current update: std parking_lot 0.12.5/send_guard and no_std spin each pass
+51 native tests and 31 Miri tests (storage, reservation, unsynchronized).
+Both Clippy configurations pass with warnings denied. No poisoning remains.
+ReadSlot/LocalTakeSlot are runtime primitives; generator policy selection is
+pending. See SAFETY.md for current behavior. The table and notes below are
+historical evidence predating this backend change; embedded and Tree Borrows
+checks have not been rerun for the new dependency.
+
 Verified 2026-09-08, aarch64 macOS, stable rustc 1.98.1.
 This is partial runtime implementation, not a working generated container.
 
