@@ -412,6 +412,13 @@ fn container_diagnostics() {
             Some("E0277"),
         ),
         (
+            "shared_cell_array_tail_cannot_satisfy_send",
+            "",
+            "",
+            "mod shared_tail { use core::cell::Cell; type Array = [Cell<u8>; 3]; trait ILength {} impl ILength for usize {} #[systasis::container(require(Send))] fn run(input: &Array) { let [_, tail @ ..]: &Array = input; let Ok(container) = systasis::systasis_container! { register_type_with!(usize as ILength, || tail.len()); }.build(); } }",
+            Some("`Cell<u8>` cannot be shared between threads safely"),
+        ),
+        (
             "non_dyn_safe_opt_in",
             "",
             "register_value!(String::new(): String as dyn IGeneric);",

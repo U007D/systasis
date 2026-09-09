@@ -44,6 +44,34 @@ mod unsized_slice_alias {
 }
 trait IValue {}
 impl IValue for usize {}
+mod mutable_tail_auto_traits {
+    use super::*;
+    use core::cell::Cell;
+    type Array = [Cell<u8>; 3];
+
+    #[systasis::container(require(Send))]
+    fn run(input: &mut Array) {
+        let [head, tail @ ..]: &mut Array = input;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as IValue, || {
+                tail[0].set(tail[0].get() + 1);
+                tail.len()
+            });
+        }
+        .build();
+        fn requires_send<T: Send>(_: &T) {}
+        requires_send(container);
+        head.set(9);
+        assert_eq!(container.resolve_i_value(), 2);
+    }
+
+    #[test]
+    fn mutable_cell_array_tail_retains_send_without_requiring_sync() {
+        let mut cells = [Cell::new(1), Cell::new(2), Cell::new(3)];
+        run(&mut cells);
+        assert_eq!(cells.map(Cell::into_inner), [9, 3, 3]);
+    }
+}
 mod reference_slice_aliases {
     use super::*;
     type Shared = &'static [u8];
