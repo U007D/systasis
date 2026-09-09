@@ -49,6 +49,18 @@ impl Queries<'_> {
             .children
             .iter()
             .position(|child| child.name.unraw() == first.unraw())?;
+        if path.leading_colon.is_some()
+            || path
+                .segments
+                .iter()
+                .any(|segment| !matches!(segment.arguments, PathArguments::None))
+        {
+            self.error = Some(Error::new_spanned(
+                path,
+                "child lookup paths contain only child or namespace names",
+            ));
+            return None;
+        }
         let rest = path.segments.iter().skip(1).rev().fold(
             parse_quote!(::systasis::scoped::Here),
             |rest: Type, segment| {
@@ -57,6 +69,33 @@ impl Queries<'_> {
             },
         );
         Some((index, interface, dynamic, rest))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_paths_do_not_silently_discard_generic_arguments_or_roots() {
+        let children = [syn::parse_str("primary: &Child").unwrap()];
+        for source in [
+            "resolve_from!(IValue, primary::<u32>)",
+            "resolve_from!(IValue, ::primary)",
+        ] {
+            let mut expression: Expr = syn::parse_str(source).unwrap();
+            let mut queries = Queries {
+                children: &children,
+                error: None,
+                borrowed: Vec::new(),
+                calls: Vec::new(),
+            };
+            queries.visit_expr_mut(&mut expression);
+            assert_eq!(
+                queries.error.unwrap().to_string(),
+                "child lookup paths contain only child or namespace names"
+            );
+        }
     }
 }
 impl VisitMut for Queries<'_> {
