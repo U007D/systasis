@@ -170,6 +170,14 @@ pub(crate) fn forwarding(
         let associated = format_ident!("{associated}");
         let operation = extra.then(|| quote!(, __Operation));
         let sized = (public == "DynRegistered").then(|| quote!(: ?Sized));
+        // A dyn target's object bound follows the requested borrow, not the
+        // longer lifetime of a leaf behind an intermediate descriptor. Owned
+        // constructor outputs still retain their original backing lifetime.
+        let target_lifetime = if public == "DynRegistered" {
+            quote!('a)
+        } else {
+            quote!('__backing)
+        };
         emitted.push(quote!(
             pub trait #helper<__ChildKey, __Rest, __Key #operation> {
                 type #associated<'a> #sized where Self: 'a;
@@ -178,7 +186,7 @@ pub(crate) fn forwarding(
                 ::systasis::scoped::#public<__Path, __Key #operation>
                 for __SystasisScope<'__backing, __Container, __Restrictions, __Children>
             where __Container: ::systasis::scoped::#public<__Path, __Key #operation> {
-                type #associated<'a> = <__Container as ::systasis::scoped::#public<__Path, __Key #operation>>::#associated<'__backing> where Self: 'a;
+                type #associated<'a> = <__Container as ::systasis::scoped::#public<__Path, __Key #operation>>::#associated<#target_lifetime> where Self: 'a;
             }
         ));
         for (index, child) in children.iter().enumerate() {
