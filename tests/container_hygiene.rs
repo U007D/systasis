@@ -9,7 +9,7 @@ mod caller_local {
     #[test]
     fn initializer_keeps_its_original_binding() {
         let __systasis_error = String::from("caller input");
-        let built = systasis_container! {
+        let built = systasis::systasis_container! {
             register_value!(__systasis_error: String as IValue);
         }
         .build::<systasis::app_container::Error>();
@@ -30,7 +30,7 @@ mod caller_result_alias {
     #[systasis::container]
     #[test]
     fn generated_results_do_not_use_the_callers_alias() -> Result<()> {
-        let built = systasis_container! {
+        let built = systasis::systasis_container! {
             register_value!(String::from("value"): String as IValue);
         }
         .build::<systasis::app_container::Error>();
@@ -47,7 +47,7 @@ mod annotated_coercion {
     #[systasis::container]
     #[test]
     fn declared_type_supplies_initializer_coercion_context() {
-        let built = systasis_container! {
+        let built = systasis::systasis_container! {
             register_value!(Box::new([1_u8]): Box<[u8]> as IValue);
         }
         .build::<systasis::app_container::Error>();

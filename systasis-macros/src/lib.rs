@@ -25,7 +25,10 @@ pub fn container(
 
 /// A container declaration must be processed by the enclosing attribute.
 #[proc_macro]
-pub fn systasis_container(_: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn systasis_container(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    if input.to_string() == "@ __systasis_marker" {
+        return quote::quote!(()).into();
+    }
     syn::Error::new(
         proc_macro2::Span::call_site(),
         "place systasis_container! inside a #[systasis::container] function and call .build()",

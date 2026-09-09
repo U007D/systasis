@@ -9,7 +9,7 @@ macro_rules! infallible {
             #[systasis::container(require(Send, Sync))]
             #[test]
             fn inferred_uninhabited_error() {
-                let Ok(container) = systasis_container! {
+                let Ok(container) = systasis::systasis_container! {
                     register_value!(1: u32 as IValue);
                 }.build $($error)* ();
                 assert_eq!(container.resolve_i_value(), 1);
@@ -25,7 +25,7 @@ mod empty {
     #[systasis::container]
     #[test]
     fn empty_build_has_uninhabited_error() {
-        let Ok(_container) = systasis_container! {}.build();
+        let Ok(_container) = systasis::systasis_container! {}.build();
     }
 }
 
@@ -36,7 +36,7 @@ mod never_type {
         fn error_name<C, E>(_: &Result<C, E>) -> &'static str {
             core::any::type_name::<E>()
         }
-        let built = systasis_container! {}.build();
+        let built = systasis::systasis_container! {}.build();
         assert_eq!(error_name(&built), "!");
     }
 }
@@ -49,7 +49,7 @@ mod fallible {
     #[systasis::container]
     #[test]
     fn ordinary_result_annotation_controls_error_type() {
-        let built: Result<&AppContainer, Failure> = systasis_container! {
+        let built: Result<&AppContainer, Failure> = systasis::systasis_container! {
             register_value!(Err::<String, Failure>(Failure)?: String as IValue);
         }
         .build();
@@ -66,7 +66,7 @@ mod let_else {
     #[systasis::container]
     #[test]
     fn original_let_else_branch_is_preserved() {
-        let Ok(_container) = systasis_container! {
+        let Ok(_container) = systasis::systasis_container! {
             register_value!(Err::<String, ()>(())?: String as IValue);
         }
         .build::<()>() else {

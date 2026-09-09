@@ -156,7 +156,7 @@ mod a {{ pub trait IValue {{}} impl IValue for String {{}} }}
 mod b {{ pub trait IValue {{}} impl IValue for String {{}} }}
 #[systasis::container({requirements})]
 fn main() {{
-    let built = systasis_container! {{ {registrations} }}.build::<systasis::app_container::Error>();
+    let built = systasis::systasis_container! {{ {registrations} }}.build::<systasis::app_container::Error>();
     {after}
 }}
 "#

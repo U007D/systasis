@@ -30,7 +30,7 @@ macro_rules! scenario {
             #[systasis::container($($requirements)*)]
             #[test]
             fn moves_dependency_into_ordinary_service() -> Result<(), Error> {
-                let built = systasis_container! {
+                let built = systasis::systasis_container! {
                     register_value!(Service::new(try_resolve!(IDatabase)?): Service<registered_type!(IDatabase)> as IService);
                     register_value!(Database(String::from("db")): Database as IDatabase);
                 }.build::<Error>();
@@ -54,7 +54,7 @@ mod overrides {
     #[systasis::container]
     #[test]
     fn discarded_initializer_and_dependencies_are_not_evaluated() -> Result<(), Error> {
-        let built = systasis_container! {
+        let built = systasis::systasis_container! {
             register_value!(try_resolve!(IMissing)?: MissingType as IDatabase);
             register_value!(Service::new(try_resolve!(IDatabase)?): Service<registered_type!(IDatabase)> as IService);
             register_value!(Database(String::from("winner")): Database as IDatabase);
@@ -70,7 +70,7 @@ mod plain {
     #[systasis::container]
     #[test]
     fn copy_values_are_repeatedly_available() {
-        let built = systasis_container! {
+        let built = systasis::systasis_container! {
             register_value!(7_u32: u32 as IValue);
         }
         .build();
@@ -100,7 +100,7 @@ mod failure {
     #[test]
     fn failed_build_drops_transferred_value_once() {
         let drops = Rc::new(Cell::new(0));
-        let built = systasis_container! {
+        let built = systasis::systasis_container! {
             register_value!(Tracked(drops.clone()): Tracked as IValue);
             register_value!(try_resolve!(IValue)?: registered_type!(IValue) as IFirst);
             register_value!(try_resolve!(IValue)?: registered_type!(IValue) as ISecond);

@@ -72,7 +72,14 @@ pub(crate) fn expand(
             statements.push(statement.clone());
             continue;
         };
-        if build.method != "build" || !registry.mac.path.is_ident("systasis_container") {
+        if build.method != "build"
+            || !registry
+                .mac
+                .path
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "systasis_container")
+        {
             statements.push(statement.clone());
             continue;
         }
@@ -381,7 +388,9 @@ pub(crate) fn expand(
                 if let ::core::result::Result::Ok(container) = &#systasis_published_ident { __systasis_assert(*container); }
             })
         });
+        let macro_path = &registry.mac.path;
         let generated: Block = syn::parse2(quote!({
+            #macro_path!(@__systasis_marker);
             let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
             #(#initialization)*
             let #systasis_result_ident=match #systasis_error_ident {

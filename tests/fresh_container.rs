@@ -19,7 +19,7 @@ impl IDatabase for Database {}
 #[systasis::container(require(Send, Sync))]
 #[test]
 fn fresh_values_are_not_constructed_or_retained_by_build() {
-    let Ok(container) = systasis_container! {
+    let Ok(container) = systasis::systasis_container! {
         register_type!(Database as IDatabase);
     }
     .build();
@@ -41,7 +41,7 @@ mod dependency {
     #[systasis::container]
     #[test]
     fn stored_initializer_can_resolve_a_fresh_dependency() {
-        let Ok(container) = systasis_container! {
+        let Ok(container) = systasis::systasis_container! {
             register_value!(Service(resolve!(IDatabase)): Service as IService);
             register_type!(OtherDatabase as IDatabase);
         }

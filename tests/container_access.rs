@@ -14,7 +14,7 @@ macro_rules! scenario {
             #[systasis::container($($requirements)*)]
             #[test]
             fn temporary_build_borrows_and_runtime_contention() -> Result<(), Error> {
-                let built = systasis_container! {
+                let built = systasis::systasis_container! {
                     register_value!({
                         try_resolve_ref_mut!(IValue)?.push('!');
                         try_resolve_ref!(IValue)?.len()
@@ -52,7 +52,7 @@ mod external_copy_reference {
     #[test]
     fn lifetime_placeholder_does_not_remove_copy_behavior() {
         let text = String::from("label");
-        let Ok(container) = systasis_container! {
+        let Ok(container) = systasis::systasis_container! {
             register_value!(Label(&text): Label<'_> as ILabel);
         }
         .build();
@@ -78,7 +78,7 @@ mod explicit_copy_clone {
     #[systasis::container]
     #[test]
     fn copy_resolution_does_not_clone() {
-        let Ok(container) = systasis_container! {
+        let Ok(container) = systasis::systasis_container! {
             register_value!(Value: Value as IValue);
         }
         .build();

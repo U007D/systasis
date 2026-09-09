@@ -13,7 +13,7 @@ macro_rules! scenario {
             #[systasis::container($($requirements)*)]
             #[test]
             fn explicit_dyn_reader_retains_occupancy_and_borrow_checks() -> Result<(), Error> {
-                let Ok(container) = systasis_container! {
+                let Ok(container) = systasis::systasis_container! {
                     register_value!(Logger(String::from("message")): Logger as dyn ILogger);
                 }.build();
                 let reader = container.try_resolve_i_logger_dyn_ref()?;
@@ -43,7 +43,7 @@ mod copy {
     #[systasis::container]
     #[test]
     fn copy_dyn_reference_has_no_guard() {
-        let Ok(container) = systasis_container! {
+        let Ok(container) = systasis::systasis_container! {
             register_value!(7_u32: u32 as dyn IValue);
         }
         .build();
