@@ -19,6 +19,30 @@ pub(crate) struct Bindings {
     imports: Vec<syn::ItemUse>,
 }
 
+#[derive(Clone, Copy)]
+enum BindingMode {
+    Move,
+    Ref,
+    RefMut,
+}
+
+impl BindingMode {
+    fn dereferenced(self, mutable: bool) -> Self {
+        match (self, mutable) {
+            (Self::Ref, _) | (_, false) => Self::Ref,
+            (_, true) => Self::RefMut,
+        }
+    }
+
+    fn bound_type(self, annotation: &Type) -> Type {
+        match self {
+            Self::Move => annotation.clone(),
+            Self::Ref => syn::parse_quote!(&'_ #annotation),
+            Self::RefMut => syn::parse_quote!(&'_ mut #annotation),
+        }
+    }
+}
+
 impl Bindings {
     pub(crate) fn from_function(function: &ItemFn) -> Self {
         let mut bindings = Self::default();
@@ -106,31 +130,42 @@ impl Bindings {
             self.types.insert(name, None);
         }
         if let Some(annotation) = annotation {
-            self.observe_annotated_pattern(pattern, annotation);
+            self.observe_annotated_pattern(pattern, annotation, BindingMode::Move);
         }
     }
 
-    /// Extract only types stated structurally in the annotation. In particular,
-    /// aliases, struct fields, and match ergonomics require Rust name/type
-    /// resolution and must not be guessed here.
-    fn observe_annotated_pattern(&mut self, pattern: &Pat, annotation: &Type) {
+    /// Extract structurally annotated types and propagate Rust's binding modes.
+    /// Opaque aliases and struct fields still need unavailable type information.
+    /// https://doc.rust-lang.org/reference/patterns.html#binding-modes
+    fn observe_annotated_pattern(&mut self, pattern: &Pat, annotation: &Type, mode: BindingMode) {
         match (pattern, annotation) {
-            (_, Type::Paren(ty)) => self.observe_annotated_pattern(pattern, &ty.elem),
-            (_, Type::Group(ty)) => self.observe_annotated_pattern(pattern, &ty.elem),
+            (_, Type::Paren(ty)) => self.observe_annotated_pattern(pattern, &ty.elem, mode),
+            (_, Type::Group(ty)) => self.observe_annotated_pattern(pattern, &ty.elem, mode),
             (Pat::Paren(pattern), _) => {
-                self.observe_annotated_pattern(&pattern.pat, annotation);
+                self.observe_annotated_pattern(&pattern.pat, annotation, mode);
             }
             (Pat::Ident(binding), _) if binding.subpat.is_none() => {
-                let ty = if binding.by_ref.is_some() {
-                    let mutability = binding.mutability;
-                    syn::parse_quote!(&'_ #mutability #annotation)
-                } else {
-                    annotation.clone()
+                // Keep explicit modifiers' pre-2024 meaning too. The original
+                // pattern remains in the function, so rustc enforces edition
+                // restrictions rather than the macro silently accepting it.
+                let mode = match (binding.by_ref, binding.mutability) {
+                    (Some(_), Some(_)) => BindingMode::RefMut,
+                    (Some(_), None) => BindingMode::Ref,
+                    (None, Some(_)) => BindingMode::Move,
+                    (None, None) => mode,
                 };
-                self.types.insert(name(&binding.ident), Some(ty));
+                self.types
+                    .insert(name(&binding.ident), Some(mode.bound_type(annotation)));
             }
             (Pat::Reference(pattern), Type::Reference(ty)) => {
-                self.observe_annotated_pattern(&pattern.pat, &ty.elem);
+                self.observe_annotated_pattern(&pattern.pat, &ty.elem, BindingMode::Move);
+            }
+            (Pat::Tuple(_) | Pat::Slice(_), Type::Reference(ty)) => {
+                self.observe_annotated_pattern(
+                    pattern,
+                    &ty.elem,
+                    mode.dereferenced(ty.mutability.is_some()),
+                );
             }
             (Pat::Tuple(pattern), Type::Tuple(ty)) => {
                 let rest = pattern
@@ -150,14 +185,14 @@ impl Bindings {
                     } else {
                         index
                     };
-                    self.observe_annotated_pattern(element, &ty.elems[type_index]);
+                    self.observe_annotated_pattern(element, &ty.elems[type_index], mode);
                 }
             }
             (Pat::Slice(pattern), Type::Array(ty)) => {
                 for element in &pattern.elems {
                     // A `tail @ ..` binding is an array, not an element. Its
                     // length would require evaluating/subtracting consts.
-                    self.observe_annotated_pattern(element, &ty.elem);
+                    self.observe_annotated_pattern(element, &ty.elem, mode);
                 }
             }
             _ => {}
@@ -808,7 +843,6 @@ mod tests {
         let statements: Vec<Stmt> = vec![
             parse_quote!(let (value, _): Alias = input;),
             parse_quote!(let [_, value @ ..]: [u8; 3] = input;),
-            parse_quote!(let (value, _): &(String, u8) = input;),
             parse_quote!(let Record { value }: Record = input;),
             parse_quote!(let (value, _, _): (u8, u16) = input;),
         ];
@@ -843,6 +877,45 @@ mod tests {
         assert_eq!(
             capture_types(&result),
             ["& '_ String", "& '_ mut u8", "u32"]
+        );
+    }
+
+    #[test]
+    fn implicit_binding_modes_follow_reference_layers_without_changing_siblings() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&parse_quote!(
+            let ((shared,), mutable): &mut (&(u32,), u64) = input;
+        ));
+        bindings.observe_statement(&parse_quote!(
+            let ([first, .., last],): &mut ([u8; 3],) = input;
+        ));
+        let result = prepare(
+            &parse_quote!(|| (shared, mutable, first, last)),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert_eq!(
+            capture_types(&result),
+            ["& '_ u32", "& '_ mut u64", "& '_ mut u8", "& '_ mut u8"]
+        );
+    }
+
+    #[test]
+    fn repeated_reference_layers_preserve_shared_and_exclusive_binding_modes() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&parse_quote!(let (shared,): &&mut (u32,) = input;));
+        bindings.observe_statement(&parse_quote!(let (exclusive,): &mut &mut (u16,) = input;));
+        bindings.observe_statement(&parse_quote!(let (reference,): &(&str,) = input;));
+        let result = prepare(
+            &parse_quote!(|| (shared, exclusive, reference)),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert_eq!(
+            capture_types(&result),
+            ["& '_ u32", "& '_ mut u16", "& '_ & str"]
         );
     }
 }
