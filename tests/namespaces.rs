@@ -20,6 +20,8 @@ fn defaults_named_values_and_copy_queries() {
     }.build();
     assert_eq!(container.resolve_i_value(), 10);
     assert_eq!(container.resolve_i_value_in_default(), 10);
+    assert_eq!(*container.resolve_i_value_ref_in_default(), 10);
+    assert_eq!(container.resolve_i_value_clone_in_default(), 10);
     assert_eq!(container.resolve_i_value_in_test(), 20);
     assert_eq!(*container.resolve_i_value_ref_in_test(), 20);
     assert_eq!(container.resolve_i_value_clone_in_test(), 20);
@@ -165,15 +167,42 @@ mod generic {
             register_value!(first: T as IValue);
             register_value!(second: T as IValue in named);
             register_type_with!(T as IValue in derived, || resolve_from!(IValue, named));
+            register_type_with!(T as IValue in from_default, || resolve!(IValue));
         }
         .build();
         assert_eq!(container.resolve_i_value(), first);
         assert_eq!(container.resolve_i_value_in_named(), second);
         assert_eq!(container.resolve_i_value_in_derived(), second);
+        assert_eq!(container.resolve_i_value_in_from_default(), first);
     }
 }
 
 #[test]
 fn generic_namespace_policies_remain_bound_based() {
     generic::run(1u32, 2u32);
+}
+
+mod copy_dyn {
+    use super::*;
+    trait INumber {
+        fn number(&self) -> u32;
+    }
+    impl INumber for u32 {
+        fn number(&self) -> u32 {
+            *self
+        }
+    }
+    #[systasis::container]
+    #[test]
+    fn named_copy_dyn_query_returns_plain_reference() {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(41u32: u32 as dyn INumber in named);
+            register_value!({
+                let object: &resolve_type_from!(dyn INumber, named) = resolve_dyn_ref_from!(INumber, named);
+                object.number() + 1
+            }: u32 as IValue);
+        }.build();
+        assert_eq!(container.resolve_i_number_dyn_ref_in_named().number(), 41);
+        assert_eq!(container.resolve_i_value(), 42);
+    }
 }

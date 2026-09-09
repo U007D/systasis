@@ -164,6 +164,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn namespaces_are_parsed_for_every_registration_kind() {
+        let registrations: Registrations = syn::parse_str(
+            "register_value!(value: Value as IValue in test);
+             register_type!(Value as IValue in test);
+             register_type_with!(Value as IValue in test, || value);
+             register_type_with!(Value as IValue in test, try || -> Option<Value> { Some(value) });",
+        ).unwrap();
+        for registration in registrations.0 {
+            assert_eq!(
+                registration.namespace.key(&registration.interface),
+                "IValue in test"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_default_and_raw_namespace_spellings_are_normalized() {
+        let registrations: Registrations = syn::parse_str(
+            "register_type!(Value as IValue);
+             register_type!(Value as IValue in default);
+             register_type!(Value as IValue in named);
+             register_type!(Value as IValue in r#named);",
+        )
+        .unwrap();
+        let keys = registrations
+            .0
+            .iter()
+            .map(|registration| registration.namespace.key(&registration.interface))
+            .collect::<Vec<_>>();
+        assert_eq!(keys[0], keys[1]);
+        assert_eq!(keys[2], keys[3]);
+        assert_ne!(keys[0], keys[2]);
+    }
+
+    #[test]
     fn group_identity_normalizes_order_without_erasing_paths_or_arguments() {
         let key = |source: &str| {
             syn::parse_str::<InterfaceGroup>(source)
