@@ -6,6 +6,7 @@ mod captures;
 mod child;
 mod child_codegen;
 mod child_queries;
+mod configuration;
 mod dyn_targets;
 mod generate;
 mod generic_policy;
@@ -34,14 +35,18 @@ pub fn container(
     args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
+    let arguments: proc_macro2::TokenStream = args.clone().into();
     let requirements = syn::parse_macro_input!(args as requirements::Requirements);
-    generate::expand(
-        syn::parse_macro_input!(input as syn::ItemFn),
-        requirements.local,
-        &requirements.positive,
-    )
-    .unwrap_or_else(syn::Error::into_compile_error)
-    .into()
+    let function = syn::parse_macro_input!(input as syn::ItemFn);
+    configuration::select(&function, &arguments)
+        .and_then(|selected| {
+            selected.map_or_else(
+                || generate::expand(function, requirements.local, &requirements.positive),
+                Ok,
+            )
+        })
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 /// Declare registrations inside a `#[systasis::container]` function.
