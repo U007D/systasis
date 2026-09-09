@@ -285,6 +285,7 @@ pub(crate) fn expand(
                 error: None,
                 borrowed: Vec::new(),
                 calls: Vec::new(),
+                in_constructor: false,
             };
             queries.visit_type_mut(&mut registration.ty);
             queries.visit_expr_mut(&mut registration.value);
@@ -292,6 +293,7 @@ pub(crate) fn expand(
             queries.borrowed.clear();
             queries.calls.clear();
             if let Some(constructor) = &mut registration.constructor {
+                queries.in_constructor = true;
                 queries.visit_expr_closure_mut(constructor);
             }
             child_borrows.extend(queries.borrowed);
@@ -422,6 +424,7 @@ pub(crate) fn expand(
             runtime_queries.remove(&(index, "resolve_unchecked".into()));
         }
         let capture_root = Ident::new("__systasis_captures", Span::mixed_site());
+        let children_ident = crate::wiring::children_ident();
         let mut factories = BTreeMap::new();
         for (index, registration) in registrations.iter_mut().enumerate() {
             let mut queries = Queries {
@@ -781,6 +784,7 @@ pub(crate) fn expand(
             let try_clone = format_ident!("try_resolve_{snake}_clone");
             if let Some(factory) = factories.get(&i) {
                 let helper = format_ident!("construct_{i}");
+                let context = format_ident!("__ConstructorContext{i}");
                 let output = match &factory.closure.output {
                     ReturnType::Default => initializer_types[i].clone(),
                     ReturnType::Type(_, ty) => (**ty).clone(),
@@ -794,11 +798,54 @@ pub(crate) fn expand(
                     .params
                     .insert(0, parse_quote!(#call_lifetime));
                 let arguments = crate::wiring::arguments(i, &transitive);
-                let helper_parameters = arguments.iter().map(|&index| {
-                    let parameter = &slots[index];
+                // The context exists only for this invocation. Bound its
+                // borrowed fields, not unrelated original generic parameters.
+                let authored_bounds = helper_generics
+                    .type_params_mut()
+                    .filter_map(|parameter| {
+                        let bounds = ::core::mem::take(&mut parameter.bounds);
+                        let name = &parameter.ident;
+                        (!bounds.is_empty()).then(|| parse_quote!(#name: #bounds))
+                    })
+                    .collect::<Vec<WherePredicate>>();
+                helper_generics
+                    .make_where_clause()
+                    .predicates
+                    .extend(authored_bounds);
+                helper_generics
+                    .make_where_clause()
+                    .predicates
+                    .push(parse_quote!(#child_tuple: #call_lifetime));
+                for &index in &arguments {
                     let ty = &selected[index];
-                    quote!(#parameter: &#call_lifetime #ty)
-                });
+                    helper_generics
+                        .make_where_clause()
+                        .predicates
+                        .push(parse_quote!(#ty: #call_lifetime));
+                }
+                let helper_parameters = arguments
+                    .iter()
+                    .map(|&index| {
+                        let parameter = &slots[index];
+                        let ty = &selected[index];
+                        quote!(#parameter: &#call_lifetime #ty)
+                    })
+                    .collect::<Vec<_>>();
+                let context_fields = arguments.iter().map(|&index| &slots[index]);
+                let context_slot_parameters = arguments
+                    .iter()
+                    .map(|&index| format_ident!("__ContextSlot{index}"))
+                    .collect::<Vec<_>>();
+                let context_slot_fields =
+                    arguments
+                        .iter()
+                        .zip(&context_slot_parameters)
+                        .map(|(&index, parameter)| {
+                            let field = &slots[index];
+                            quote!(#field: &#call_lifetime #parameter)
+                        });
+                let context_slot_arguments = arguments.iter().map(|&index| &selected[index]);
+                let context_type = quote!(#context<#call_lifetime, #(#context_slot_arguments,)* #child_tuple, fn() -> (#(#marker_types,)*)>);
                 let call_arguments = arguments.iter().map(|&index| {
                     let field = &fields[index];
                     quote!(&self.#field)
@@ -814,10 +861,24 @@ pub(crate) fn expand(
                     })
                 };
                 let (impl_generics, _, where_clause) = generics.split_for_impl();
+                let (context_parameters, _, context_where) = helper_generics.split_for_impl();
                 constructor_functions.push(quote!(
-                    pub(super) fn #helper #helper_generics (#(#helper_parameters,)* __systasis_children: &#call_lifetime #child_tuple) -> #helper_output #where_clause {
-                        let #capture_root = #slot.captures();
-                        #result
+                    // Keyword-based field access cannot be shadowed by imports
+                    // within the caller's constructor body.
+                    struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
+                        #(#context_slot_fields,)*
+                        _children: &#call_lifetime __ContextChildren,
+                        _marker: ::core::marker::PhantomData<__ContextMarker>,
+                    }
+                    impl #context_parameters #context_type #context_where {
+                        fn invoke(self) -> #helper_output {
+                            let #capture_root = self.#slot.captures();
+                            #result
+                        }
+                    }
+                    pub(super) fn #helper #context_parameters (#(#helper_parameters,)* #children_ident: &#call_lifetime #child_tuple) -> #helper_output #context_where {
+                        let context: #context_type = #context { #(#context_fields,)* _children: #children_ident, _marker: ::core::marker::PhantomData };
+                        context.invoke()
                     }
                 ));
                 implementations.push(quote!(
@@ -1181,12 +1242,12 @@ pub(crate) fn expand(
             #(#policy_checks)*
             #(#validation_calls)*
             #(#capture_initialization)*
-            let __systasis_children = (#(#child_values,)*);
+            let #children_ident = (#(#child_values,)*);
             let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
             #(#initialization)*
             let #systasis_result_ident=match #systasis_error_ident {
                 ::core::option::Option::None=>{
-                    let container: #construction_type = AppContainer {#(#values,)*_children: __systasis_children, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
+                    let container: #construction_type = AppContainer {#(#values,)*_children: #children_ident, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
                     ::core::result::Result::Ok(container)
                 },
                 ::core::option::Option::Some(error)=>{#(::systasis::__private::discard(#reverse);)* ::core::result::Result::Err(error)},
@@ -1213,4 +1274,53 @@ pub(crate) fn expand(
         }
     }
     ::core::result::Result::Ok(quote!(#definitions #function))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_context_does_not_add_bounds_on_unused_original_generics() {
+        let function = parse_quote! {
+            fn example<'unused, T>(_: ::core::marker::PhantomData<fn() -> (*const T, &'unused ())>) {
+                let Ok(container) = systasis_container! {
+                    register_type_with!(usize as IValue, || 7);
+                }.build();
+            }
+        };
+        let file: File = syn::parse2(expand(function, false, &[]).unwrap()).unwrap();
+        let module = file
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Mod(module) if module.ident == "__systasis_injected" => Some(module),
+                _ => None,
+            })
+            .unwrap();
+        let helper = module
+            .content
+            .as_ref()
+            .unwrap()
+            .1
+            .iter()
+            .find_map(|item| match item {
+                Item::Fn(function) if function.sig.ident == "construct_0" => Some(function),
+                _ => None,
+            })
+            .unwrap();
+        let predicates = &helper
+            .sig
+            .generics
+            .where_clause
+            .as_ref()
+            .unwrap()
+            .predicates;
+        assert!(!predicates.iter().any(|predicate| match predicate {
+            WherePredicate::Lifetime(predicate) => predicate.lifetime.ident == "unused",
+            WherePredicate::Type(predicate) =>
+                matches!(&predicate.bounded_ty, Type::Path(path) if path.path.is_ident("T")),
+            _ => false,
+        }));
+    }
 }

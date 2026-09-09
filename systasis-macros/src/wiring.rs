@@ -6,6 +6,12 @@ use quote::format_ident;
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{Expr, parse_quote};
 
+/// Separate build-time storage from caller locals. Constructor queries use
+/// `self._children` because glob imports can shadow even mixed-site bindings.
+pub(crate) fn children_ident() -> syn::Ident {
+    format_ident!("__systasis_children", span = Span::mixed_site())
+}
+
 pub(crate) fn transitive(
     dependencies: &[BTreeSet<usize>],
     order: &[usize],
@@ -34,12 +40,13 @@ pub(crate) fn replacements(
     turbofish: &Option<proc_macro2::TokenStream>,
     dynamic: &[Option<syn::Type>],
 ) -> BTreeMap<(usize, String), Expr> {
+    let children = children_ident();
     let slot = |index| {
         let name = format_ident!("__systasis_slot_{index}", span = Span::mixed_site());
         if building {
             parse_quote!(#name.as_ref().unwrap_or_else(|| ::core::unreachable!("dependency layer completed before this initializer")))
         } else {
-            parse_quote!(#name)
+            parse_quote!(self.#name)
         }
     };
     let mut result = BTreeMap::new();
@@ -55,10 +62,12 @@ pub(crate) fn replacements(
             } else {
                 "resolve"
             };
-            result.insert(
-                (index, method.into()),
-                parse_quote!(__systasis_injected::#function #turbofish (#(#arguments,)* &__systasis_children)),
-            );
+            let call = if building {
+                parse_quote!(self::__systasis_injected::#function #turbofish (#(#arguments,)* &#children))
+            } else {
+                parse_quote!(self::__systasis_injected::#function #turbofish (#(#arguments,)* self._children))
+            };
+            result.insert((index, method.into()), call);
         } else {
             if registration.dynamic {
                 let owner: Expr = slot(index);

@@ -13,6 +13,7 @@ pub(crate) struct Queries<'a> {
     pub error: Option<Error>,
     pub borrowed: Vec<(usize, Type)>,
     pub calls: Vec<Call>,
+    pub in_constructor: bool,
 }
 
 #[derive(Clone)]
@@ -160,7 +161,13 @@ impl VisitMut for Queries<'_> {
                 } else {
                     format_ident!("Resolve")
                 };
-                *expression = parse_quote!(::systasis::scoped::#dispatch::<#path, #key, ::systasis::scoped::op::#operation>::resolve(&__systasis_children.#position));
+                let children: Expr = if self.in_constructor {
+                    parse_quote!(self._children)
+                } else {
+                    let name = crate::wiring::children_ident();
+                    parse_quote!(#name)
+                };
+                *expression = parse_quote!(::systasis::scoped::#dispatch::<#path, #key, ::systasis::scoped::op::#operation>::resolve(&#children.#position));
                 return;
             }
         }
@@ -219,6 +226,7 @@ mod tests {
                 error: None,
                 borrowed: Vec::new(),
                 calls: Vec::new(),
+                in_constructor: false,
             };
             queries.visit_expr_mut(&mut expression);
             assert_eq!(
