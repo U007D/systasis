@@ -150,11 +150,20 @@ systasis = {{ path = {}, default-features = false }}
 pub mod child {
     pub trait IValue {}
     impl IValue for u32 {}
+    trait IFresh {}
+    impl IFresh for u32 {}
+    type Seed = (u32, bool);
     #[systasis::container]
     pub fn run(visit: impl FnOnce(&AppContainer)) {
+        #[cfg(all())]
+        let (seed, _): Seed = (42, false);
+        #[cfg(any())]
+        let seed: Missing = missing;
         let Ok(container) = systasis::systasis_container! {
             register_value!(41u32: u32 as IValue);
+            register_type_with!(u32 as IFresh, || seed);
         }.build();
+        assert_eq!(container.resolve_i_fresh(), 42);
         visit(container);
     }
 }
@@ -163,6 +172,12 @@ pub mod outer {
     struct Stored(u32);
     trait IStored {}
     impl IStored for Stored {}
+    trait ICheck {}
+    impl ICheck for u32 {}
+    mod imported {
+        #[allow(non_upper_case_globals)]
+        pub const __systasis_children: u8 = 0;
+    }
     fn named_scope(scope: &primary::SubContainer<'_>) -> u32 { scope.resolve_i_value() }
     fn named_container(container: &AppContainer<'_>) -> u32 { named_scope(container.primary()) }
     #[systasis::container]
@@ -170,7 +185,13 @@ pub mod outer {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &Alias);
             register_value!(Stored(resolve_from!(IValue, primary) + 1): Stored as IStored);
+            register_type_with!(u32 as ICheck, || {
+                use imported::*;
+                let _authored = __systasis_children;
+                resolve_from!(IFresh, primary)
+            });
         }.build();
+        assert_eq!(container.resolve_i_check(), 42);
         assert_eq!(named_container(container), 41);
         assert!(core::ptr::eq(container.primary(), container.primary()));
         let guard = container.try_resolve_i_stored_ref().unwrap();

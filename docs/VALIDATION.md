@@ -33,11 +33,14 @@ enabled invalid-predicate errors, erased helper-name collisions, sibling modules
 and nameable AppContainer signatures. No compiler invocation is added to normal
 container expansion; the extra rustc calls belong to the test driver.
 
-Array/slice alias projections (6864c69/c522b6b) pass eight tests per backend, covering
+Array/slice alias projections (6864c69/c522b6b/11856e9) pass nine tests per backend, covering
 generic array elements, concrete owned/borrowed array remainders, shared/mutable
 slice remainders, exact drops and uncaptured element reuse. A named generic
 container returns the same borrowed slice by pointer identity. Unsupported
 alias shapes remain listed in [capture limits](CAPTURE_LIMITS.md).
+The mutable Cell-array tail retains Send without requiring Sync; a shared-tail
+compiler fixture fails for the expected Cell: !Sync reason. Both cases retain
+the authored borrow mode rather than changing it to satisfy the assertion.
 
 Closure-local glob checks (361cee5/9eaa1fb) cover imported constants/functions,
 sibling captures, returned guards and precise ambiguity diagnostics. Eight tests
@@ -49,6 +52,12 @@ binding named like generated child storage, and unrelated original generics.
 A generated-AST check prevents adding blanket outlives bounds to those generics;
 only the referenced storage types must outlive the call. The thirteen allocation
 checks still pass per backend after this safe generated-code change.
+
+Extracted-package consumers now combine configured local bindings, private
+tuple-alias captures, named child scopes and a constructor query under a glob
+import. Both std and no_std consumers compile and execute. These are local
+archive checks with the unpublished macro dependency patched to its extracted
+package; no registry publication or registry availability is implied.
 
 Async guard checks (cc4ffe3/2603e3d) use safe manual polling without an executor
 dependency. Both backends verify shared/exclusive contention while suspended,
