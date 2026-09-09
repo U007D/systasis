@@ -6,6 +6,10 @@
 
 pub mod app_container;
 
+/// Type-level support for generated child descriptors; not a stable manual API.
+#[doc(hidden)]
+pub mod scoped;
+
 mod fallible;
 pub use fallible::Fallible;
 
