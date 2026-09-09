@@ -12,6 +12,8 @@ The generated path supports stored values, fresh Default and custom constructors
 dependency injection, concrete registered-type lookup, overrides, dependency
 layers, checked access, cloning, multi-trait groups, local namespaces, explicit dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
+The [usage guide](docs/USAGE.md) is also the crate-level API documentation;
+its examples compile and run as doctests.
 Services and their constructors remain ordinary generic Rust; dependencies are
 transferred by value, without hidden wrappers or field rewriting.
 
@@ -42,6 +44,8 @@ child's ownership exclusions retained. Nested accessors and `_from` queries
 follow child paths, for example `try_resolve_ref_from!(IValue, branch::primary)`.
 Children are built and owned independently; composition does not transfer them.
 See [nested examples](tests/nested_children.rs) and [child namespaces](tests/child_namespaces.rs).
+The runnable [scope-injection example](examples/scopes.rs) passes a named child
+scope to a function without a resolver callback or the outer container.
 Container aliases and import renames work. Resolver arguments identify registrations
 only inside the selected container or subcontainer. No trait import is required
 for a child query; unrelated surrounding names do not affect it. A missing
