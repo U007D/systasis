@@ -75,3 +75,42 @@ mod let_else {
         panic!("failed build must execute the caller's else branch");
     }
 }
+
+mod propagated {
+    trait IValue {}
+    impl IValue for String {}
+
+    #[systasis::container]
+    fn run(fail: bool) -> Result<String, &'static str> {
+        let container = systasis::systasis_container! {
+            register_value!(
+                if fail { Err("initialization failed")? } else { String::from("ready") }:
+                String as IValue
+            );
+        }
+        .build::<&'static str>()?;
+        Ok(container.try_resolve_i_value().expect("value is available"))
+    }
+
+    #[test]
+    fn question_mark_propagates_failure_and_preserves_owner_on_success() {
+        assert_eq!(run(false), Ok(String::from("ready")));
+        assert_eq!(run(true), Err("initialization failed"));
+    }
+}
+
+mod chained {
+    trait IValue {}
+    impl IValue for String {}
+
+    #[systasis::container]
+    #[test]
+    fn result_methods_keep_the_container_owner_in_scope() {
+        let container = (systasis::systasis_container! {
+            register_value!(String::from("ready"): String as IValue);
+        }
+        .build::<()>())
+        .expect("infallible initialization");
+        assert_eq!(&*container.try_resolve_i_value_ref().unwrap(), "ready");
+    }
+}

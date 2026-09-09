@@ -6,6 +6,24 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::{ext::IdentExt, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
 struct CallLifetime(Lifetime);
+// Follow only the receiver/postfix chain, not unrelated arguments or blocks.
+// The owner's statements must remain in the enclosing scope; only the build
+// expression is replaced with its published Result.
+fn build_expression(expression: &mut Expr) -> Option<&mut Expr> {
+    let is_build = matches!(expression, Expr::MethodCall(call)
+        if call.method == "build" && matches!(&*call.receiver, Expr::Macro(registry)
+            if registry.mac.path.segments.last().is_some_and(|segment| segment.ident == "systasis_container")));
+    if is_build {
+        return Some(expression);
+    }
+    match expression {
+        Expr::Try(value) => build_expression(&mut value.expr),
+        Expr::Paren(value) => build_expression(&mut value.expr),
+        Expr::Group(value) => build_expression(&mut value.expr),
+        Expr::MethodCall(value) => build_expression(&mut value.receiver),
+        _ => None,
+    }
+}
 impl VisitMut for CallLifetime {
     fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
         if lifetime.ident == "_" {
@@ -76,10 +94,15 @@ pub(crate) fn expand(
             statements.push(statement.clone());
             continue;
         };
-        let Expr::MethodCall(build) = &*initializer.expr else {
+        let mut published_expression = *initializer.expr.clone();
+        let Some(expression) = build_expression(&mut published_expression) else {
             statements.push(statement.clone());
             continue;
         };
+        let Expr::MethodCall(build) = expression.clone() else {
+            unreachable!("build_expression only selects a build method call");
+        };
+        *expression = parse_quote!(#systasis_published_ident);
         let Expr::Macro(registry) = &*build.receiver else {
             statements.push(statement.clone());
             continue;
@@ -97,7 +120,7 @@ pub(crate) fn expand(
         }
         if emitted.is_some() {
             return Err(Error::new_spanned(
-                build,
+                &build,
                 "only one container definition per function is currently supported",
             ));
         }
@@ -108,7 +131,7 @@ pub(crate) fn expand(
                 .is_some_and(|args| args.args.len() != 1)
         {
             return Err(Error::new_spanned(
-                build,
+                &build,
                 "build accepts no arguments and at most one error type",
             ));
         }
@@ -546,7 +569,7 @@ pub(crate) fn expand(
                 _=>::core::unreachable!("split result has exactly one occupied branch"),
             };
             #(#checks)*
-            let #pattern = #systasis_published_ident #otherwise;
+            let #pattern = #published_expression #otherwise;
         }))?;
         statements.extend(generated.stmts);
     }
