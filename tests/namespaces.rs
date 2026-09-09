@@ -206,3 +206,17 @@ mod copy_dyn {
         assert_eq!(container.resolve_i_value(), 42);
     }
 }
+mod raw_interface {
+    trait IValue {}
+    impl IValue for u32 {}
+
+    #[systasis::container]
+    #[test]
+    fn raw_interface_spelling_does_not_change_identity() {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(1: u32 as r#IValue in r#source);
+            register_value!(resolve_from!(IValue, source) + 1: resolve_type_from!(r#IValue, source) as IValue);
+        }.build();
+        assert_eq!(container.resolve_i_value(), 2);
+    }
+}
