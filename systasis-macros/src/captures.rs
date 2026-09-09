@@ -413,6 +413,7 @@ pub(crate) fn prepare(
         bindings,
         capture_root,
         scopes: vec![BTreeSet::new()],
+        glob_scopes: vec![None],
         captures: Vec::new(),
         error: None,
     };
@@ -460,6 +461,15 @@ fn import_roots(tree: &syn::UseTree) -> Vec<String> {
         syn::UseTree::Rename(binding) => vec![name(&binding.ident)],
         syn::UseTree::Group(group) => group.items.iter().flat_map(import_roots).collect(),
         syn::UseTree::Glob(_) => Vec::new(),
+    }
+}
+
+fn contains_glob(tree: &syn::UseTree) -> bool {
+    match tree {
+        syn::UseTree::Glob(_) => true,
+        syn::UseTree::Path(path) => contains_glob(&path.tree),
+        syn::UseTree::Group(group) => group.items.iter().any(contains_glob),
+        _ => false,
     }
 }
 
@@ -511,6 +521,7 @@ struct Visitor<'a> {
     bindings: &'a Bindings,
     capture_root: &'a Ident,
     scopes: Vec<BTreeSet<String>>,
+    glob_scopes: Vec<Option<proc_macro2::TokenStream>>,
     captures: Vec<(Ident, Type)>,
     error: Option<syn::Error>,
 }
@@ -554,6 +565,10 @@ impl Visitor<'_> {
             return None;
         }
         let annotation = self.bindings.types.get(&key)?;
+        if let Some(import) = self.glob_scopes.iter().flatten().last() {
+            self.reject(import.clone(), "constructor capture analysis cannot determine whether this glob import shadows the referenced outer binding");
+            return None;
+        }
         let Some(ty) = annotation else {
             self.reject(ident, "captured constructor bindings require an explicit type annotation from which the binding's type can be determined");
             return None;
@@ -579,15 +594,18 @@ impl VisitMut for Visitor<'_> {
 
     fn visit_expr_closure_mut(&mut self, closure: &mut ExprClosure) {
         self.scopes.push(BTreeSet::new());
+        self.glob_scopes.push(None);
         for input in &closure.inputs {
             self.bind(input);
         }
         self.visit_expr_mut(&mut closure.body);
         self.scopes.pop();
+        self.glob_scopes.pop();
     }
 
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         let mut scope = BTreeSet::new();
+        let mut glob = None;
         // Block items are in scope throughout the block, before their textual
         // declaration. Imports need Rust name resolution to identify namespaces.
         for statement in &block.stmts {
@@ -599,7 +617,9 @@ impl VisitMut for Visitor<'_> {
                     let mut imported = BTreeSet::new();
                     // Block-local items move with the constructor body, unlike
                     // items in the enclosing configuration function.
-                    if !import_names(&import.tree, &mut imported)
+                    if contains_glob(&import.tree) {
+                        glob = Some(import.to_token_stream());
+                    } else if !import_names(&import.tree, &mut imported)
                         || imported
                             .iter()
                             .any(|name| self.bindings.types.contains_key(name))
@@ -618,6 +638,7 @@ impl VisitMut for Visitor<'_> {
             }
         }
         self.scopes.push(scope);
+        self.glob_scopes.push(glob);
         for statement in &mut block.stmts {
             match statement {
                 Stmt::Local(local) => {
@@ -638,6 +659,7 @@ impl VisitMut for Visitor<'_> {
             }
         }
         self.scopes.pop();
+        self.glob_scopes.pop();
     }
 
     fn visit_field_value_mut(&mut self, field: &mut syn::FieldValue) {
@@ -1035,6 +1057,40 @@ mod tests {
         let file: syn::File = syn::parse2(helpers.clone()).unwrap();
         assert!(file.items.iter().any(|item| matches!(item, Item::Impl(item) if matches!(&*item.self_ty, Type::Tuple(tuple) if tuple.elems.len() == 64))));
         assert!(!helpers.to_string().contains("PrivateAlias"));
+    }
+
+    #[test]
+    fn closure_globs_affect_only_their_lexical_scopes() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&parse_quote!(let outside: String = input;));
+        let plan = prepare(
+            &parse_quote!(|| {
+                let from_import = {
+                    use module::*;
+                    answer()
+                };
+                outside.len() + from_import
+            }),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert_eq!(capture_types(&plan), ["String"]);
+        let error = prepare(
+            &parse_quote!(|| {
+                use module::*;
+                { outside.len() }
+            }),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error
+                .to_string()
+                .contains("glob import shadows the referenced outer binding")
+        );
     }
 
     #[test]
