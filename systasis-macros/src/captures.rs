@@ -36,9 +36,9 @@ impl Bindings {
                 }
                 if let Item::Use(import) = item {
                     let mut names = BTreeSet::new();
-                    let absolute = import.leading_colon.is_some()
-                        || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate");
-                    if absolute
+                    let anchored = import.leading_colon.is_some()
+                        || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate" || path.ident == "self" || path.ident == "super");
+                    if anchored
                         && import_names(&import.tree, &mut names)
                         && names.iter().all(|name| !bindings.types.contains_key(name))
                     {
@@ -330,9 +330,9 @@ impl VisitMut for Visitor<'_> {
                 }
                 if let Item::Use(import) = item {
                     let mut imported = BTreeSet::new();
-                    let absolute = import.leading_colon.is_some()
-                        || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate");
-                    if !absolute
+                    let anchored = import.leading_colon.is_some()
+                        || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate" || path.ident == "self" || path.ident == "super");
+                    if !anchored
                         || !import_names(&import.tree, &mut imported)
                         || imported
                             .iter()
@@ -363,7 +363,10 @@ impl VisitMut for Visitor<'_> {
                     }
                     self.bind(&local.pat);
                 }
-                Stmt::Macro(invocation) => self.reject(invocation, "constructor capture analysis cannot inspect opaque macros"),
+                Stmt::Macro(invocation) => self.reject(
+                    invocation,
+                    "constructor capture analysis cannot inspect opaque macros",
+                ),
                 Stmt::Expr(expression, _) => self.visit_expr_mut(expression),
                 Stmt::Item(_) => {}
             }
@@ -393,8 +396,14 @@ impl VisitMut for Visitor<'_> {
             return;
         }
         match expression {
-            Expr::Macro(invocation) => self.reject(invocation, "constructor capture analysis cannot inspect opaque macros"),
-            Expr::Verbatim(tokens) => self.reject(tokens, "constructor capture analysis cannot inspect this syntax"),
+            Expr::Macro(invocation) => self.reject(
+                invocation,
+                "constructor capture analysis cannot inspect opaque macros",
+            ),
+            Expr::Verbatim(tokens) => self.reject(
+                tokens,
+                "constructor capture analysis cannot inspect this syntax",
+            ),
             Expr::ForLoop(loop_) => {
                 self.visit_expr_mut(&mut loop_.expr);
                 self.scopes.push(BTreeSet::new());

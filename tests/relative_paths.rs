@@ -24,9 +24,14 @@ mod configured {
     where
         super::Value<T>: Copy,
     {
+        use super::Value as Input;
+        let captured: Input<u32> = super::Value(17);
         let Ok(container) = systasis::systasis_container! {
             register_value!(super::Value(value): super::Value<T> as super::IValue);
-            register_type_with!(super::Value<u32> as super::IFresh, || super::make(17));
+            register_type_with!(super::Value<u32> as super::IFresh, move || {
+                use super::make as construct;
+                construct(captured.0)
+            });
         }
         .build();
         let _: super::Value<T> = container.resolve_i_value();
