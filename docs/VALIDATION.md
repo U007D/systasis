@@ -26,6 +26,18 @@ generated regression retain invalid child predicates under disabled blocks.
 Discarded conditional array elements and match arms remain rustc-owned.
 This verifies the bounded support in [capture limits](CAPTURE_LIMITS.md), not
 arbitrary configuration inside signatures or opaque registration tokens.
+Constant-depth selection (50609ee) passes a Rust-driver fixture with 256
+nested-conditional bindings and recursion_limit = 64 on both backends. It also
+checks disabled malformed/invalid predicates against ordinary Rust controls,
+enabled invalid-predicate errors, erased helper-name collisions, sibling modules
+and nameable AppContainer signatures. No compiler invocation is added to normal
+container expansion; the extra rustc calls belong to the test driver.
+
+Array/slice alias projections (6864c69) pass five tests per backend, covering
+generic array elements, concrete owned array remainders, generic shared/mutable
+slice remainders, exact drops and uncaptured element reuse. A named generic
+container returns the same borrowed slice by pointer identity. Unsupported
+alias shapes remain listed in [capture limits](CAPTURE_LIMITS.md).
 
 Async guard checks (cc4ffe3/2603e3d) use safe manual polling without an executor
 dependency. Both backends verify shared/exclusive contention while suspended,

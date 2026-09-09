@@ -44,6 +44,12 @@ Exact-arity tuple aliases are supported, including nested reference layers and
 private capture types. Generated capture records retain ordinary typed fields;
 no extra generic parameter or wrapper is required in caller code. See
 [tuple-alias regressions](../tests/capture_tuple_aliases.rs).
+Sequence projections also support generic array elements, concrete owned
+array-alias remainders, and generic shared/mutable slice-alias remainders.
+They retain the exact array or slice type rather than coercing arrays to slices.
+Borrowed/generic array remainder aliases and argument-free aliases hiding slices
+remain unresolved in this implementation. See
+[sequence-alias regressions](../tests/capture_sequence_aliases.rs).
 Struct-field types and tuple aliases with unknown-arity rest patterns remain
 unresolved. See [capture-pattern regressions](../tests/capture_patterns.rs).
 Explicit imports are preserved where their names do not conflict with capture
@@ -58,7 +64,8 @@ constructor ownership on both backends. Other conditional expressions, match
 arms and struct-literal fields remain rustc-owned: selection does not descend
 through their conditional boundaries. Opaque macro bodies, signature and
 registration configuration still require separate handling; this is not general
-cfg support. Long sequences of selected statements currently require one macro
-re-entry per condition; constant-depth selection is being investigated. See
+cfg support. A temporary helper lets rustc select all conditions before capture
+analysis; expansion depth does not increase per selected statement. The helper
+is erased after emitting the function and module-scope container. See
 [configured-capture regressions](../tests/configured_captures.rs).
 These are implementation limitations, not changes to the agreed requirements.
