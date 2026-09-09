@@ -2,6 +2,23 @@
 
 ## Current generated-container checks
 
+Child composition (0f23293/cda2e83) supports named shared descriptors, aliases,
+nested accessors and `_from` expression/type queries through child namespaces.
+Tests cover inherited ownership exclusions, direct and transitive consuming
+factories, independent siblings and non-static child lifetimes. The full std
+all-feature and no_std unchecked-enabled suites pass; both Clippy configurations
+pass. The subsequently added `child_unchecked` test passes natively and under
+Miri on both backends, checking guard retention, contention and consumption.
+No new dependency or unsafe storage mechanism was introduced. Cross-crate child
+composition and semantic equivalence of differently spelled interface keys need
+further validation; do not infer them from the module-level alias tests.
+
+Reproduce the new Miri check with `cargo +nightly miri test --offline
+--features resolve_unchecked --test child_unchecked`, adding
+`--no-default-features` for spin. Compiler-negative tests run natively.
+
+The following entries record earlier revisions rather than cumulative counts.
+
 Unchecked generation (694a7a4) passes four behavior tests natively and under Miri
 on both backends. Feature-enabled compiler cases verify unsafe context, Copy/fresh
 method absence and constructor-borrow ownership exclusion. Both feature-enabled
@@ -11,7 +28,7 @@ before that final regression, which also passes its focused std check.
 
 Local namespaces (58bc418/c577507) pass full workspace std/no_std tests and
 both Clippy configurations. Coverage includes seven public behavior tests,
-two parser tests and ten compiler cases. Child composition is not yet implemented.
+two parser tests and ten compiler cases. That revision did not implement child composition.
 Ordinary explicit constructor imports (ac9dc3b) pass seventeen capture unit
 tests and eleven constructor tests on both backends; function-local module
 imports remain rejected because those modules are not hoisted.

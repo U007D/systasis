@@ -35,11 +35,22 @@ Local namespace queries use the documented `_from` forms and public methods use
 `_in_namespace` suffixes; omitted and explicit `default` select the same registrations.
 See [namespace tests](tests/namespaces.rs).
 
+Named child containers use `register_container!(primary: &ChildAlias)`.
+`container.primary()` returns a reference to `primary::SubContainer`, with the
+child's ownership exclusions retained. Nested accessors and `_from` queries
+follow child paths, for example `try_resolve_ref_from!(IValue, branch::primary)`.
+Children are built and owned independently; composition does not transfer them.
+See [nested examples](tests/nested_children.rs) and [child namespaces](tests/child_namespaces.rs).
+Container aliases and import renames work. Interface lookup keys currently
+normalize source spelling, not semantic equivalence of differently spelled
+trait re-exports or generic instantiations; that remains an implementation gap.
+
 The default-off `resolve_unchecked` feature adds unsafe nonblocking accessors
 for consumable values. Guards and ownership exclusions are preserved; see
 [safety contracts](docs/SAFETY.md) and [examples under test](tests/unchecked.rs).
 
-Still pending: subcontainer composition and hardware validation. Container-stored services retaining internal borrows are
+Still pending: remaining identity/capture cases, allocation/performance checks,
+packaged-consumer checks and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.
 
