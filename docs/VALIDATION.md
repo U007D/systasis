@@ -2,6 +2,14 @@
 
 ## Current generated-container checks
 
+At 020f06e, the full stable workspace suite passes in four host configurations:
+default std, std with all features, no_std, and no_std with
+resolve_unchecked,experimental-hardware. Both feature-enabled all-targets Clippy
+runs pass with warnings denied. Rustdoc and the quick_start/scopes examples pass
+on both backends. The ignored package and release-runtime drivers were run
+separately on both backends. This records tested configurations, not completion
+of the capture cases still listed in CAPTURE_LIMITS.md.
+
 The crate-level [usage guide](USAGE.md), included by src/lib.rs, now has three
 executable doctests: stored Copy/non-Copy access with a lazy captured constructor,
 an exactly typed fallible constructor, and owned dependency injection. All three
