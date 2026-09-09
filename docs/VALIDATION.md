@@ -2,6 +2,16 @@
 
 ## Current generated-container checks
 
+`tests/generic_cross_crate.rs` compiles and executes downstream composition through
+generic aliases and import renames, including non-static child references and
+nameable child scopes, on std/no_std. Its separate current-gap fixture records
+that `[T; N]: Copy` is not recognized for an equivalent `resolve_type_from!`
+GAT projection used as the registered type: the generator reports indirectly
+known Copy (`E0277`). Positive cases use `[T; N]` as the registered type and the
+query inside the initializer. This is an implementation limitation, not an
+accepted new caller obligation; the negative fixture should become positive
+when projection-bound matching is implemented.
+
 Child composition (0f23293/cda2e83) supports named shared descriptors, aliases,
 nested accessors and `_from` expression/type queries through child namespaces.
 Tests cover inherited ownership exclusions, direct and transitive consuming
