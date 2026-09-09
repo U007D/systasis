@@ -23,6 +23,35 @@ pub(crate) struct Call {
     pub operation: Ident,
     pub unchecked: bool,
 }
+
+/// Preserve declaration-site policy for an exact child value-type projection.
+/// Wrappers around the projected type must undergo their own Copy selection.
+pub(crate) fn projected_policy(ty: &Type, local: bool) -> Option<proc_macro2::TokenStream> {
+    let Type::Path(ty) = ty else {
+        return None;
+    };
+    let qualified = ty.qself.as_ref()?;
+    let segments = &ty.path.segments;
+    if segments.len() != 4
+        || segments[0].ident != "systasis"
+        || segments[1].ident != "scoped"
+        || segments[2].ident != "Registered"
+        || segments[3].ident != "Value"
+    {
+        return None;
+    }
+    let PathArguments::AngleBracketed(arguments) = &segments[2].arguments else {
+        return None;
+    };
+    let mut arguments = arguments.args.iter();
+    let path = arguments.next()?;
+    let key = arguments.next()?;
+    if arguments.next().is_some() {
+        return None;
+    }
+    let owner = &qualified.ty;
+    Some(quote!(<#owner as ::systasis::scoped::RegistrationPolicy<#path, #key, #local>>::Policy))
+}
 impl Queries<'_> {
     fn target(&mut self, mac: &Macro) -> Option<(usize, InterfaceGroup, bool, Type)> {
         let name = mac.path.get_ident()?.to_string();
@@ -72,32 +101,6 @@ impl Queries<'_> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn child_paths_do_not_silently_discard_generic_arguments_or_roots() {
-        let children = [syn::parse_str("primary: &Child").unwrap()];
-        for source in [
-            "resolve_from!(IValue, primary::<u32>)",
-            "resolve_from!(IValue, ::primary)",
-        ] {
-            let mut expression: Expr = syn::parse_str(source).unwrap();
-            let mut queries = Queries {
-                children: &children,
-                error: None,
-                borrowed: Vec::new(),
-                calls: Vec::new(),
-            };
-            queries.visit_expr_mut(&mut expression);
-            assert_eq!(
-                queries.error.unwrap().to_string(),
-                "child lookup paths contain only child or namespace names"
-            );
-        }
-    }
-}
 impl VisitMut for Queries<'_> {
     fn visit_expr_mut(&mut self, expression: &mut Expr) {
         if let Expr::Macro(query) = expression {
@@ -179,5 +182,49 @@ impl VisitMut for Queries<'_> {
             return;
         }
         visit_mut::visit_type_mut(self, ty);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_exact_value_projections_inherit_child_policy() {
+        let projected: Type =
+            parse_quote!(<Child<T> as ::systasis::scoped::Registered<Path, Key>>::Value<'_>);
+        let selection = projected_policy(&projected, true).unwrap();
+        let expected =
+            quote!(<Child<T> as ::systasis::scoped::RegistrationPolicy<Path, Key, true>>::Policy);
+        assert_eq!(selection.to_string(), expected.to_string());
+        for other in [
+            parse_quote!(Option<#projected>),
+            parse_quote!(&#projected),
+            parse_quote!(<Child<T> as ::systasis::scoped::DynRegistered<Path, Key>>::Target<'_>),
+        ] {
+            assert!(projected_policy(&other, false).is_none());
+        }
+    }
+
+    #[test]
+    fn child_paths_do_not_silently_discard_generic_arguments_or_roots() {
+        let children = [syn::parse_str("primary: &Child").unwrap()];
+        for source in [
+            "resolve_from!(IValue, primary::<u32>)",
+            "resolve_from!(IValue, ::primary)",
+        ] {
+            let mut expression: Expr = syn::parse_str(source).unwrap();
+            let mut queries = Queries {
+                children: &children,
+                error: None,
+                borrowed: Vec::new(),
+                calls: Vec::new(),
+            };
+            queries.visit_expr_mut(&mut expression);
+            assert_eq!(
+                queries.error.unwrap().to_string(),
+                "child lookup paths contain only child or namespace names"
+            );
+        }
     }
 }

@@ -44,6 +44,11 @@ pub(crate) fn namespaces(
             ));
         }
         emitted.push(quote!(
+            impl<#(#parameters,)* __Key, const __LOCAL: bool>
+                ::systasis::scoped::RegistrationPolicy<#there, __Key, __LOCAL> for Generated<#(#parameters),*>
+            where Self: ::systasis::scoped::RegistrationPolicy<#here, __Key, __LOCAL> {
+                type Policy = <Self as ::systasis::scoped::RegistrationPolicy<#here, __Key, __LOCAL>>::Policy;
+            }
             impl<#(#parameters,)* __Key> ::systasis::scoped::Borrowed<#there, __Key> for Generated<#(#parameters),*>
             where Self: ::systasis::scoped::Borrowed<#here, __Key> {
                 type Mask = <Self as ::systasis::scoped::Borrowed<#here, __Key>>::Mask;
@@ -92,6 +97,28 @@ pub(crate) fn forwarding(
         .collect::<Vec<_>>();
     let mut emitted = Vec::new();
     emitted.push(quote!(
+        pub trait __ChildRegistrationPolicy<__ChildKey, __Rest, __Key, const __LOCAL: bool> {
+            type Policy;
+        }
+        impl<
+            '__backing,
+            __Container: ?Sized,
+            __Restrictions,
+            __Children,
+            __Path,
+            __Key,
+            const __LOCAL: bool,
+        > ::systasis::scoped::RegistrationPolicy<__Path, __Key, __LOCAL>
+            for __SystasisScope<'__backing, __Container, __Restrictions, __Children>
+        where
+            __Container: ::systasis::scoped::RegistrationPolicy<__Path, __Key, __LOCAL>,
+        {
+            type Policy = <__Container as ::systasis::scoped::RegistrationPolicy<
+                __Path,
+                __Key,
+                __LOCAL,
+            >>::Policy;
+        }
         pub trait __ChildBorrowed<__ChildKey, __Rest, __Key> {
             type Mask;
         }
@@ -108,6 +135,17 @@ pub(crate) fn forwarding(
         let child_key = crate::scopegen::key(&child.name.unraw().to_string());
         let child_parameter = &child_parameters[index];
         emitted.push(quote!(
+            impl<#(#child_parameters,)* __Rest, __Key, const __LOCAL: bool>
+                __ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL> for (#(#child_parameters,)*)
+            where #child_parameter: ::systasis::scoped::RegistrationPolicy<__Rest, __Key, __LOCAL> {
+                type Policy = <#child_parameter as ::systasis::scoped::RegistrationPolicy<__Rest, __Key, __LOCAL>>::Policy;
+            }
+            impl<#(#parameters,)* __Rest, __Key, const __LOCAL: bool>
+                ::systasis::scoped::RegistrationPolicy<::systasis::scoped::There<#child_key, __Rest>, __Key, __LOCAL>
+                for Generated<#(#parameters),*>
+            where #tuple_parameter: __ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL> {
+                type Policy = <#tuple_parameter as __ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL>>::Policy;
+            }
             impl<#(#child_parameters,)* __Rest, __Key> __ChildBorrowed<#child_key, __Rest, __Key>
                 for (#(#child_parameters,)*)
             where #child_parameter: ::systasis::scoped::Borrowed<__Rest, __Key> {
@@ -229,9 +267,9 @@ mod tests {
         let emitted = namespaces(&parameters, &registrations);
         let parsed: syn::File = syn::parse2(emitted).unwrap();
         let expected_per_namespace = if cfg!(feature = "resolve_unchecked") {
-            6
+            7
         } else {
-            5
+            6
         };
         assert_eq!(parsed.items.len(), 2 * expected_per_namespace);
     }

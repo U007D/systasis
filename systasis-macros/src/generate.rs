@@ -443,6 +443,7 @@ pub(crate) fn expand(
             .collect::<Vec<_>>();
         let mut constants = Vec::new();
         let mut policies = Vec::new();
+        let mut alias_policies = Vec::new();
         let mut policy_checks = Vec::new();
         let mut lifetimes = Lifetimes(Vec::new());
         for child in &mut children {
@@ -455,11 +456,18 @@ pub(crate) fn expand(
         for (i, registration) in registrations.iter_mut().enumerate() {
             let original = &registration.ty;
             let flag = &flags[i];
+            let mut projected = false;
             if crate::generic_policy::depends_on_generics(original, original_generics) {
                 let copy =
                     crate::generic_policy::has_explicit_copy_bound(original, original_generics);
-                policies.push(quote!(#copy));
-                if !copy && !registration.fresh {
+                let inherited = (!copy)
+                    .then(|| crate::child_queries::projected_policy(original, local_policy))
+                    .flatten();
+                projected = inherited.is_some();
+                policies.push(inherited.unwrap_or_else(
+                    || quote!(::systasis::__private::Policy<#copy, #local_policy>),
+                ));
+                if !copy && !projected && !registration.fresh {
                     policy_checks.push(quote!({
                         use ::systasis::__private::DetectCopy as _;
                         ::systasis::__private::verify_generic_fallback(
@@ -468,10 +476,20 @@ pub(crate) fn expand(
                     }));
                 }
             } else {
-                policies.push(quote!({__systasis_injected::#flag}));
+                policies.push(quote!(::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy>));
                 constants.push(quote!(pub(super) const #flag: bool = ::systasis::__private::Pick::<#original>::IS_COPY;));
             }
             lifetimes.visit_type_mut(&mut registration.ty);
+            alias_policies.push(if projected {
+                crate::child_queries::projected_policy(&registration.ty, local_policy)
+                    .unwrap_or_else(|| {
+                        unreachable!(
+                            "lifetime lifting preserves the child projection's path structure"
+                        )
+                    })
+            } else {
+                policies[i].clone()
+            });
         }
         let mut capture_types = BTreeMap::new();
         for (&index, factory) in &factories {
@@ -485,13 +503,21 @@ pub(crate) fn expand(
             }
             capture_types.insert(index, types);
         }
-        let mut selected = registrations.iter().enumerate().map(|(i,r)| {
-            let ty = &r.ty;
-            let policy = &policies[i];
-            if let Some(types) = capture_types.get(&i) { quote!(::systasis::__private::FactorySlot<(#(#types,)*)>) }
-            else if r.fresh { quote!(::systasis::__private::FreshSlot<#ty>) }
-            else { quote!(<::systasis::__private::Policy<#policy, #local_policy> as ::systasis::__private::Select<#ty>>::Slot) }
-        }).collect::<Vec<_>>();
+        let mut selected = registrations
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let ty = &r.ty;
+                let policy = &alias_policies[i];
+                if let Some(types) = capture_types.get(&i) {
+                    quote!(::systasis::__private::FactorySlot<(#(#types,)*)>)
+                } else if r.fresh {
+                    quote!(::systasis::__private::FreshSlot<#ty>)
+                } else {
+                    quote!(<#policy as ::systasis::__private::Select<#ty>>::Slot)
+                }
+            })
+            .collect::<Vec<_>>();
         let mut generics = function.sig.generics.clone();
         for lifetime in &lifetimes.0 {
             generics.params.insert(0, parse_quote!(#lifetime));
@@ -686,6 +712,7 @@ pub(crate) fn expand(
                 own_mask_key: scope_mask_key,
                 consumed_keys: &consumed_keys,
                 child_calls: &child_calls[i],
+                policy: &alias_policies[i],
             };
             scoped_implementations.push(crate::scopegen::value_metadata(
                 &scope_entry,
@@ -1046,7 +1073,7 @@ pub(crate) fn expand(
             } else {
                 quote!({
                     let __systasis_input: #ty = { #value };
-                    <::systasis::__private::Policy<#policy, #local_policy> as ::systasis::__private::Select<#ty>>::store(__systasis_input)
+                    <#policy as ::systasis::__private::Select<#ty>>::store(__systasis_input)
                 })
             };
             initialization.push(quote!(let (#slot,#systasis_error_ident)=match #systasis_error_ident {

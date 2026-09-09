@@ -201,6 +201,32 @@ pub(crate) fn value_metadata(
             type Mask = ::systasis::scoped::mask::Mask<#restriction, ::systasis::scoped::mask::Empty>;
         }
     );
+    let policy_metadata = if entry.registration.fresh {
+        let local = crate::dyn_targets::value_parameter(generics);
+        let mut policy_generics = generics.clone();
+        policy_generics
+            .params
+            .push(parse_quote!(const #local: bool));
+        let policy = entry.policy;
+        policy_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#policy: ::systasis::scoped::RebindPolicy<#local>));
+        let (parameters, _, constraints) = policy_generics.split_for_impl();
+        quote!(
+            impl #parameters ::systasis::scoped::RegistrationPolicy<#path, #key, #local> for Generated<#(#selected),*> #constraints {
+                type Policy = <#policy as ::systasis::scoped::RebindPolicy<#local>>::Policy;
+            }
+        )
+    } else {
+        let slot = &parameters[index];
+        quote!(
+            impl<#(#parameters,)* const __SystasisLocal: bool> ::systasis::scoped::RegistrationPolicy<#path, #key, __SystasisLocal> for Generated<#(#parameters),*>
+            where #slot: ::systasis::scoped::SlotPolicy<__SystasisLocal> {
+                type Policy = <#slot as ::systasis::scoped::SlotPolicy<__SystasisLocal>>::Policy;
+            }
+        )
+    };
     let registration = if entry.registration.constructor.is_some() {
         let root = parse_quote!(Generated<#(#selected),*>);
         let metadata = metadata_at(
@@ -239,7 +265,7 @@ pub(crate) fn value_metadata(
             }
         )
     });
-    quote!(#borrow_metadata #registration #dynamic)
+    quote!(#borrow_metadata #policy_metadata #registration #dynamic)
 }
 
 /// Actual consuming queries, propagated only through called constructors.
@@ -499,6 +525,7 @@ pub(crate) struct Entry<'a> {
     pub own_mask_key: &'a Type,
     pub consumed_keys: &'a [Type],
     pub child_calls: &'a [crate::child_queries::Call],
+    pub policy: &'a TokenStream,
 }
 
 /// Emit operation metadata, restricted inherent methods, and typed dispatch.
