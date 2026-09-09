@@ -29,49 +29,6 @@ fn compile(target: &Path, source: &Path, arguments: &[&str]) {
     );
 }
 
-fn check_projection_gap(target: &Path, caller: &Path, provider: &str) {
-    // This fixture records an implementation gap, not desired rejection:
-    // the explicit [T; N]: Copy bound is not recognized for an equivalent
-    // child GAT projection used as the registration's declared type.
-    let gap = target.join("generic_projection_gap.rs");
-    let source = fs::read_to_string(caller).expect("read passing caller").replace(
-        "register_value!({ let selected: resolve_type_from!(crate::IArray, child) = resolve_from!(crate::IArray, child); selected }: [T; N] as ISelected);",
-        "register_value!(resolve_from!(crate::IArray, child): resolve_type_from!(crate::IArray, child) as ISelected);",
-    );
-    fs::write(&gap, source).expect("write current-gap fixture");
-    let output = Command::new("rustc")
-        .args(["--edition=2024", "--emit=metadata", "--error-format=json"])
-        .arg(&gap)
-        .arg("--out-dir")
-        .arg(target)
-        .arg("--extern")
-        .arg(provider)
-        .arg("--extern")
-        .arg(format!(
-            "systasis={}",
-            target.join("debug/libsystasis.rlib").display()
-        ))
-        .arg("-L")
-        .arg(format!(
-            "dependency={}",
-            target.join("debug/deps").display()
-        ))
-        .output()
-        .expect("compile current-gap fixture");
-    let diagnostics = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !output.status.success(),
-        "projection gap fixed: convert this fixture to a positive regression"
-    );
-    assert!(
-        diagnostics
-            .lines()
-            .any(|line| line.contains("\"code\":\"E0277\"")
-                && line.contains("generic registration: Copy is known indirectly")),
-        "{diagnostics}"
-    );
-}
-
 #[test]
 fn exported_alias_preserves_generic_type_const_and_lifetime_parameters() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -175,7 +132,7 @@ mod composed_array {
     where [T; N]: Copy + PartialEq {
         let Ok(container) = systasis::systasis_container! {
             register_container!(child: &Alias<T, N>);
-            register_value!({ let selected: resolve_type_from!(crate::IArray, child) = resolve_from!(crate::IArray, child); selected }: [T; N] as ISelected);
+            register_value!(resolve_from!(crate::IArray, child): resolve_type_from!(crate::IArray, child) as ISelected);
         }.build();
         assert!(receive(container.child()) == container.resolve_i_selected());
     }
@@ -192,7 +149,7 @@ mod composed_borrow {
     where &'a T: Copy {
         let Ok(container) = systasis::systasis_container! {
             register_container!(child: &Alias<'a, T>);
-            register_value!({ let selected: resolve_type_from!(crate::IBorrow, child) = resolve_from!(crate::IBorrow, child); selected }: &'a T as ISelected);
+            register_value!(resolve_from!(crate::IBorrow, child): resolve_type_from!(crate::IBorrow, child) as ISelected);
         }.build();
         assert!(core::ptr::eq(receive(container.child()), container.resolve_i_selected()));
     }
@@ -222,5 +179,4 @@ fn main() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    check_projection_gap(&target, &caller, &provider);
 }
