@@ -229,6 +229,7 @@ mod reference_capture {
 
     #[systasis::container]
     #[test]
+    #[allow(clippy::toplevel_ref_arg)] // The binding syntax is the behavior under test.
     fn ref_binding_keeps_caller_owned_value_alive() {
         let ref config: String = String::from("borrowed");
         let Ok(container) = systasis::systasis_container! {
