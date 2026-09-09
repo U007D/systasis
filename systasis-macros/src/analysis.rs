@@ -12,7 +12,17 @@ pub(crate) struct Queries<'a> {
 impl VisitMut for Queries<'_> {
     fn visit_expr_mut(&mut self, expression: &mut Expr) {
         if let Expr::Macro(query) = expression
-            && (query.mac.path.is_ident("try_resolve") || query.mac.path.is_ident("resolve"))
+            && [
+                "try_resolve",
+                "resolve",
+                "try_resolve_ref",
+                "try_resolve_ref_mut",
+                "try_resolve_clone",
+                "resolve_ref",
+                "resolve_clone",
+            ]
+            .iter()
+            .any(|name| query.mac.path.is_ident(name))
         {
             let key = query.mac.tokens.to_string();
             if let Some(index) = self.indices.get(&key) {

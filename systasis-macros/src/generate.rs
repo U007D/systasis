@@ -177,21 +177,17 @@ pub(crate) fn expand(
         let mut lifetimes = Lifetimes(Vec::new());
         for (i, registration) in registrations.iter_mut().enumerate() {
             let original = &registration.ty;
-            let mut probe = Lifetimes(Vec::new());
-            probe.visit_type_mut(&mut original.clone());
             let flag = &flags[i];
             let interface = &registration.interface;
             let default_bound = registration
                 .fresh
                 .then(|| quote!(+ ::core::default::Default));
-            constants.push(if probe.0.is_empty() {
+            constants.push({
                 quote!(pub(super) const #flag: bool = {
                     fn __systasis_check<T: #interface #default_bound>() {}
                     let _ = __systasis_check::<#original>;
                     ::systasis::__private::Pick::<#original>::IS_COPY
                 };)
-            } else {
-                quote!(pub(super) const #flag: bool = false;)
             });
             lifetimes.visit_type_mut(&mut registration.ty);
         }
@@ -252,6 +248,7 @@ pub(crate) fn expand(
             let copy = format_ident!("resolve_{snake}");
             let copy_ref = format_ident!("resolve_{snake}_ref");
             let clone = format_ident!("resolve_{snake}_clone");
+            let try_clone = format_ident!("try_resolve_{snake}_clone");
             let others = parameters
                 .iter()
                 .enumerate()
@@ -306,6 +303,8 @@ pub(crate) fn expand(
                     pub fn #read(&self) -> ::core::result::Result<#read_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref() }
                     pub fn #write(&self) -> ::core::result::Result<#write_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref_mut() }
                     pub fn #take(&self) -> ::core::result::Result<__Value,::systasis::__private::Error> { self.#field.try_resolve() }
+                    pub fn #try_clone(&self) -> ::core::result::Result<__Value,::systasis::__private::Error>
+                    where __Value: ::core::clone::Clone { self.#field.try_resolve_clone() }
                 }
             ));
         }
