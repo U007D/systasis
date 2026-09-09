@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use quote::ToTokens;
+use quote::{ToTokens, format_ident, quote};
 use syn::{
     Expr, ExprClosure, FnArg, Ident, Item, ItemFn, Pat, Stmt, Type,
     spanned::Spanned,
@@ -19,6 +19,7 @@ pub(crate) struct Bindings {
     uncertain: Option<proc_macro2::TokenStream>,
     imports: Vec<syn::ItemUse>,
     generic_names: BTreeSet<String>,
+    tuple_projections: BTreeSet<(usize, usize)>,
 }
 
 #[derive(Clone, Copy)]
@@ -122,6 +123,47 @@ impl Bindings {
 
     pub(crate) fn imports(&self) -> &[syn::ItemUse] {
         &self.imports
+    }
+
+    /// Emit only structural implementations: no source alias or concrete type
+    /// appears here. Each authored exact tuple shape supplies its own arity.
+    pub(crate) fn projection_helpers(&self) -> proc_macro2::TokenStream {
+        if self.tuple_projections.is_empty() {
+            return quote!();
+        }
+        let implementations = self.tuple_projections.iter().map(|&(arity, index)| {
+            let projection = format_ident!("__SystasisCaptureTuple{arity}_{index}");
+            let elements = (0..arity).map(|i| format_ident!("__Element{i}")).collect::<Vec<_>>();
+            let selected = &elements[index];
+            quote! {
+                pub trait #projection<__Mode = __CaptureOwned> { type Output; }
+                impl<#(#elements,)* __Mode: __CaptureWrap<#selected>> #projection<__Mode> for (#(#elements,)*) {
+                    type Output = <__Mode as __CaptureWrap<#selected>>::Output;
+                }
+                impl<'a, __Target: ?Sized, __Mode> #projection<__Mode> for &'a __Target
+                where __Target: #projection<__CaptureShared<'a>> {
+                    type Output = <__Target as #projection<__CaptureShared<'a>>>::Output;
+                }
+                impl<'a, __Target: ?Sized, __Mode: __CaptureThroughMut<'a>> #projection<__Mode> for &'a mut __Target
+                where __Target: #projection<<__Mode as __CaptureThroughMut<'a>>::Mode> {
+                    type Output = <__Target as #projection<<__Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+                }
+            }
+        });
+        quote! {
+            pub struct __CaptureOwned;
+            pub struct __CaptureShared<'a>(::core::marker::PhantomData<&'a ()>);
+            pub struct __CaptureMutable<'a>(::core::marker::PhantomData<&'a ()>);
+            pub trait __CaptureWrap<T> { type Output; }
+            impl<T> __CaptureWrap<T> for __CaptureOwned { type Output = T; }
+            impl<'a, T: 'a> __CaptureWrap<T> for __CaptureShared<'a> { type Output = &'a T; }
+            impl<'a, T: 'a> __CaptureWrap<T> for __CaptureMutable<'a> { type Output = &'a mut T; }
+            pub trait __CaptureThroughMut<'a> { type Mode; }
+            impl<'a> __CaptureThroughMut<'a> for __CaptureOwned { type Mode = __CaptureMutable<'a>; }
+            impl<'a, 'b> __CaptureThroughMut<'b> for __CaptureShared<'a> { type Mode = __CaptureShared<'a>; }
+            impl<'a, 'b> __CaptureThroughMut<'b> for __CaptureMutable<'a> { type Mode = __CaptureMutable<'a>; }
+            #(#implementations)*
+        }
     }
 
     /// Call in source order, only for statements preceding the container.
@@ -257,6 +299,29 @@ impl Bindings {
                     self.observe_slice_element(element, &ty.elem, Some(annotation), mode);
                 }
             }
+            (Pat::Tuple(pattern), Type::Path(_))
+                if !pattern
+                    .elems
+                    .iter()
+                    .any(|element| matches!(element, Pat::Rest(_))) =>
+            {
+                let arity = pattern.elems.len();
+                let source = mode.bound_type(annotation);
+                for (index, element) in pattern.elems.iter().enumerate() {
+                    if matches!(element, Pat::Wild(_)) {
+                        continue;
+                    }
+                    self.tuple_projections.insert((arity, index));
+                    let projection = format_ident!("__SystasisCaptureTuple{arity}_{index}");
+                    let ty =
+                        syn::parse_quote!(<#source as __systasis_injected::#projection>::Output);
+                    self.observe_annotated_pattern(element, &ty, BindingMode::Move);
+                }
+            }
+            (Pat::Reference(pattern), Type::Path(_)) => {
+                let ty = syn::parse_quote!(<#annotation as ::core::ops::Deref>::Target);
+                self.observe_annotated_pattern(&pattern.pat, &ty, BindingMode::Move);
+            }
             _ => {}
         }
     }
@@ -309,6 +374,27 @@ fn concrete_length(expression: &Expr, generics: &BTreeSet<String>) -> bool {
 pub(crate) struct Plan {
     pub(crate) captures: Vec<(Ident, Type)>,
     pub(crate) closure: ExprClosure,
+    pub(crate) requires_record: bool,
+}
+
+#[derive(Default)]
+struct CaptureProjection(bool);
+impl VisitMut for CaptureProjection {
+    fn visit_type_path_mut(&mut self, path: &mut syn::TypePath) {
+        self.0 |= path.qself.is_some()
+            && path
+                .path
+                .segments
+                .first()
+                .is_some_and(|segment| segment.ident == "__systasis_injected")
+            && path.path.segments.iter().any(|segment| {
+                segment
+                    .ident
+                    .to_string()
+                    .starts_with("__SystasisCaptureTuple")
+            });
+        visit_mut::visit_type_path_mut(self, path);
+    }
 }
 
 pub(crate) fn prepare(
@@ -334,9 +420,14 @@ pub(crate) fn prepare(
     if let Some(error) = visitor.error {
         return Err(error);
     }
+    let mut projection = CaptureProjection::default();
+    for (_, ty) in &visitor.captures {
+        projection.visit_type_mut(&mut ty.clone());
+    }
     Ok(Plan {
         captures: visitor.captures,
         closure,
+        requires_record: projection.0,
     })
 }
 
@@ -927,6 +1018,26 @@ mod tests {
     }
 
     #[test]
+    fn tuple_alias_helpers_follow_authored_arity_without_exposing_alias_names() {
+        let wildcards = (0..63).map(|_| quote!(_)).collect::<Vec<_>>();
+        let statement: Stmt =
+            syn::parse_quote!(let (value, #(#wildcards,)*): PrivateAlias = input;);
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&statement);
+        let plan = prepare(
+            &parse_quote!(|| value),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert!(plan.requires_record);
+        let helpers = bindings.projection_helpers();
+        let file: syn::File = syn::parse2(helpers.clone()).unwrap();
+        assert!(file.items.iter().any(|item| matches!(item, Item::Impl(item) if matches!(&*item.self_ty, Type::Tuple(tuple) if tuple.elems.len() == 64))));
+        assert!(!helpers.to_string().contains("PrivateAlias"));
+    }
+
+    #[test]
     fn tuple_rest_aligns_suffix_types_and_array_rest_skips_elements() {
         let mut bindings = Bindings::default();
         bindings.observe_statement(&parse_quote!(
@@ -947,7 +1058,7 @@ mod tests {
     #[test]
     fn unsupported_patterns_remain_untyped_instead_of_guessing() {
         let statements: Vec<Stmt> = vec![
-            parse_quote!(let (value, _): Alias = input;),
+            parse_quote!(let (value, ..): Alias = input;),
             parse_quote!(let [_, value @ ..]: [u8; COUNT] = input;),
             parse_quote!(let [_, _, value @ ..]: [u8; 1] = input;),
             parse_quote!(let [value, _]: [u8; 1] = input;),

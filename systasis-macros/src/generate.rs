@@ -588,6 +588,26 @@ pub(crate) fn expand(
             .filter(|registration| !registration.fresh)
             .map(|registration| &registration.ty);
         let generic_marker = quote!(fn() -> (#(#marker_types,)* #(#stored_types,)*));
+        let mut capture_records = Vec::new();
+        let mut capture_record_names = BTreeMap::new();
+        let (capture_parameters, capture_arguments, capture_where) = generics.split_for_impl();
+        for (&index, types) in &capture_types {
+            if !factories[&index].requires_record {
+                continue;
+            }
+            let name = format_ident!("__CaptureRecord{index}");
+            // Keep private projection outputs inside private fields rather
+            // than exposing their normalization through scoped trait impls.
+            // The record owns the same selected captures as the ordinary tuple.
+            capture_records.push(quote! {
+                pub struct #name #capture_parameters (
+                    #(pub(super) #types,)*
+                    pub(super) ::core::marker::PhantomData<fn() -> (#(#marker_types,)*)>
+                ) #capture_where;
+            });
+            selected[index] = quote!(::systasis::__private::FactorySlot<__systasis_injected::#name #capture_arguments>);
+            capture_record_names.insert(index, name);
+        }
         let child_masks = children
             .iter()
             .enumerate()
@@ -1001,6 +1021,7 @@ pub(crate) fn expand(
             )?);
         }
         let imports = bindings.imports();
+        let capture_projection_helpers = bindings.projection_helpers();
         field_types.push(child_tuple.clone());
         field_types.push(generic_marker);
         let child_parameter = &parameters[registrations.len()];
@@ -1060,6 +1081,8 @@ pub(crate) fn expand(
             mod __systasis_injected {
                 use super::*;
                 #(#imports)*
+                #capture_projection_helpers
+                #(#capture_records)*
                 use ::systasis::__private::CopyFallback as _;
                 #(#constants)*
                 #(#const_markers)*
@@ -1096,9 +1119,14 @@ pub(crate) fn expand(
             );
             let captures = factory.captures.iter().map(|(name, _)| name);
             let types = factory.captures.iter().map(|(_, ty)| ty);
+            let capture_value = if let Some(name) = capture_record_names.get(&index) {
+                quote!(__systasis_injected::#name(#(#captures,)* ::core::marker::PhantomData))
+            } else {
+                quote!({ let __systasis_input: (#(#types,)*) = (#(#captures,)*); __systasis_input })
+            };
             capture_initialization.push(quote!(
                 let #owner = {
-                    let __systasis_input: (#(#types,)*) = (#(#captures,)*);
+                    let __systasis_input = #capture_value;
                     ::systasis::__private::FactorySlot::new(__systasis_input)
                 };
             ));
