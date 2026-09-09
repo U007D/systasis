@@ -10,6 +10,57 @@ pub(crate) struct Rebase {
     nested_modules: usize,
 }
 
+/// Rebase source paths inside the generated module without changing the
+/// generated parent import or the visibility of generated helpers and fields.
+pub(crate) fn generated_module(module: &mut ItemMod) {
+    let Some((_, items)) = &mut module.content else {
+        return;
+    };
+    for item in items {
+        if let syn::Item::Use(import) = item
+            && matches!(&import.tree, UseTree::Path(path) if path.ident == "super" && matches!(&*path.tree, UseTree::Glob(_)))
+        {
+            continue;
+        }
+        let visibility = item_visibility(item).cloned();
+        let field_visibility = match &*item {
+            syn::Item::Struct(item) => item.fields.iter().map(|field| field.vis.clone()).collect(),
+            _ => Vec::new(),
+        };
+        Rebase::default().visit_item_mut(item);
+        if let (Some(original), Some(current)) = (visibility, item_visibility_mut(item)) {
+            *current = original;
+        }
+        if let syn::Item::Struct(item) = item {
+            for (field, visibility) in item.fields.iter_mut().zip(field_visibility) {
+                field.vis = visibility;
+            }
+        }
+    }
+}
+
+fn item_visibility(item: &syn::Item) -> Option<&syn::Visibility> {
+    match item {
+        syn::Item::Fn(item) => Some(&item.vis),
+        syn::Item::Struct(item) => Some(&item.vis),
+        syn::Item::Type(item) => Some(&item.vis),
+        syn::Item::Trait(item) => Some(&item.vis),
+        syn::Item::Const(item) => Some(&item.vis),
+        _ => None,
+    }
+}
+
+fn item_visibility_mut(item: &mut syn::Item) -> Option<&mut syn::Visibility> {
+    match item {
+        syn::Item::Fn(item) => Some(&mut item.vis),
+        syn::Item::Struct(item) => Some(&mut item.vis),
+        syn::Item::Type(item) => Some(&mut item.vis),
+        syn::Item::Trait(item) => Some(&mut item.vis),
+        syn::Item::Const(item) => Some(&mut item.vis),
+        _ => None,
+    }
+}
+
 impl Rebase {
     fn use_tree(&self, tree: &mut UseTree) {
         if let UseTree::Group(group) = tree {
@@ -58,6 +109,7 @@ impl VisitMut for Rebase {
         if parents > 0 && parents >= self.nested_modules {
             path.segments.insert(0, parse_quote!(super));
         } else if self.nested_modules == 0
+            && path.segments.len() > 1
             && let Some(first) = path.segments.first_mut()
             && first.ident == "self"
         {
@@ -141,6 +193,47 @@ mod tests {
         );
         assert_eq!(
             import.to_token_stream().to_string(),
+            expected.to_token_stream().to_string()
+        );
+    }
+
+    #[test]
+    fn generated_visibility_and_parent_import_are_not_rebased() {
+        let mut module: ItemMod = parse_quote!(
+            mod generated {
+                use super::*;
+                pub(super) struct Slot {
+                    pub(super) value: super::Input,
+                }
+                pub(super) fn make() -> super::Input {
+                    super::make()
+                }
+                impl Slot {
+                    fn get(&self) -> &super::Input {
+                        &self.value
+                    }
+                }
+            }
+        );
+        generated_module(&mut module);
+        let expected: ItemMod = parse_quote!(
+            mod generated {
+                use super::*;
+                pub(super) struct Slot {
+                    pub(super) value: super::super::Input,
+                }
+                pub(super) fn make() -> super::super::Input {
+                    super::super::make()
+                }
+                impl Slot {
+                    fn get(&self) -> &super::super::Input {
+                        &self.value
+                    }
+                }
+            }
+        );
+        assert_eq!(
+            module.to_token_stream().to_string(),
             expected.to_token_stream().to_string()
         );
     }
