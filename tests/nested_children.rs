@@ -44,6 +44,10 @@ mod middle {
 
 mod outer {
     use super::*;
+    trait IObserved {}
+    impl IObserved for usize {}
+    trait ICopied {}
+    impl ICopied for String {}
     fn receive(scope: &branch::SubContainer<'_, '_>) -> Result<usize, Error> {
         scope.try_resolve_i_length()
     }
@@ -51,9 +55,14 @@ mod outer {
     pub fn run<'a>(branch: &middle::AppContainer<'a>) -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_container!(branch: &middle::AppContainer<'a>);
+            register_value!(try_resolve_from!(IValue, branch::replica)?: resolve_type_from!(IValue, branch::replica) as ICopied);
+            register_type_with!(usize as IObserved, try || -> Result<usize, Error> {
+                Ok(try_resolve_ref_from!(IValue, branch::primary)?.len())
+            });
         }
         .build::<Error>()?;
         assert_eq!(receive(container.branch())?, 7);
+        assert_eq!(container.try_resolve_i_observed()?, 7);
         assert_eq!(
             &*container.branch().primary().try_resolve_i_value_ref()?,
             "primary"
@@ -64,10 +73,8 @@ mod outer {
             .try_resolve_i_value_ref_mut()?
             .push('!');
         assert_eq!(receive(container.branch())?, 8);
-        assert_eq!(
-            container.branch().replica().try_resolve_i_value()?,
-            "replica"
-        );
+        assert_eq!(container.try_resolve_i_observed()?, 8);
+        assert_eq!(container.try_resolve_i_copied()?, "replica");
         // NEGATIVE_ACCESS
         Ok(())
     }
