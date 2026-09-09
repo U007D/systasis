@@ -8,17 +8,25 @@ stored-value cloning, resolution errors, and the full `Fallible` conversions.
 The storage support types are hidden implementation APIs, not a replacement
 for the generated registration macros.
 
-The generated path supports stored values, fresh Default constructors, owned
+The generated path supports stored values, fresh Default and custom constructors, owned
 dependency injection, concrete registered-type lookup, overrides, dependency
 layers, checked access, cloning, single-trait dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
 Services and their constructors remain ordinary generic Rust; dependencies are
 transferred by value, without hidden wrappers or field rewriting.
 
-Still pending: captured custom constructors, generic enclosing functions,
+Custom constructors own explicitly typed captured bindings and run on resolution.
+Fallible constructors preserve their annotated return type. Returned values may
+borrow captures or retain dependency guards; storing such borrowed results inside
+the container remains deferred. See [constructor tests](tests/custom_constructor.rs).
+Capture analysis currently rejects opaque macros, function-local imports, and
+captured destructuring patterns; these are implementation gaps, not new API rules.
+
+Still pending: generic enclosing functions,
 interface groups, named namespaces and composition, unchecked generation,
-renamed Cargo dependencies, and embedded validation. Container-stored services
-retaining internal borrows are deferred. These are not removed requirements.
+and embedded validation. Container-stored services retaining internal borrows are
+deferred. Renamed Cargo dependency support is out of the current scope; no import
+placement restriction or new dependency has been adopted for it.
 
 The root package is `systasis`; `systasis-macros/` is its procedural-macro
 workspace member. The implementation follows the accepted design documents

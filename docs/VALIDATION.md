@@ -2,6 +2,16 @@
 
 ## Current generated-container checks
 
+Latest update: typed captures and repeatable custom constructors pass both full
+stable workspace suites and both Clippy configurations. Seven constructor tests
+cover repeated calls, exact fallible returns, capture cleanup, and returned
+references/guards. The compiler driver now checks 25 downstream cases, including
+capture ownership, missing annotations, incompatible Send state, and constructor
+borrowing excluding owned resolution. Build inference now has nine tests,
+including `.build()?` success/failure and chained Result methods.
+These safe-only changes add neither unsafe code nor dependencies; Miri was not
+rerun. The Miri counts below describe the earlier revision, not these additions.
+
 Production commits bff03b7 through 678d63d add stored-value generation, owned
 dependencies, Default constructors, overrides, checked access and cloning,
 single-trait dyn access, build inference, and import/initializer hygiene.
