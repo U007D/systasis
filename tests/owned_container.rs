@@ -49,6 +49,21 @@ macro_rules! scenario {
 scenario!(synchronized, (require(Send, Sync)));
 scenario!(local, (require(Send, !Sync)));
 
+mod overrides {
+    use super::*;
+    #[systasis::container]
+    #[test]
+    fn discarded_initializer_and_dependencies_are_not_evaluated() -> Result<(), Error> {
+        let built = systasis_container! {
+            register_value!(try_resolve!(IMissing)?: MissingType as IDatabase);
+            register_value!(Service::new(try_resolve!(IDatabase)?): Service<registered_type!(IDatabase)> as IService);
+            register_value!(Database(String::from("winner")): Database as IDatabase);
+        }.build::<Error>();
+        assert_eq!(built?.try_resolve_i_service()?.database.name(), "winner");
+        Ok(())
+    }
+}
+
 mod plain {
     trait IValue {}
     impl IValue for u32 {}

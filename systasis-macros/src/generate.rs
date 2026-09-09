@@ -89,6 +89,21 @@ pub(crate) fn expand(
             ));
         }
         let Registrations(mut registrations) = syn::parse2(registry.mac.tokens.clone())?;
+        // Discard superseded declarations before examining their expressions,
+        // types, or dependencies. The last declaration of an interface wins.
+        let winners = registrations
+            .iter()
+            .enumerate()
+            .map(|(i, registration)| (registration.interface.to_token_stream().to_string(), i))
+            .collect::<BTreeMap<_, _>>();
+        registrations = registrations
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, registration)| {
+                (winners[&registration.interface.to_token_stream().to_string()] == i)
+                    .then_some(registration)
+            })
+            .collect();
         let error_ty = build
             .turbofish
             .as_ref()
@@ -100,9 +115,6 @@ pub(crate) fn expand(
             .enumerate()
             .map(|(i, r)| (r.interface.to_token_stream().to_string(), i))
             .collect::<BTreeMap<_, _>>();
-        if indices.len() != registrations.len() {
-            return Err(Error::new_spanned(registry, "duplicate interface"));
-        }
         let mut dependencies = Vec::new();
         let original_types = registrations
             .iter()
@@ -186,6 +198,7 @@ pub(crate) fn expand(
         let mut field_types = Vec::new();
         let mut values = Vec::new();
         let mut implementations = Vec::new();
+        let mut method_names = BTreeMap::<String, Path>::new();
         for (i, registration) in registrations.iter().enumerate() {
             let field = &fields[i];
             let slot = &slots[i];
@@ -210,6 +223,16 @@ pub(crate) fn expand(
                     }
                 })
                 .collect::<String>();
+            if let Some(previous) =
+                method_names.insert(snake.clone(), registration.interface.clone())
+            {
+                let mut error = Error::new_spanned(
+                    &registration.interface,
+                    "interfaces generate the same resolver name",
+                );
+                error.combine(Error::new_spanned(previous, "first conflicting interface"));
+                return Err(error);
+            }
             let read = format_ident!("try_resolve_{snake}_ref");
             let write = format_ident!("try_resolve_{snake}_ref_mut");
             let take = format_ident!("try_resolve_{snake}");
