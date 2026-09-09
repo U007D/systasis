@@ -3,6 +3,7 @@
 use std::cell::Cell;
 trait ILength {}
 impl ILength for usize {}
+const LENGTH: usize = 3;
 
 struct Tracked<'a>(&'a Cell<usize>);
 impl Drop for Tracked<'_> {
@@ -37,8 +38,8 @@ mod borrowed {
     use super::*;
     #[systasis::container]
     fn run(shared: &[u8; 3], exclusive: &mut [u8; 3], slice: &[u8], mutable_slice: &mut [u8]) {
-        let [_, array_tail @ ..]: &[u8; 3] = shared;
-        let [_, mutable_tail @ ..]: &mut [u8; 3] = exclusive;
+        let [_, array_tail @ ..]: &[u8; LENGTH] = shared;
+        let [_, mutable_tail @ ..]: &mut [u8; 1 + 2] = exclusive;
         let [_, slice_tail @ ..]: &[u8] = slice else {
             return;
         };

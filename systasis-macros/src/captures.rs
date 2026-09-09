@@ -18,6 +18,7 @@ pub(crate) struct Bindings {
     types: BTreeMap<String, Option<Type>>,
     uncertain: Option<proc_macro2::TokenStream>,
     imports: Vec<syn::ItemUse>,
+    generic_names: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -46,7 +47,21 @@ impl BindingMode {
 
 impl Bindings {
     pub(crate) fn from_function(function: &ItemFn) -> Self {
-        let mut bindings = Self::default();
+        let generic_names = function
+            .sig
+            .generics
+            .params
+            .iter()
+            .filter_map(|parameter| match parameter {
+                syn::GenericParam::Type(parameter) => Some(name(&parameter.ident)),
+                syn::GenericParam::Const(parameter) => Some(name(&parameter.ident)),
+                syn::GenericParam::Lifetime(_) => None,
+            })
+            .collect();
+        let mut bindings = Self {
+            generic_names,
+            ..Self::default()
+        };
         let local_items = function
             .block
             .stmts
@@ -211,14 +226,24 @@ impl Bindings {
                     // original pattern (including generic-length restrictions).
                     Some(annotation.clone())
                 } else {
-                    // Only literal lengths can be reduced here. Emitting
-                    // `N - explicit` would add a generic-const requirement.
-                    length.map(|length| {
-                        let remaining =
-                            syn::LitInt::new(&(length - explicit).to_string(), ty.len.span());
-                        let element = &ty.elem;
-                        syn::parse_quote!([#element; #remaining])
-                    })
+                    length
+                        .map(|length| {
+                            let remaining =
+                                syn::LitInt::new(&(length - explicit).to_string(), ty.len.span());
+                            let element = &ty.elem;
+                            syn::parse_quote!([#element; #remaining])
+                        })
+                        .or_else(|| {
+                            // Preserve concrete const expressions for rustc to
+                            // evaluate; never introduce subtraction on generics.
+                            concrete_length(&ty.len, &self.generic_names).then(|| {
+                                let length = &ty.len;
+                                let element = &ty.elem;
+                                let explicit =
+                                    syn::LitInt::new(&explicit.to_string(), length.span());
+                                syn::parse_quote!([#element; (#length) - #explicit])
+                            })
+                        })
                 };
                 for element in &pattern.elems {
                     self.observe_slice_element(element, &ty.elem, rest_type.as_ref(), mode);
@@ -258,6 +283,27 @@ impl Bindings {
 fn slice_rest(pattern: &Pat) -> bool {
     matches!(pattern, Pat::Rest(_))
         || matches!(pattern, Pat::Ident(binding) if binding.subpat.as_ref().is_some_and(|(_, subpat)| matches!(subpat.as_ref(), Pat::Rest(_))))
+}
+
+fn concrete_length(expression: &Expr, generics: &BTreeSet<String>) -> bool {
+    match expression {
+        Expr::Lit(_) => true,
+        Expr::Path(path) => {
+            path.qself.is_none()
+                && path.path.segments.iter().all(|segment| {
+                    segment.ident != "Self"
+                        && !generics.contains(&name(&segment.ident))
+                        && matches!(segment.arguments, syn::PathArguments::None)
+                })
+        }
+        Expr::Binary(binary) => {
+            concrete_length(&binary.left, generics) && concrete_length(&binary.right, generics)
+        }
+        Expr::Unary(unary) => concrete_length(&unary.expr, generics),
+        Expr::Paren(paren) => concrete_length(&paren.expr, generics),
+        Expr::Group(group) => concrete_length(&group.expr, generics),
+        _ => false,
+    }
 }
 
 pub(crate) struct Plan {
@@ -909,7 +955,9 @@ mod tests {
             parse_quote!(let (value, _, _): (u8, u16) = input;),
         ];
         for statement in statements {
-            let mut bindings = Bindings::default();
+            let mut bindings = Bindings::from_function(&parse_quote!(
+                fn context<const COUNT: usize>() {}
+            ));
             bindings.observe_statement(&parse_quote!(let value: OldType = input;));
             bindings.observe_statement(&statement);
             let error = prepare(
@@ -963,6 +1011,34 @@ mod tests {
             .unwrap();
             assert_eq!(capture_types(&result), [expected]);
         }
+    }
+
+    #[test]
+    fn concrete_lengths_preserve_expressions_without_generic_subtraction() {
+        let mut bindings = Bindings::from_function(&parse_quote!(
+            fn context<T, const N: usize>() {}
+        ));
+        let expressions: [Expr; 3] = [
+            parse_quote!(N),
+            parse_quote!(N + 1),
+            parse_quote!(T::LENGTH),
+        ];
+        for expression in expressions {
+            bindings
+                .observe_statement(&parse_quote!(let [_, tail @ ..]: [u8; #expression] = input;));
+            assert!(bindings.types["tail"].is_none());
+        }
+        bindings.observe_statement(
+            &parse_quote!(let [_, tail @ ..]: [u8; module::LENGTH + 1] = input;),
+        );
+        assert_eq!(
+            bindings.types["tail"]
+                .as_ref()
+                .unwrap()
+                .to_token_stream()
+                .to_string(),
+            "[u8 ; (module :: LENGTH + 1) - 1]"
+        );
     }
 
     #[test]
