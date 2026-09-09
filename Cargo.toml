@@ -24,6 +24,7 @@ workspace = true
 [features]
 default = ["std"]
 std = ["thiserror/std", "dep:parking_lot"]
+resolve_unchecked = ["systasis-macros/resolve_unchecked"]
 
 [dependencies]
 systasis-macros = { path = "systasis-macros", version = "0.1.0" }

@@ -25,6 +25,9 @@ impl VisitMut for Queries<'_> {
                 "resolve_clone",
                 "resolve_dyn_ref",
                 "try_resolve_dyn_ref",
+                "resolve_unchecked",
+                "resolve_ref_unchecked",
+                "resolve_ref_mut_unchecked",
             ]
             .iter()
             .any(|name| {
@@ -60,6 +63,8 @@ impl VisitMut for Queries<'_> {
                     "try_resolve_ref_mut",
                     "resolve_dyn_ref",
                     "try_resolve_dyn_ref",
+                    "resolve_ref_unchecked",
+                    "resolve_ref_mut_unchecked",
                 ]
                 .contains(&method)
                 {

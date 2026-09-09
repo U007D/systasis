@@ -12,7 +12,15 @@ fn container_diagnostics() {
     } else {
         "no-std"
     };
-    let target = root.join("target/container-contracts").join(backend);
+    let configuration = if cfg!(feature = "resolve_unchecked") {
+        "unchecked"
+    } else {
+        "checked"
+    };
+    let target = root
+        .join("target/container-contracts")
+        .join(backend)
+        .join(configuration);
     let mut build = Command::new(env!("CARGO"));
     build
         .current_dir(&root)
@@ -20,6 +28,9 @@ fn container_diagnostics() {
         .arg(&target);
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
+    }
+    if cfg!(feature = "resolve_unchecked") {
+        build.args(["--features", "resolve_unchecked"]);
     }
     let output = build.output().expect("build library");
     assert!(
@@ -29,6 +40,54 @@ fn container_diagnostics() {
     );
 
     let cases = [
+        #[cfg(feature = "resolve_unchecked")]
+        (
+            "unchecked_method_requires_unsafe",
+            "",
+            "register_value!(String::new(): String as IValue);",
+            "built.unwrap().resolve_i_value_unchecked();",
+            Some("E0133"),
+        ),
+        #[cfg(feature = "resolve_unchecked")]
+        (
+            "unchecked_query_requires_unsafe",
+            "",
+            "register_value!(String::new(): String as IValue); register_value!(resolve_unchecked!(IValue).len(): usize as ISize);",
+            "",
+            Some("E0133"),
+        ),
+        #[cfg(feature = "resolve_unchecked")]
+        (
+            "unchecked_cannot_restore_borrowed_owned_accessor",
+            "",
+            "register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, || unsafe { resolve_ref_unchecked!(IValue) }.len());",
+            "unsafe { built.unwrap().resolve_i_value_unchecked(); }",
+            Some("E0599"),
+        ),
+        #[cfg(feature = "resolve_unchecked")]
+        (
+            "copy_has_no_unchecked_accessor",
+            "",
+            "register_value!(1: u32 as INumber);",
+            "unsafe { built.unwrap().resolve_i_number_unchecked(); }",
+            Some("E0599"),
+        ),
+        #[cfg(feature = "resolve_unchecked")]
+        (
+            "fresh_has_no_unchecked_accessor",
+            "",
+            "register_type!(String as IValue);",
+            "unsafe { built.unwrap().resolve_i_value_unchecked(); }",
+            Some("E0599"),
+        ),
+        #[cfg(not(feature = "resolve_unchecked"))]
+        (
+            "unchecked_accessor_is_feature_gated",
+            "",
+            "register_value!(String::new(): String as IValue);",
+            "unsafe { built.unwrap().resolve_i_value_unchecked(); }",
+            Some("E0599"),
+        ),
         (
             "named_registration_is_not_default_dependency",
             "",

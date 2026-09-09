@@ -9,6 +9,9 @@ publish = false
 [lib]
 proc-macro = true
 
+[features]
+resolve_unchecked = []
+
 [dependencies]
 proc-macro2 = "1.0.107"
 quote = "1.0.47"

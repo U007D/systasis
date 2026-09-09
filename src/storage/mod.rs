@@ -1,6 +1,8 @@
 //! Concrete storage policies used by generated containers.
 
 mod local;
+#[cfg(feature = "resolve_unchecked")]
+mod unchecked;
 pub use local::LocalTakeSlot;
 mod policy;
 pub use policy::{

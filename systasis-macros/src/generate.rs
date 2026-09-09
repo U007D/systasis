@@ -331,6 +331,8 @@ pub(crate) fn expand(
         for &index in &constructor_borrows {
             build_queries.remove(&(index, "try_resolve".into()));
             runtime_queries.remove(&(index, "try_resolve".into()));
+            build_queries.remove(&(index, "resolve_unchecked".into()));
+            runtime_queries.remove(&(index, "resolve_unchecked".into()));
         }
         let capture_root = Ident::new("__systasis_captures", Span::mixed_site());
         let mut factories = BTreeMap::new();
@@ -682,6 +684,40 @@ pub(crate) fn expand(
             let take_method = (!constructor_borrows.contains(&i)).then(|| quote!(
                 pub fn #take(&self) -> ::core::result::Result<__Value,::systasis::__private::Error> { self.#field.try_resolve() }
             ));
+            let unchecked_methods = (cfg!(feature = "resolve_unchecked") && !registration.fresh)
+                .then(|| {
+                    let take = format_ident!("resolve_{snake}_unchecked");
+                    let read = format_ident!("resolve_{snake}_ref_unchecked");
+                    let write = format_ident!("resolve_{snake}_ref_mut_unchecked");
+                    let owned = (!constructor_borrows.contains(&i)).then(|| {
+                        quote!(
+                            /// Takes the available value without returning access errors.
+                            /// # Safety
+                            /// The value must be present and exclusive acquisition must succeed.
+                            pub unsafe fn #take(&self) -> __Value {
+                                // SAFETY: the caller guarantees the slot's preconditions.
+                                unsafe { self.#field.resolve_unchecked() }
+                            }
+                        )
+                    });
+                    quote!(
+                        #owned
+                        /// Borrows the available value and retains its shared guard.
+                        /// # Safety
+                        /// The value must be present and shared acquisition must succeed.
+                        pub unsafe fn #read(&self) -> #read_type<'_, __Value> {
+                            // SAFETY: the caller guarantees the slot's preconditions.
+                            unsafe { self.#field.resolve_ref_unchecked() }
+                        }
+                        /// Mutably borrows the available value and retains its exclusive guard.
+                        /// # Safety
+                        /// The value must be present and exclusive acquisition must succeed.
+                        pub unsafe fn #write(&self) -> #write_type<'_, __Value> {
+                            // SAFETY: the caller guarantees the slot's preconditions.
+                            unsafe { self.#field.resolve_ref_mut_unchecked() }
+                        }
+                    )
+                });
             implementations.push(quote!(
                 impl<__Value: ::core::default::Default, #(#others),*> Generated<#(#fresh_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
@@ -695,6 +731,7 @@ pub(crate) fn expand(
                     pub fn #read(&self) -> ::core::result::Result<#read_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref() }
                     pub fn #write(&self) -> ::core::result::Result<#write_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref_mut() }
                     #take_method
+                    #unchecked_methods
                     pub fn #try_clone(&self) -> ::core::result::Result<__Value,::systasis::__private::Error>
                     where __Value: ::core::clone::Clone { self.#field.try_resolve_clone() }
                 }
