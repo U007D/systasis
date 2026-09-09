@@ -99,8 +99,13 @@ mod borrowed_payload {
         use super::*;
         trait IObserved {}
         impl IObserved for u32 {}
+        fn ordinary_rust_control<'a, 'data>(branch: &middle::AppContainer<'a, 'data>) {
+            fn needs_relationship<'a, 'data: 'a>(_: &middle::AppContainer<'a, 'data>) {}
+            needs_relationship(branch);
+        }
         #[systasis::container(require(!Sync))]
         pub fn run<'a, 'data: 'a>(branch: &middle::AppContainer<'a, 'data>) -> Result<u32, Error> {
+            ordinary_rust_control(branch);
             let container = systasis::systasis_container! {
                 register_container!(branch: &middle::AppContainer<'a, 'data>);
                 register_value!({
