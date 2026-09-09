@@ -14,6 +14,8 @@ layers, checked access, cloning, multi-trait groups, local namespaces, explicit 
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
 The [usage guide](docs/USAGE.md) is also the crate-level API documentation;
 its examples compile and run as doctests.
+The requirements' complete [quick example](examples/quick_start.rs) is also
+runnable, with its implementation types kept private.
 Services and their constructors remain ordinary generic Rust; dependencies are
 transferred by value, without hidden wrappers or field rewriting.
 
