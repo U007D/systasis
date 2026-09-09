@@ -53,6 +53,8 @@ mod reference_slice_aliases {
         let [head, tail @ ..]: Shared = shared else {
             return;
         };
+        // Exercise a tail projection even though this particular tail is whole.
+        #[allow(clippy::redundant_at_rest_pattern)]
         let [remainder @ ..]: Exclusive = exclusive;
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(usize as IValue, || {
