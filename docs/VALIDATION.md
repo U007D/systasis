@@ -36,8 +36,32 @@ reference parameter, independent references including a nested generic capture,
 and function-pointer/Fn signature lifetimes that must remain higher-ranked.
 Nested dyn type metadata (21b7309) passes short intermediate-borrow and non-static
 payload cases on both backends, with associated bindings and local storage.
-These fixes add no caller annotation or unsafe code. A separate implied nested
-child lifetime-bound case is still being investigated.
+These fixes add no caller annotation or unsafe code. The separate implied nested
+child lifetime-bound case is fixed in a56d8ad: internal validation helpers receive
+the same shared child reference types as the caller, retaining their implied
+outlives bounds. The regression and an ordinary Rust control need no explicit
+relationship between the child's two authored lifetimes.
+
+`parse_properties` (b79dc75) expands ten accepted syntax fixtures twice and checks
+repeatability plus parseable generated Rust. Its default mutation test checks
+160 deterministic token mutations, accepting either repeatable diagnostics or
+parseable generated output. The opt-in corpus checks 2,560 mutations with the
+same fixed generator/seed; it also passes. This is bounded parser/generator
+testing, not proof that all generated programs typecheck or that all tokens are
+covered. Run the larger corpus with `cargo +stable test -p systasis-macros
+--offline --locked parse_properties::extended_mutation_corpus -- --ignored`.
+
+`tests/performance.rs` (0b4dddd) provides ten opt-in host comparisons against
+handwritten use of the same storage primitives: Copy, local/synchronized read
+and write guards, repeated constructors, and local/synchronized construction
+with consumption or destruction. Each uses nine alternating pairs of 100,000
+iterations after warmup, black-boxed inputs/results, checksum checks and exact
+payload-drop counts. Output records toolchain, host, features and min/median/max
+ns per iteration. Both runtime backends pass the release checks on the recorded
+aarch64 macOS host. There is no speed threshold or hard real-time claim;
+compile-time scaling and broader workloads remain separate verification work.
+Run `cargo +stable test --release --test performance --offline --locked --
+--ignored --nocapture`, then add `--no-default-features` before `--` for spin.
 
 Portable atomics (3a55999) use optional portable-atomic 1.15.0 with its
 critical-section feature, without enabling either unsafe platform assumption.
