@@ -167,11 +167,26 @@ impl Bindings {
             where T: __SystasisCaptureElement<<Mode as __CaptureThroughMut<'a>>::Mode> {
                 type Output = <T as __SystasisCaptureElement<<Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
             }
-            pub trait __SystasisCaptureLength { const LENGTH: usize; }
-            impl<T, const N: usize> __SystasisCaptureLength for [T; N] { const LENGTH: usize = N; }
+            pub trait __SystasisCaptureLength<const K: usize> { const REMAINING: usize; }
+            impl<T, const N: usize, const K: usize> __SystasisCaptureLength<K> for [T; N] { const REMAINING: usize = N - K; }
+            // Slice tail projection ignores the const argument; its type is [T].
+            impl<T, const K: usize> __SystasisCaptureLength<K> for [T] { const REMAINING: usize = 0; }
+            impl<T: ?Sized + __SystasisCaptureLength<K>, const K: usize> __SystasisCaptureLength<K> for &T { const REMAINING: usize = T::REMAINING; }
+            impl<T: ?Sized + __SystasisCaptureLength<K>, const K: usize> __SystasisCaptureLength<K> for &mut T { const REMAINING: usize = T::REMAINING; }
             pub trait __SystasisCaptureArrayTail<const R: usize, Mode = __CaptureOwned> { type Output; }
             impl<T, const N: usize, const R: usize, Mode: __CaptureWrap<[T; R]>> __SystasisCaptureArrayTail<R, Mode> for [T; N] {
                 type Output = <Mode as __CaptureWrap<[T; R]>>::Output;
+            }
+            impl<T, const R: usize, Mode: __CaptureSliceWrap<T>> __SystasisCaptureArrayTail<R, Mode> for [T] {
+                type Output = <Mode as __CaptureSliceWrap<T>>::Output;
+            }
+            impl<'a, T: ?Sized, const R: usize, Mode> __SystasisCaptureArrayTail<R, Mode> for &'a T
+            where T: __SystasisCaptureArrayTail<R, __CaptureShared<'a>> {
+                type Output = <T as __SystasisCaptureArrayTail<R, __CaptureShared<'a>>>::Output;
+            }
+            impl<'a, T: ?Sized, const R: usize, Mode: __CaptureThroughMut<'a>> __SystasisCaptureArrayTail<R, Mode> for &'a mut T
+            where T: __SystasisCaptureArrayTail<R, <Mode as __CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __SystasisCaptureArrayTail<R, <Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
             }
             pub trait __CaptureSliceWrap<T> { type Output; }
             impl<'a, T: 'a> __CaptureSliceWrap<T> for __CaptureShared<'a> { type Output = &'a [T]; }
@@ -350,11 +365,12 @@ impl Bindings {
                         !self.generic_names.contains(&name(&segment.ident))
                             && matches!(segment.arguments, syn::PathArguments::None)
                     });
-                // Concrete owned aliases permit an associated-const array
-                // length. Generic slice aliases use exact slice projections;
+                // Concrete aliases permit an associated-const tail length;
+                // borrow mode changes only the output wrapper, not that length.
+                // Generic slice aliases use exact slice projections;
                 // generic array remainders have no implementation here.
-                let rest = if concrete && matches!(mode, BindingMode::Move) {
-                    syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureArrayTail<{<#source as __systasis_injected::__SystasisCaptureLength>::LENGTH - #explicit}>>::Output)
+                let rest = if concrete {
+                    syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureArrayTail<{<#annotation as __systasis_injected::__SystasisCaptureLength<#explicit>>::REMAINING}>>::Output)
                 } else {
                     syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureSliceTail>::Output)
                 };

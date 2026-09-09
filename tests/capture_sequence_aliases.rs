@@ -1,13 +1,82 @@
 //! Array and slice alias projections preserve exact captured field types.
 #![forbid(unsafe_code)]
+mod borrowed_arrays {
+    use super::*;
+    type Array = [String; 3];
+    #[systasis::container]
+    fn run(input: &mut Array) {
+        let [head, tail @ ..]: &mut Array = input;
+        let Ok(c) = systasis::systasis_container! {
+            register_type_with!(usize as IValue, || {
+                let exact: &[String; 2] = tail;
+                exact.len()
+            });
+        }
+        .build();
+        head.push('!');
+        assert_eq!(c.resolve_i_value(), 2);
+    }
+    #[test]
+    fn mutable_array_alias_preserves_exact_tail_length() {
+        let mut values = ["one".into(), "two".into(), "three".into()];
+        run(&mut values);
+        assert_eq!(values[0], "one!");
+    }
+}
+mod unsized_slice_alias {
+    use super::*;
+    type Slice = [String];
+    #[systasis::container]
+    fn run(input: &Slice) {
+        let [head, tail @ ..]: &Slice = input else {
+            return;
+        };
+        let Ok(c) = systasis::systasis_container! {
+            register_type_with!(usize as IValue, || tail.len() + head.len());
+        }
+        .build();
+        assert_eq!(c.resolve_i_value(), 5);
+    }
+    #[test]
+    fn borrowed_unsized_alias_remains_a_slice() {
+        run(&["one".into(), "two".into(), "three".into()]);
+    }
+}
 trait IValue {}
 impl IValue for usize {}
+mod reference_slice_aliases {
+    use super::*;
+    type Shared = &'static [u8];
+    type Exclusive = &'static mut [u8];
+    #[systasis::container]
+    fn run(shared: Shared, exclusive: Exclusive) {
+        let [head, tail @ ..]: Shared = shared else {
+            return;
+        };
+        let [remainder @ ..]: Exclusive = exclusive;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as IValue, || {
+                let shared_tail: &[u8] = tail;
+                let exclusive_tail: &[u8] = remainder;
+                shared_tail.len() + exclusive_tail.len()
+            });
+        }
+        .build();
+        assert_eq!(*head, 1);
+        assert_eq!(container.resolve_i_value(), 2);
+    }
+    #[test]
+    fn argument_free_aliases_preserve_shared_and_exclusive_slice_tails() {
+        // Empty mutable storage can have a static lifetime without heap leaking.
+        run(&[1, 2, 3], &mut []);
+    }
+}
 mod owned {
     use super::*;
     type Input = [String; 3];
     #[systasis::container]
     #[test]
-    fn run() {
+    fn owned_array_alias_retains_exact_remainder() {
         let input: Input = ["head".into(), "second".into(), "third".into()];
         let [head, tail @ ..]: Input = input;
         let Ok(c) = systasis::systasis_container! {
@@ -40,7 +109,7 @@ mod shared {
         assert!(core::ptr::eq(receive(c), &input[1..]));
     }
     #[test]
-    fn check() {
+    fn generic_shared_slice_returns_original_tail_from_named_container() {
         run(&[1_u8, 2, 3]);
     }
 }
@@ -61,7 +130,7 @@ mod mutable {
         assert_eq!(c.resolve_i_value(), 2);
     }
     #[test]
-    fn check() {
+    fn generic_mutable_slice_preserves_disjoint_head_access() {
         run(&mut [1_u8, 2, 3]);
     }
 }
@@ -80,7 +149,7 @@ mod generic_array_element {
         assert_eq!(c.resolve_i_value(), core::mem::size_of::<T>());
     }
     #[test]
-    fn check() {
+    fn generic_array_element_moves_without_copy_bound() {
         run([String::new(), String::new(), String::new()]);
     }
 }
