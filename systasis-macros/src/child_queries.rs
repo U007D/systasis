@@ -2,6 +2,7 @@
 use crate::{child::ChildRegistration, parse::InterfaceGroup};
 use quote::{format_ident, quote};
 use syn::{
+    ext::IdentExt,
     parse::Parser,
     visit_mut::{self, VisitMut},
     *,
@@ -11,9 +12,19 @@ pub(crate) struct Queries<'a> {
     pub children: &'a [ChildRegistration],
     pub error: Option<Error>,
     pub borrowed: Vec<(usize, Type)>,
+    pub calls: Vec<Call>,
+}
+
+#[derive(Clone)]
+pub(crate) struct Call {
+    pub child: Type,
+    pub path: Type,
+    pub key: Type,
+    pub operation: Ident,
+    pub unchecked: bool,
 }
 impl Queries<'_> {
-    fn target(&mut self, mac: &Macro) -> Option<(usize, InterfaceGroup, bool)> {
+    fn target(&mut self, mac: &Macro) -> Option<(usize, InterfaceGroup, bool, Type)> {
         let name = mac.path.get_ident()?.to_string();
         if !name.ends_with("_from") {
             return None;
@@ -37,15 +48,15 @@ impl Queries<'_> {
         let index = self
             .children
             .iter()
-            .position(|child| child.name == *first)?;
-        if path.segments.len() != 1 {
-            self.error = Some(Error::new_spanned(
-                path,
-                "nested child queries are not yet integrated",
-            ));
-            return None;
-        }
-        Some((index, interface, dynamic))
+            .position(|child| child.name.unraw() == first.unraw())?;
+        let rest = path.segments.iter().skip(1).rev().fold(
+            parse_quote!(::systasis::scoped::Here),
+            |rest: Type, segment| {
+                let key = crate::scopegen::key(&segment.ident.unraw().to_string());
+                parse_quote!(::systasis::scoped::There<#key, #rest>)
+            },
+        );
+        Some((index, interface, dynamic, rest))
     }
 }
 impl VisitMut for Queries<'_> {
@@ -75,7 +86,7 @@ impl VisitMut for Queries<'_> {
                     return;
                 }
             };
-            if let Some((index, interface, _)) = self.target(&query.mac) {
+            if let Some((index, interface, _, path)) = self.target(&query.mac) {
                 let key = crate::scopegen::key(&interface.key());
                 if matches!(
                     operation,
@@ -87,20 +98,27 @@ impl VisitMut for Queries<'_> {
                         | "UncheckedShared"
                         | "UncheckedExclusive"
                 ) {
-                    let namespace = crate::scopegen::key("default");
+                    let child = &self.children[index].ty.elem;
                     self.borrowed.push((
                         index,
-                        parse_quote!(::systasis::scoped::key::Pair<#namespace, #key>),
+                        parse_quote!(<#child as ::systasis::scoped::Borrowed<#path, #key>>::Mask),
                     ));
                 }
                 let position = Index::from(index);
                 let operation = format_ident!("{operation}");
+                self.calls.push(Call {
+                    child: crate::scopegen::key(&self.children[index].name.unraw().to_string()),
+                    path: path.clone(),
+                    key: key.clone(),
+                    operation: operation.clone(),
+                    unchecked: name.contains("unchecked"),
+                });
                 let dispatch = if name.contains("unchecked") {
                     format_ident!("UnsafeResolve")
                 } else {
                     format_ident!("Resolve")
                 };
-                *expression = parse_quote!(::systasis::scoped::#dispatch::<::systasis::scoped::Here, #key, ::systasis::scoped::op::#operation>::resolve(&__systasis_children.#position));
+                *expression = parse_quote!(::systasis::scoped::#dispatch::<#path, #key, ::systasis::scoped::op::#operation>::resolve(&__systasis_children.#position));
                 return;
             }
         }
@@ -109,14 +127,14 @@ impl VisitMut for Queries<'_> {
     fn visit_type_mut(&mut self, ty: &mut Type) {
         if let Type::Macro(query) = ty
             && query.mac.path.is_ident("resolve_type_from")
-            && let Some((index, interface, dynamic)) = self.target(&query.mac)
+            && let Some((index, interface, dynamic, path)) = self.target(&query.mac)
         {
             let key = crate::scopegen::key(&interface.key());
             let child = &self.children[index].ty.elem;
             let target = if dynamic {
-                quote!(<#child as ::systasis::scoped::DynRegistered<::systasis::scoped::Here, #key>>::Target<'_>)
+                quote!(<#child as ::systasis::scoped::DynRegistered<#path, #key>>::Target<'_>)
             } else {
-                quote!(<#child as ::systasis::scoped::Registered<::systasis::scoped::Here, #key>>::Value<'_>)
+                quote!(<#child as ::systasis::scoped::Registered<#path, #key>>::Value<'_>)
             };
             *ty = parse_quote!(#target);
             return;

@@ -61,6 +61,12 @@ pub trait Child<Key> {
     type Container: ?Sized;
 }
 
+/// Ownership exclusions associated with borrowing one registration by path.
+pub trait Borrowed<Path, Key> {
+    /// Local or nested mask preserving the registration's namespace.
+    type Mask;
+}
+
 /// A registration's concrete value type, including borrowed constructor output.
 pub trait Registered<Path, Key> {
     /// The value corresponding to a container borrow of this lifetime.

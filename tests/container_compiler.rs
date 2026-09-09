@@ -41,6 +41,22 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "child_name_cannot_alias_local_namespace",
+            "",
+            "register_container!(primary: &()); register_value!(String::new(): String as IValue in primary);",
+            "",
+            Some("child name conflicts with a local namespace"),
+        ),
+        (
+            "default_child_namespace_is_rejected",
+            "",
+            "register_container!(default: &());",
+            "",
+            Some(
+                "a child container requires a non-default path name; default namespaces cannot be flattened",
+            ),
+        ),
+        (
             "scope_cannot_restore_restricted_owned_accessor",
             "",
             "register_value!(String::new(): String as IValue);",

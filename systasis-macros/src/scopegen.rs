@@ -187,6 +187,7 @@ pub(crate) fn value_metadata(
 ) -> TokenStream {
     let key = entry.key;
     let path = entry.path;
+    let restriction = entry.own_mask_key;
     let (generic_parameters, _, constraints) = generics.split_for_impl();
     let lifetime = fresh_lifetime("__systasis_value", generics);
     let mut declared = declared.clone();
@@ -195,6 +196,11 @@ pub(crate) fn value_metadata(
         method_lifetimes: BTreeSet::new(),
     }
     .visit_type_mut(&mut declared);
+    let borrow_metadata = quote!(
+        impl<#(#parameters),*> ::systasis::scoped::Borrowed<#path, #key> for Generated<#(#parameters),*> {
+            type Mask = ::systasis::scoped::mask::Mask<#restriction, ::systasis::scoped::mask::Empty>;
+        }
+    );
     let registration = if entry.registration.constructor.is_some() {
         let root = parse_quote!(Generated<#(#selected),*>);
         let metadata = metadata_at(
@@ -233,7 +239,7 @@ pub(crate) fn value_metadata(
             }
         )
     });
-    quote!(#registration #dynamic)
+    quote!(#borrow_metadata #registration #dynamic)
 }
 
 /// Actual consuming queries, propagated only through called constructors.
@@ -296,6 +302,68 @@ pub(crate) fn consumed_dependencies(
         }
     }
     Ok(consumed)
+}
+
+/// Inherit child operations only through executed local constructor queries.
+pub(crate) fn propagate_child_calls(
+    registrations: &[Registration],
+    indices: &BTreeMap<String, usize>,
+    order: &[usize],
+    calls: &mut [Vec<crate::child_queries::Call>],
+) -> Result<()> {
+    struct Targets<'a> {
+        indices: &'a BTreeMap<String, usize>,
+        targets: BTreeSet<usize>,
+        error: Option<Error>,
+    }
+    impl VisitMut for Targets<'_> {
+        fn visit_expr_macro_mut(&mut self, expression: &mut ExprMacro) {
+            let Some(name) = expression.mac.path.get_ident().map(ToString::to_string) else {
+                return;
+            };
+            if !matches!(
+                name.strip_suffix("_from").unwrap_or(&name),
+                "resolve" | "try_resolve" | "resolve_unchecked"
+            ) {
+                return;
+            }
+            let parsed = (|input: syn::parse::ParseStream<'_>| {
+                let interface = input.parse::<InterfaceGroup>()?;
+                let namespace = Namespace::query(input, name.ends_with("_from"))?;
+                Ok(namespace.key(&interface))
+            })
+            .parse2(expression.mac.tokens.clone());
+            match parsed {
+                Ok(key) => {
+                    if let Some(&index) = self.indices.get(&key) {
+                        self.targets.insert(index);
+                    }
+                }
+                Err(error) => self.error = Some(error),
+            }
+        }
+    }
+    for &index in order {
+        let Some(constructor) = &registrations[index].constructor else {
+            continue;
+        };
+        let mut targets = Targets {
+            indices,
+            targets: BTreeSet::new(),
+            error: None,
+        };
+        targets.visit_expr_closure_mut(&mut constructor.clone());
+        if let Some(error) = targets.error {
+            return Err(error);
+        }
+        for target in targets.targets {
+            if registrations[target].constructor.is_some() {
+                let inherited = calls[target].clone();
+                calls[index].extend(inherited);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Replace method-local/elided output lifetimes with the backing borrow.
@@ -430,6 +498,7 @@ pub(crate) struct Entry<'a> {
     pub path: &'a Type,
     pub own_mask_key: &'a Type,
     pub consumed_keys: &'a [Type],
+    pub child_calls: &'a [crate::child_queries::Call],
 }
 
 /// Emit operation metadata, restricted inherent methods, and typed dispatch.
@@ -509,6 +578,18 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                 }
                 for key in blocked {
                     scoped.make_where_clause().predicates.push(parse_quote!(#restrictions: ::systasis::scoped::mask::Blocked<#key, Out = ::systasis::scoped::key::No>));
+                }
+                for call in entry.child_calls {
+                    let child = &call.child;
+                    let path = &call.path;
+                    let key = &call.key;
+                    let operation = &call.operation;
+                    let dispatch = if call.unchecked {
+                        format_ident!("__ChildUnsafeResolve")
+                    } else {
+                        format_ident!("__ChildResolve")
+                    };
+                    scoped.make_where_clause().predicates.push(parse_quote!(#scope_children: #dispatch<#backing, #child, #path, #key, ::systasis::scoped::op::#operation>));
                 }
                 let (scope_parameters, _, scope_where) = scoped.split_for_impl();
                 let name = &method.sig.ident;

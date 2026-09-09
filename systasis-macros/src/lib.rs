@@ -4,6 +4,7 @@
 mod analysis;
 mod captures;
 mod child;
+mod child_codegen;
 mod child_queries;
 mod dyn_targets;
 mod generate;

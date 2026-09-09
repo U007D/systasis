@@ -6,6 +6,37 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::{ext::IdentExt, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
 struct CallLifetime(Lifetime);
+struct ProjectionLifetimes<'a> {
+    lifted: &'a [Lifetime],
+    predicates: Vec<WherePredicate>,
+}
+impl VisitMut for ProjectionLifetimes<'_> {
+    fn visit_type_path_mut(&mut self, path: &mut TypePath) {
+        if let Some(qualified) = &path.qself
+            && path
+                .path
+                .segments
+                .iter()
+                .any(|segment| segment.ident == "scoped")
+            && path
+                .path
+                .segments
+                .iter()
+                .any(|segment| segment.ident == "Registered" || segment.ident == "DynRegistered")
+            && let Some(segment) = path.path.segments.last()
+            && let PathArguments::AngleBracketed(arguments) = &segment.arguments
+            && let Some(GenericArgument::Lifetime(lifetime)) = arguments.args.first()
+            && self
+                .lifted
+                .iter()
+                .any(|lifted| lifted.ident == lifetime.ident)
+        {
+            let owner = &qualified.ty;
+            self.predicates.push(parse_quote!(#owner: #lifetime));
+        }
+        syn::visit_mut::visit_type_path_mut(self, path);
+    }
+}
 
 /// Apply namespace suffixes after operation modifiers, and validate the complete
 /// public method names rather than only their interface-name portion.
@@ -219,20 +250,39 @@ pub(crate) fn expand(
             })
             .collect();
         let mut child_borrows = Vec::new();
+        for child in &children {
+            if let Some(namespace) = registrations
+                .iter()
+                .filter_map(|r| r.namespace.0.as_ref())
+                .find(|namespace| namespace.unraw() == child.name.unraw())
+            {
+                let mut error =
+                    Error::new_spanned(&child.name, "child name conflicts with a local namespace");
+                error.combine(Error::new_spanned(
+                    namespace,
+                    "local namespace is declared here",
+                ));
+                return Err(error);
+            }
+        }
+        let mut child_calls = Vec::new();
         for registration in &mut registrations {
             let mut queries = crate::child_queries::Queries {
                 children: &children,
                 error: None,
                 borrowed: Vec::new(),
+                calls: Vec::new(),
             };
             queries.visit_type_mut(&mut registration.ty);
             queries.visit_expr_mut(&mut registration.value);
             // Temporary initializer reads do not remove public ownership methods.
             queries.borrowed.clear();
+            queries.calls.clear();
             if let Some(constructor) = &mut registration.constructor {
                 queries.visit_expr_closure_mut(constructor);
             }
             child_borrows.extend(queries.borrowed);
+            child_calls.push(queries.calls);
             if let Some(error) = queries.error {
                 return Err(error);
             }
@@ -335,6 +385,7 @@ pub(crate) fn expand(
         })?;
         let transitive = crate::wiring::transitive(&dependencies, &order);
         let consumed = crate::scopegen::consumed_dependencies(&registrations, &indices, &order)?;
+        crate::scopegen::propagate_child_calls(&registrations, &indices, &order, &mut child_calls)?;
         let mut build_queries = crate::wiring::replacements(
             &registrations,
             &transitive,
@@ -445,6 +496,29 @@ pub(crate) fn expand(
         for lifetime in &lifetimes.0 {
             generics.params.insert(0, parse_quote!(#lifetime));
         }
+        // Generated GAT scope projections must retain the well-formedness
+        // relation already present in the caller's shared child reference.
+        for child in &children {
+            let ty = &child.ty.elem;
+            let lifetime = &child.ty.lifetime;
+            generics
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!(#ty: #lifetime));
+        }
+        let mut projections = ProjectionLifetimes {
+            lifted: &lifetimes.0,
+            predicates: Vec::new(),
+        };
+        for registration in &registrations {
+            projections.visit_type_mut(&mut registration.ty.clone());
+        }
+        if !projections.predicates.is_empty() {
+            generics
+                .make_where_clause()
+                .predicates
+                .extend(projections.predicates);
+        }
         let mut const_markers = Vec::new();
         let marker_types = generics
             .params
@@ -484,7 +558,7 @@ pub(crate) fn expand(
                     .filter(|(child, _)| *child == index)
                     .fold(
                         quote!(::systasis::scoped::mask::Empty),
-                        |tail, (_, key)| quote!(::systasis::scoped::mask::Mask<#key, #tail>),
+                        |tail, (_, mask)| quote!(::systasis::scoped::mask::Union<#mask, #tail>),
                     )
             })
             .collect::<Vec<_>>();
@@ -511,6 +585,8 @@ pub(crate) fn expand(
         let mut implementations = Vec::new();
         let mut scoped_implementations = Vec::new();
         let descriptor = crate::scopegen::descriptor(&parameters, &children);
+        let child_forwarding = crate::child_codegen::forwarding(&parameters, &children);
+        let namespace_forwarding = crate::child_codegen::namespaces(&parameters, &registrations);
         let mut key_declarations = Vec::new();
         let scope_keys = registrations
             .iter()
@@ -609,6 +685,7 @@ pub(crate) fn expand(
                 path: scope_path,
                 own_mask_key: scope_mask_key,
                 consumed_keys: &consumed_keys,
+                child_calls: &child_calls[i],
             };
             scoped_implementations.push(crate::scopegen::value_metadata(
                 &scope_entry,
@@ -925,6 +1002,8 @@ pub(crate) fn expand(
                 impl #alias_parameters Generated<#(#selected),*> #alias_where { #(#child_accessors)* }
                 #(#child_aliases)*
                 #descriptor
+                #child_forwarding
+                #namespace_forwarding
                 #(#scoped_implementations)*
                 #[allow(type_alias_bounds)]
                 pub type Container #alias_parameters #alias_where = Generated<#(#field_types),*>;
