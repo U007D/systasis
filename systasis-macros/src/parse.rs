@@ -4,6 +4,7 @@ use syn::{
 };
 pub(crate) struct Registration {
     pub(crate) fresh: bool,
+    pub(crate) dynamic: bool,
     pub(crate) value: Expr,
     pub(crate) ty: Type,
     pub(crate) interface: Path,
@@ -14,8 +15,10 @@ impl Parse for Registration {
         input.parse::<Token![:]>()?;
         let ty = input.parse()?;
         input.parse::<Token![as]>()?;
+        let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
         Ok(Self {
             fresh: false,
+            dynamic,
             value,
             ty,
             interface: input.parse()?,
@@ -42,6 +45,7 @@ impl Parse for Registrations {
                 body.parse::<Token![as]>()?;
                 Registration {
                     fresh: true,
+                    dynamic: false,
                     value: parse_quote!(()),
                     ty,
                     interface: body.parse()?,

@@ -30,6 +30,20 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "non_dyn_safe_opt_in",
+            "",
+            "register_value!(String::new(): String as dyn IGeneric);",
+            "",
+            Some("E0038"),
+        ),
+        (
+            "static_registration_has_no_dyn_method",
+            "",
+            "register_value!(String::new(): String as IValue);",
+            "built.unwrap().try_resolve_i_value_dyn_ref();",
+            Some("E0599"),
+        ),
+        (
             "wrong_lifetime_interface",
             "",
             "register_value!(Borrowed(\"value\"): Borrowed<'_> as IValue);",
@@ -132,6 +146,8 @@ fn container_diagnostics() {
         let source = format!(
             r#"
 trait IValue {{}}
+trait IGeneric {{ fn generic<T>(&self); }}
+impl IGeneric for String {{ fn generic<T>(&self) {{}} }}
 struct Borrowed<'a>(&'a str);
 impl IValue for String {{}}
 trait INumber {{}}

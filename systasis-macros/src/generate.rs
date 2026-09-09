@@ -290,6 +290,21 @@ pub(crate) fn expand(
                     }
                 })
                 .collect::<Vec<_>>();
+            if registration.dynamic {
+                let interface = &registration.interface;
+                let dyn_ref = format_ident!("try_resolve_{snake}_dyn_ref");
+                let copy_dyn_ref = format_ident!("resolve_{snake}_dyn_ref");
+                implementations.push(quote!(
+                    impl<__Value: #interface, #(#others),*> Generated<#(#take_args),*> {
+                        pub fn #dyn_ref(&self) -> ::core::result::Result<#read_type<'_, dyn #interface + '_>, ::systasis::__private::Error> {
+                            self.#field.try_resolve_ref().map(|guard| #read_type::map(guard, |value| value as &(dyn #interface + '_)))
+                        }
+                    }
+                    impl<__Value: #interface + ::core::marker::Copy, #(#others),*> Generated<#(#copy_args),*> {
+                        pub fn #copy_dyn_ref(&self) -> &(dyn #interface + '_) { self.#field.resolve_ref() }
+                    }
+                ));
+            }
             implementations.push(quote!(
                 impl<__Value: ::core::default::Default, #(#others),*> Generated<#(#fresh_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
