@@ -8,7 +8,7 @@ use std::{
 };
 use systasis::app_container::Error;
 
-fn pending(future: impl Future<Output = ()>) {
+fn pending(future: impl Future<Output = ()>, inspect_suspended: impl FnOnce()) {
     let mut future = pin!(future);
     assert!(matches!(
         future
@@ -16,6 +16,7 @@ fn pending(future: impl Future<Output = ()>) {
             .poll(&mut Context::from_waker(Waker::noop())),
         Poll::Pending
     ));
+    inspect_suspended();
     // Dropping the pinned owner cancels the future, including its held guard.
 }
 
@@ -30,6 +31,7 @@ macro_rules! scenario {
             impl IValue for String {}
             #[systasis::container($($policy)*)]
             #[test]
+            #[allow(clippy::await_holding_refcell_ref, reason = "exercise deliberate suspension with local guards, then verify cancellation releases them")]
             fn cancellation_releases_shared_and_exclusive_guards() -> Result<(), Error> {
                 let Ok(container) = systasis::systasis_container! {
                     register_value!(String::from("value"): String as IValue);
@@ -42,7 +44,9 @@ macro_rules! scenario {
                 };
                 ($assert_future)(&read_future);
                 assert!(matches!(container.try_resolve_i_value_ref_mut(), Err(Error::ValueAccessContention)));
-                pending(read_future);
+                pending(read_future, || {
+                    assert!(matches!(container.try_resolve_i_value_ref_mut(), Err(Error::ValueAccessContention)));
+                });
                 let mut writer = container.try_resolve_i_value_ref_mut()?;
                 writer.push('!');
                 let write_future = async move {
@@ -51,7 +55,30 @@ macro_rules! scenario {
                 };
                 ($assert_future)(&write_future);
                 assert!(matches!(container.try_resolve_i_value_ref(), Err(Error::ValueAccessContention)));
-                pending(write_future);
+                pending(write_future, || {
+                    assert!(matches!(container.try_resolve_i_value_ref(), Err(Error::ValueAccessContention)));
+                });
+                // These guards do not exist until the future is first polled.
+                let read_future = async {
+                    let reader = container.try_resolve_i_value_ref().unwrap();
+                    std::future::pending::<()>().await;
+                    std::hint::black_box(&*reader);
+                };
+                ($assert_future)(&read_future);
+                assert!(container.try_resolve_i_value_ref_mut().is_ok());
+                pending(read_future, || {
+                    assert!(matches!(container.try_resolve_i_value_ref_mut(), Err(Error::ValueAccessContention)));
+                });
+                let write_future = async {
+                    let mut writer = container.try_resolve_i_value_ref_mut().unwrap();
+                    std::future::pending::<()>().await;
+                    std::hint::black_box(&mut *writer);
+                };
+                ($assert_future)(&write_future);
+                assert!(container.try_resolve_i_value_ref().is_ok());
+                pending(write_future, || {
+                    assert!(matches!(container.try_resolve_i_value_ref(), Err(Error::ValueAccessContention)));
+                });
                 assert_eq!(container.try_resolve_i_value()?, "value!");
                 Ok(())
             }
@@ -84,7 +111,10 @@ mod released {
             std::hint::black_box(container);
         };
         is_send(&future);
-        pending(future);
+        pending(future, || {
+            assert_eq!(&*container.try_resolve_i_value_ref().unwrap(), "value!");
+            assert!(container.try_resolve_i_value_ref_mut().is_ok());
+        });
         assert_eq!(container.try_resolve_i_value().unwrap(), "value!");
     }
 }
@@ -227,13 +257,25 @@ fn main() {
             );
         } else {
             assert!(!output.status.success(), "{case} unexpectedly compiled");
-            assert!(diagnostics.contains("error"), "{diagnostics}");
-            for fragment in fragments {
-                assert!(
-                    diagnostics.contains(fragment),
-                    "{case}: missing {fragment}: {diagnostics}"
-                );
-            }
+            let location = format!("--> {}:", source.display());
+            let call = if case == "container_sync" {
+                "is_sync(container);"
+            } else {
+                "is_send(&future);"
+            };
+            // Require one actual error diagnostic, at the fixture's assertion,
+            // to explain every expected part of this rejection.
+            let expected_error = diagnostics.split("\nerror").any(|block| {
+                let block = format!("error{}", block.strip_prefix("error").unwrap_or(block));
+                (block.starts_with("error:") || block.starts_with("error["))
+                    && block.contains(&location)
+                    && block.contains(call)
+                    && fragments.iter().all(|fragment| block.contains(fragment))
+            });
+            assert!(
+                expected_error,
+                "{case}: missing intended diagnostic: {diagnostics}"
+            );
         }
     }
 }
