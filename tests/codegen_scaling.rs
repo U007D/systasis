@@ -51,6 +51,44 @@ fn flat(count: usize) -> String {
     source
 }
 
+fn constructors(count: usize) -> String {
+    let mut source =
+        String::from("#![forbid(unsafe_code)]\ntrait ISeed {} impl ISeed for u64 {}\n");
+    for index in 0..count {
+        writeln!(
+            source,
+            "trait IValue{index} {{}} impl IValue{index} for u64 {{}}"
+        )
+        .unwrap();
+    }
+    source.push_str("fn named(container: &AppContainer) -> u64 {\n");
+    let calls = (0..count)
+        .map(|index| format!("container.resolve_i_value{index}()"))
+        .collect::<Vec<_>>()
+        .join(" + ");
+    writeln!(source, "{calls}\n}}\n#[systasis::container]\nfn main() {{").unwrap();
+    for index in 0..count {
+        writeln!(source, "let offset{index}: u64 = {index};").unwrap();
+    }
+    source.push_str("let Ok(container) = systasis::systasis_container! {\n");
+    source.push_str("register_value!(7u64: u64 as ISeed);\n");
+    for index in 0..count {
+        writeln!(
+            source,
+            "register_type_with!(u64 as IValue{index}, move || resolve!(ISeed) + offset{index});"
+        )
+        .unwrap();
+    }
+    writeln!(
+        source,
+        "}}.build(); assert_eq!(named(container), {}); assert_eq!(named(container), {}); }}",
+        7 * count + count * (count - 1) / 2,
+        7 * count + count * (count - 1) / 2,
+    )
+    .unwrap();
+    source
+}
+
 fn nested(depth: usize) -> String {
     let mut source = String::from(
         r#"
@@ -119,7 +157,7 @@ mod layer{layer} {{
 
 #[test]
 #[ignore = "independent stable compiler samples, including codegen/link and execution"]
-fn stable_flat_and_nested_generated_container_scaling() {
+fn stable_stored_constructor_and_nested_container_scaling() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let backend = if cfg!(feature = "std") {
         "std"
@@ -168,6 +206,9 @@ fn stable_flat_and_nested_generated_container_scaling() {
         ("flat1", 1, 0, flat(1)),
         ("flat8", 8, 0, flat(8)),
         ("flat32", 32, 0, flat(32)),
+        ("constructors1", 2, 0, constructors(1)),
+        ("constructors8", 9, 0, constructors(8)),
+        ("constructors32", 33, 0, constructors(32)),
         ("nested1", 1, 1, nested(1)),
         ("nested2", 1, 2, nested(2)),
         ("nested3", 1, 3, nested(3)),

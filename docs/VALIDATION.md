@@ -157,10 +157,14 @@ Run `cargo +stable test --release --test performance --offline --locked --
 --ignored --nocapture`, then add `--no-default-features` before `--` for spin.
 
 `tests/codegen_scaling.rs` (25bb42e) separately measures stable compiler invocations
-for 1/8/32 flat registrations and child nesting depths 1/2/3. It warms dependency
+for 1/8/32 flat registrations, 1/8/32 captured constructors each resolving one
+shared stored dependency, and child nesting depths 1/2/3. It warms dependency
 artifacts, then checks and builds/links distinct input crates for three samples
 per case; each executable validates resolution and nameable container/scope types.
-Both backends pass. Output records source/executable sizes and separate metadata
+Both backends pass, including repeat resolution of each captured constructor.
+The post-context-change runs executed concurrently with other validation work;
+their timings are not controlled before/after performance comparisons.
+Output records source/executable sizes and separate metadata
 check and build/link durations, not expanded-token size or a universal scaling
 law. No timing threshold is enforced. Run `cargo +stable test --test codegen_scaling
 --offline --locked -- --ignored --nocapture`, adding `--no-default-features` for spin.
