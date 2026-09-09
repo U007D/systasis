@@ -1,0 +1,28 @@
+//! Ordinary helper functions may contain macros without capture rewriting.
+//! This is a supported workaround, not equivalent to arbitrary inline macros.
+#![forbid(unsafe_code)]
+
+struct Service(String);
+trait IService {}
+impl IService for Service {}
+
+static CALLS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+fn construct(config: &str) -> Service {
+    CALLS.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+    Service(format!("configured: {config}"))
+}
+
+#[systasis::container]
+#[test]
+fn macros_in_called_functions_execute_on_each_resolution() {
+    let config: String = String::from("example");
+    let Ok(container) = systasis::systasis_container! {
+        register_type_with!(Service as IService, move || construct(&config));
+    }
+    .build();
+    assert_eq!(CALLS.load(core::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(container.resolve_i_service().0, "configured: example");
+    assert_eq!(container.resolve_i_service().0, "configured: example");
+    assert_eq!(CALLS.load(core::sync::atomic::Ordering::SeqCst), 2);
+}
