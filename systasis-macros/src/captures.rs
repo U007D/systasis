@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use quote::ToTokens;
 use syn::{
     Expr, ExprClosure, FnArg, Ident, Item, ItemFn, Pat, Stmt, Type,
+    spanned::Spanned,
     visit_mut::{self, VisitMut},
 };
 
@@ -189,15 +190,74 @@ impl Bindings {
                 }
             }
             (Pat::Slice(pattern), Type::Array(ty)) => {
+                let explicit = pattern.elems.iter().filter(|pat| !slice_rest(pat)).count();
+                let rests = pattern.elems.len() - explicit;
+                let length = match &ty.len {
+                    Expr::Lit(literal) => match &literal.lit {
+                        syn::Lit::Int(integer) => integer.base10_parse::<usize>().ok(),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if rests > 1
+                    || length.is_some_and(|length| {
+                        explicit > length || (rests == 0 && explicit != length)
+                    })
+                {
+                    return;
+                }
+                let rest_type = if explicit == 0 {
+                    // Preserve the authored length; rustc still validates the
+                    // original pattern (including generic-length restrictions).
+                    Some(annotation.clone())
+                } else {
+                    // Only literal lengths can be reduced here. Emitting
+                    // `N - explicit` would add a generic-const requirement.
+                    length.map(|length| {
+                        let remaining =
+                            syn::LitInt::new(&(length - explicit).to_string(), ty.len.span());
+                        let element = &ty.elem;
+                        syn::parse_quote!([#element; #remaining])
+                    })
+                };
                 for element in &pattern.elems {
-                    // A `tail @ ..` binding is an array, not an element. Its
-                    // length would require evaluating/subtracting consts.
-                    self.observe_annotated_pattern(element, &ty.elem, mode);
+                    self.observe_slice_element(element, &ty.elem, rest_type.as_ref(), mode);
+                }
+            }
+            (Pat::Slice(pattern), Type::Slice(ty)) => {
+                if pattern.elems.iter().filter(|pat| slice_rest(pat)).count() > 1 {
+                    return;
+                }
+                for element in &pattern.elems {
+                    self.observe_slice_element(element, &ty.elem, Some(annotation), mode);
                 }
             }
             _ => {}
         }
     }
+
+    fn observe_slice_element(
+        &mut self,
+        pattern: &Pat,
+        element: &Type,
+        rest: Option<&Type>,
+        mode: BindingMode,
+    ) {
+        if slice_rest(pattern) {
+            if let (Pat::Ident(binding), Some(rest)) = (pattern, rest) {
+                let mut binding = binding.clone();
+                binding.subpat = None;
+                self.observe_annotated_pattern(&Pat::Ident(binding), rest, mode);
+            }
+        } else {
+            self.observe_annotated_pattern(pattern, element, mode);
+        }
+    }
+}
+
+fn slice_rest(pattern: &Pat) -> bool {
+    matches!(pattern, Pat::Rest(_))
+        || matches!(pattern, Pat::Ident(binding) if binding.subpat.as_ref().is_some_and(|(_, subpat)| matches!(subpat.as_ref(), Pat::Rest(_))))
 }
 
 pub(crate) struct Plan {
@@ -842,7 +902,9 @@ mod tests {
     fn unsupported_patterns_remain_untyped_instead_of_guessing() {
         let statements: Vec<Stmt> = vec![
             parse_quote!(let (value, _): Alias = input;),
-            parse_quote!(let [_, value @ ..]: [u8; 3] = input;),
+            parse_quote!(let [_, value @ ..]: [u8; COUNT] = input;),
+            parse_quote!(let [_, _, value @ ..]: [u8; 1] = input;),
+            parse_quote!(let [value, _]: [u8; 1] = input;),
             parse_quote!(let Record { value }: Record = input;),
             parse_quote!(let (value, _, _): (u8, u16) = input;),
         ];
@@ -858,6 +920,48 @@ mod tests {
             .err()
             .expect("unsupported destructuring must not retain an earlier annotation");
             assert!(error.to_string().contains("explicit type annotation"));
+        }
+    }
+
+    #[test]
+    fn slice_rest_types_preserve_lengths_and_binding_modes() {
+        let cases: Vec<(Stmt, &str)> = vec![
+            (
+                parse_quote!(let [_, value @ ..]: [u8; 3] = input;),
+                "[u8 ; 2]",
+            ),
+            (
+                parse_quote!(let [value @ .., _]: &[u8; 3] = input;),
+                "& '_ [u8 ; 2]",
+            ),
+            (
+                parse_quote!(let [_, value @ .., _]: &mut [u8; 3] = input;),
+                "& '_ mut [u8 ; 1]",
+            ),
+            (parse_quote!(let [value @ ..]: [u8; N] = input;), "[u8 ; N]"),
+            (
+                parse_quote!(let [_, value @ ..]: &[u8] = input;),
+                "& '_ [u8]",
+            ),
+            (
+                parse_quote!(let [value @ ..]: &mut [u8] = input;),
+                "& '_ mut [u8]",
+            ),
+            (
+                parse_quote!(let [ref value @ ..]: [u8; 3] = input;),
+                "& '_ [u8 ; 3]",
+            ),
+        ];
+        for (statement, expected) in cases {
+            let mut bindings = Bindings::default();
+            bindings.observe_statement(&statement);
+            let result = prepare(
+                &parse_quote!(|| value),
+                &bindings,
+                &parse_quote!(__captures),
+            )
+            .unwrap();
+            assert_eq!(capture_types(&result), [expected]);
         }
     }
 
