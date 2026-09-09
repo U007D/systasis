@@ -116,6 +116,19 @@ impl VisitMut for CallLifetime {
     }
 }
 impl VisitMut for Lifetimes {
+    fn visit_type_reference_mut(&mut self, reference: &mut TypeReference) {
+        reference
+            .lifetime
+            .get_or_insert_with(|| Lifetime::new("'_", reference.and_token.span));
+        syn::visit_mut::visit_type_reference_mut(self, reference);
+    }
+
+    // Elision within a function signature introduces bound lifetimes, not
+    // captures of the enclosing container. Preserve those signatures intact.
+    fn visit_type_fn_ptr_mut(&mut self, _: &mut TypeFnPtr) {}
+    fn visit_parenthesized_generic_arguments_mut(&mut self, _: &mut ParenthesizedGenericArguments) {
+    }
+
     fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
         if lifetime.ident == "_" {
             *lifetime = Lifetime::new(
