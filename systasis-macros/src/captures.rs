@@ -20,6 +20,7 @@ pub(crate) struct Bindings {
     imports: Vec<syn::ItemUse>,
     generic_names: BTreeSet<String>,
     tuple_projections: BTreeSet<(usize, usize)>,
+    sequence_projections: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -128,7 +129,7 @@ impl Bindings {
     /// Emit only structural implementations: no source alias or concrete type
     /// appears here. Each authored exact tuple shape supplies its own arity.
     pub(crate) fn projection_helpers(&self) -> proc_macro2::TokenStream {
-        if self.tuple_projections.is_empty() {
+        if self.tuple_projections.is_empty() && !self.sequence_projections {
             return quote!();
         }
         let implementations = self.tuple_projections.iter().map(|&(arity, index)| {
@@ -150,6 +151,44 @@ impl Bindings {
                 }
             }
         });
+        let sequence = self.sequence_projections.then(|| quote! {
+            pub trait __SystasisCaptureElement<Mode = __CaptureOwned> { type Output; }
+            impl<T, const N: usize, Mode: __CaptureWrap<T>> __SystasisCaptureElement<Mode> for [T; N] {
+                type Output = <Mode as __CaptureWrap<T>>::Output;
+            }
+            impl<T, Mode: __CaptureWrap<T>> __SystasisCaptureElement<Mode> for [T] {
+                type Output = <Mode as __CaptureWrap<T>>::Output;
+            }
+            impl<'a, T: ?Sized, Mode> __SystasisCaptureElement<Mode> for &'a T
+            where T: __SystasisCaptureElement<__CaptureShared<'a>> {
+                type Output = <T as __SystasisCaptureElement<__CaptureShared<'a>>>::Output;
+            }
+            impl<'a, T: ?Sized, Mode: __CaptureThroughMut<'a>> __SystasisCaptureElement<Mode> for &'a mut T
+            where T: __SystasisCaptureElement<<Mode as __CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __SystasisCaptureElement<<Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+            }
+            pub trait __SystasisCaptureLength { const LENGTH: usize; }
+            impl<T, const N: usize> __SystasisCaptureLength for [T; N] { const LENGTH: usize = N; }
+            pub trait __SystasisCaptureArrayTail<const R: usize, Mode = __CaptureOwned> { type Output; }
+            impl<T, const N: usize, const R: usize, Mode: __CaptureWrap<[T; R]>> __SystasisCaptureArrayTail<R, Mode> for [T; N] {
+                type Output = <Mode as __CaptureWrap<[T; R]>>::Output;
+            }
+            pub trait __CaptureSliceWrap<T> { type Output; }
+            impl<'a, T: 'a> __CaptureSliceWrap<T> for __CaptureShared<'a> { type Output = &'a [T]; }
+            impl<'a, T: 'a> __CaptureSliceWrap<T> for __CaptureMutable<'a> { type Output = &'a mut [T]; }
+            pub trait __SystasisCaptureSliceTail<Mode = __CaptureOwned> { type Output; }
+            impl<T, Mode: __CaptureSliceWrap<T>> __SystasisCaptureSliceTail<Mode> for [T] {
+                type Output = <Mode as __CaptureSliceWrap<T>>::Output;
+            }
+            impl<'a, T: ?Sized, Mode> __SystasisCaptureSliceTail<Mode> for &'a T
+            where T: __SystasisCaptureSliceTail<__CaptureShared<'a>> {
+                type Output = <T as __SystasisCaptureSliceTail<__CaptureShared<'a>>>::Output;
+            }
+            impl<'a, T: ?Sized, Mode: __CaptureThroughMut<'a>> __SystasisCaptureSliceTail<Mode> for &'a mut T
+            where T: __SystasisCaptureSliceTail<<Mode as __CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __SystasisCaptureSliceTail<<Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+            }
+        });
         quote! {
             pub struct __CaptureOwned;
             pub struct __CaptureShared<'a>(::core::marker::PhantomData<&'a ()>);
@@ -163,6 +202,7 @@ impl Bindings {
             impl<'a, 'b> __CaptureThroughMut<'b> for __CaptureShared<'a> { type Mode = __CaptureShared<'a>; }
             impl<'a, 'b> __CaptureThroughMut<'b> for __CaptureMutable<'a> { type Mode = __CaptureMutable<'a>; }
             #(#implementations)*
+            #sequence
         }
     }
 
@@ -193,7 +233,8 @@ impl Bindings {
     }
 
     /// Extract structurally annotated types and propagate Rust's binding modes.
-    /// Opaque aliases and struct fields still need unavailable type information.
+    /// Structural projections cover selected alias shapes; struct fields still
+    /// need unavailable type information.
     /// https://doc.rust-lang.org/reference/patterns.html#binding-modes
     fn observe_annotated_pattern(&mut self, pattern: &Pat, annotation: &Type, mode: BindingMode) {
         match (pattern, annotation) {
@@ -299,6 +340,28 @@ impl Bindings {
                     self.observe_slice_element(element, &ty.elem, Some(annotation), mode);
                 }
             }
+            (Pat::Slice(pattern), Type::Path(path)) => {
+                self.sequence_projections = true;
+                let source = mode.bound_type(annotation);
+                let element = syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureElement>::Output);
+                let explicit = pattern.elems.iter().filter(|pat| !slice_rest(pat)).count();
+                let concrete = path.qself.is_none()
+                    && path.path.segments.iter().all(|segment| {
+                        !self.generic_names.contains(&name(&segment.ident))
+                            && matches!(segment.arguments, syn::PathArguments::None)
+                    });
+                // Concrete owned aliases permit an associated-const array
+                // length. Generic slice aliases use exact slice projections;
+                // generic array remainders have no implementation here.
+                let rest = if concrete && matches!(mode, BindingMode::Move) {
+                    syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureArrayTail<{<#source as __systasis_injected::__SystasisCaptureLength>::LENGTH - #explicit}>>::Output)
+                } else {
+                    syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureSliceTail>::Output)
+                };
+                for pat in &pattern.elems {
+                    self.observe_slice_element(pat, &element, Some(&rest), BindingMode::Move);
+                }
+            }
             (Pat::Tuple(pattern), Type::Path(_))
                 if !pattern
                     .elems
@@ -387,12 +450,11 @@ impl VisitMut for CaptureProjection {
                 .segments
                 .first()
                 .is_some_and(|segment| segment.ident == "__systasis_injected")
-            && path.path.segments.iter().any(|segment| {
-                segment
-                    .ident
-                    .to_string()
-                    .starts_with("__SystasisCaptureTuple")
-            });
+            && path
+                .path
+                .segments
+                .iter()
+                .any(|segment| segment.ident.to_string().starts_with("__SystasisCapture"));
         visit_mut::visit_type_path_mut(self, path);
     }
 }
@@ -1057,6 +1119,25 @@ mod tests {
         let file: syn::File = syn::parse2(helpers.clone()).unwrap();
         assert!(file.items.iter().any(|item| matches!(item, Item::Impl(item) if matches!(&*item.self_ty, Type::Tuple(tuple) if tuple.elems.len() == 64))));
         assert!(!helpers.to_string().contains("PrivateAlias"));
+    }
+
+    #[test]
+    fn sequence_helpers_do_not_expose_private_alias_names() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&parse_quote!(let [head, tail @ ..]: PrivateArray = input;));
+        let plan = prepare(
+            &parse_quote!(|| (head, tail.len())),
+            &bindings,
+            &parse_quote!(__captures),
+        )
+        .unwrap();
+        assert!(plan.requires_record);
+        let helpers = bindings.projection_helpers();
+        let _: syn::File = syn::parse2(helpers.clone()).unwrap();
+        assert!(!helpers.to_string().contains("PrivateArray"));
+        let types = capture_types(&plan);
+        assert!(types[0].contains("__SystasisCaptureElement"));
+        assert!(types[1].contains("__SystasisCaptureArrayTail"));
     }
 
     #[test]
