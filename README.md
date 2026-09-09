@@ -23,7 +23,7 @@ Capture analysis supports explicitly typed tuple/array destructuring and explici
 reference patterns. Absolute, non-glob function-local imports are preserved when
 they do not conflict with capture names. Opaque macros, other local imports,
 struct/alias destructuring and implicit reference-pattern binding modes remain
-implementation gaps, not new API rules.
+implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
 
 Still pending: generic enclosing functions,
 combined dyn trait groups, named namespaces and composition, unchecked generation,
