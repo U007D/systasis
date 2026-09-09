@@ -117,6 +117,7 @@ version = "0.1.0"
 dependencies = [
  "parking_lot",
  "spin",
+ "systasis-macros",
  "thiserror",
 ]
 
@@ -125,6 +126,15 @@ name = "systasis-contract-fixture"
 version = "0.0.0"
 dependencies = [
  "systasis",
+]
+
+[[package]]
+name = "systasis-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

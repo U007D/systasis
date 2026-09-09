@@ -26,6 +26,7 @@ default = ["std"]
 std = ["thiserror/std", "dep:parking_lot"]
 
 [dependencies]
+systasis-macros = { path = "systasis-macros", version = "0.1.0" }
 parking_lot = { version = "0.12.5", default-features = false, features = ["send_guard"], optional = true }
 thiserror = { version = "2.0.20", default-features = false }
 spin = { version = "0.12.2", default-features = false, features = ["rwlock", "lock_api"] }
