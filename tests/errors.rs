@@ -11,9 +11,8 @@ fn availability_errors_are_distinct_and_have_no_source() {
     assert_ne!(consumed.to_string(), contended.to_string());
 }
 
-#[cfg(not(feature = "std"))]
 #[test]
-fn no_std_error_has_only_consumption_and_contention() {
+fn error_has_only_consumption_and_contention() {
     fn classify(error: Error) -> bool {
         match error {
             Error::ValueAlreadyConsumed => true,

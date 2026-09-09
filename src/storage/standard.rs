@@ -1,12 +1,11 @@
-//! Stable std guards: the lock protects a separately stored optional payload.
+//! Nonblocking parking_lot storage with transferable guards and no poisoning.
+
 use crate::app_container::Error;
 use core::{
     cell::UnsafeCell,
-    marker::PhantomData,
     ops::{Deref, DerefMut},
-    ptr::NonNull,
 };
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Consumable storage with nonblocking, synchronized access.
 #[doc(hidden)]
@@ -21,11 +20,6 @@ pub struct TakeSlot<T> {
 // Send. Private fields prevent resetting reservations or unguarded mutation.
 unsafe impl<T: Send + Sync> Sync for TakeSlot<T> {}
 
-// Match RwLock<Option<T>>: unwinding through a write guard poisons the lock.
-// These advisory traits neither recover the value nor bypass poison checking.
-impl<T> std::panic::UnwindSafe for TakeSlot<T> {}
-impl<T> std::panic::RefUnwindSafe for TakeSlot<T> {}
-
 impl<T> TakeSlot<T> {
     /// Stores a value without allocating or invoking user code.
     pub const fn new(value: T) -> Self {
@@ -35,9 +29,19 @@ impl<T> TakeSlot<T> {
         }
     }
 
+    fn read(&self) -> Result<RwLockReadGuard<'_, bool>, Error> {
+        self.reserved.try_read().ok_or(Error::ValueAccessContention)
+    }
+
+    fn write(&self) -> Result<RwLockWriteGuard<'_, bool>, Error> {
+        self.reserved
+            .try_write()
+            .ok_or(Error::ValueAccessContention)
+    }
+
     /// Takes ownership, leaving the slot empty after successful acquisition.
     pub fn try_resolve(&self) -> Result<T, Error> {
-        let guard = self.reserved.try_write().map_err(Error::from_lock)?;
+        let guard = self.write()?;
         if *guard {
             return Err(Error::ValueAccessContention);
         }
@@ -50,22 +54,18 @@ impl<T> TakeSlot<T> {
 
     /// Borrows a present value while retaining the acquired read lock.
     pub fn try_resolve_ref(&self) -> Result<Ref<'_, T>, Error> {
-        let guard = self.reserved.try_read().map_err(Error::from_lock)?;
-        // SAFETY: the read lock excludes removal and mutation. Other readers
-        // only create shared references. No payload reference precedes locking.
+        let guard = self.read()?;
+        // SAFETY: the read lock excludes removal and mutation. Ordinary readers
+        // and any permanent reservations expose only shared references.
         let value = unsafe { &*self.value.get() }
             .as_ref()
             .ok_or(Error::ValueAlreadyConsumed)?;
-        Ok(Ref {
-            guard,
-            value: NonNull::from(value),
-            marker: PhantomData,
-        })
+        Ok(Ref { guard, value })
     }
 
     /// Mutably borrows a present value while retaining the acquired write lock.
     pub fn try_resolve_ref_mut(&self) -> Result<RefMut<'_, T>, Error> {
-        let guard = self.reserved.try_write().map_err(Error::from_lock)?;
+        let guard = self.write()?;
         if *guard {
             return Err(Error::ValueAccessContention);
         }
@@ -76,8 +76,7 @@ impl<T> TakeSlot<T> {
             .ok_or(Error::ValueAlreadyConsumed)?;
         Ok(RefMut {
             _guard: guard,
-            value: NonNull::from(value),
-            marker: PhantomData,
+            value,
         })
     }
 
@@ -97,7 +96,7 @@ impl<T> TakeSlot<T> {
     /// including repeated reservations. The reference cannot outlive the slot.
     #[doc(hidden)]
     pub fn try_reserve_ref(&self) -> Result<&T, Error> {
-        let mut guard = self.reserved.try_write().map_err(Error::from_lock)?;
+        let mut guard = self.write()?;
         // SAFETY: exclusive acquisition excludes ordinary writers and readers.
         // Existing reservations permit only shared access. No mutable payload
         // reference is formed, including on repeated reservation attempts.
@@ -110,19 +109,12 @@ impl<T> TakeSlot<T> {
     }
 }
 
-/// A shared reference to a present value, retaining its std read-lock guard.
+/// A shared reference to a present value, retaining its parking_lot read-lock guard.
 ///
-/// This is a systasis guard, not `std::cell::Ref`. It cannot be sent to another
-/// thread because the underlying std lock guard must be dropped on its thread.
-///
-/// ```compile_fail
-/// fn assert_send<T: Send>() {}
-/// assert_send::<systasis::Ref<'static, u32>>();
-/// ```
+/// This is a systasis guard, not `std::cell::Ref`.
 pub struct Ref<'a, T: ?Sized> {
     guard: RwLockReadGuard<'a, bool>,
-    value: NonNull<T>,
-    marker: PhantomData<&'a T>,
+    value: &'a T,
 }
 
 impl<'a, T: ?Sized> Ref<'a, T> {
@@ -132,11 +124,9 @@ impl<'a, T: ?Sized> Ref<'a, T> {
     where
         F: FnOnce(&T) -> &U,
     {
-        let value = NonNull::from(project(&original));
         Ref {
+            value: project(original.value),
             guard: original.guard,
-            value,
-            marker: PhantomData,
         }
     }
 }
@@ -145,59 +135,28 @@ impl<T: ?Sized> Deref for Ref<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        // SAFETY: construction checked Some under the retained lock. Mapping
-        // preserves that lock and projects a reference valid while the source
-        // remains valid. The returned lifetime is limited by &self.
-        unsafe { self.value.as_ref() }
+        self.value
     }
 }
 
-// SAFETY: sharing the wrapper exposes only &T. Its retained read lock excludes
-// mutation/removal, and T: Sync permits shared references across threads.
-// No Send implementation: the std guard must drop on its owning thread.
-unsafe impl<T: ?Sized + Sync> Sync for Ref<'_, T> {}
-
-/// An exclusive reference to a present value, retaining its std write lock.
+/// An exclusive reference to a present value, retaining its parking_lot write lock.
 ///
-/// Like `&mut T`, this guard is invariant in T. Like its std lock guard, it is
-/// not `Send`.
-///
-/// ```compile_fail
-/// fn assert_send<T: Send>() {}
-/// assert_send::<systasis::RefMut<'static, u32>>();
-/// ```
-///
-/// ```compile_fail
-/// fn shorten<'guard, 'short>(
-///     value: systasis::RefMut<'guard, &'static str>,
-/// ) -> systasis::RefMut<'guard, &'short str> {
-///     value
-/// }
-/// ```
+/// Like `&mut T`, this guard is invariant in T.
 pub struct RefMut<'a, T: ?Sized> {
     _guard: RwLockWriteGuard<'a, bool>,
-    value: NonNull<T>,
-    marker: PhantomData<&'a mut T>,
+    value: &'a mut T,
 }
 
 impl<T: ?Sized> Deref for RefMut<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        // SAFETY: the exclusive lock protects the checked, present value.
-        // &self exposes only a shared reborrow for the lifetime of &self.
-        unsafe { self.value.as_ref() }
+        self.value
     }
 }
 
 impl<T: ?Sized> DerefMut for RefMut<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        // SAFETY: &mut self guarantees an exclusive reborrow of the retained
-        // exclusive access. PhantomData<&mut T> prevents covariant substitution.
-        unsafe { self.value.as_mut() }
+        self.value
     }
 }
-
-// SAFETY: sharing &RefMut exposes only &T. DerefMut requires &mut RefMut,
-// which cannot coexist with shared borrows. The exclusive lock remains held.
-unsafe impl<T: ?Sized + Sync> Sync for RefMut<'_, T> {}

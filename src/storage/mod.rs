@@ -1,5 +1,8 @@
 //! Concrete storage policies used by generated containers.
 
+mod local;
+pub use local::LocalTakeSlot;
+
 #[cfg(not(feature = "std"))]
 mod spin;
 #[cfg(feature = "std")]
@@ -9,6 +12,31 @@ mod standard;
 pub use spin::{Ref, RefMut, TakeSlot};
 #[cfg(feature = "std")]
 pub use standard::{Ref, RefMut, TakeSlot};
+
+/// Immutable, untakeable storage: neither locks nor runtime borrow counters.
+#[doc(hidden)]
+#[repr(transparent)]
+pub struct ReadSlot<T>(T);
+
+impl<T> ReadSlot<T> {
+    /// Stores the value directly.
+    pub const fn new(value: T) -> Self {
+        Self(value)
+    }
+
+    /// Borrows the value without synchronization.
+    pub fn resolve_ref(&self) -> &T {
+        &self.0
+    }
+
+    /// Clones the value without changing the slot.
+    pub fn resolve_clone(&self) -> T
+    where
+        T: Clone,
+    {
+        self.0.clone()
+    }
+}
 
 /// Plain storage for a registration with established `Copy` behavior.
 #[doc(hidden)]

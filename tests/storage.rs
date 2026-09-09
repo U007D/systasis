@@ -247,51 +247,51 @@ fn forgotten_guard_preserves_exclusion_without_invalidating_slot_drop() {
     drop(slot);
 }
 
-#[cfg(feature = "std")]
 #[test]
-fn caller_write_panic_reports_poison_without_retaining_the_guard() {
+fn caller_write_panic_releases_lock_without_poisoning() {
     let slot = TakeSlot::new(String::from("value"));
-    let panic = std::panic::catch_unwind(|| {
-        let _guard = slot.try_resolve_ref_mut().unwrap();
-        panic!("caller failure");
-    });
-    assert!(panic.is_err());
-    let retained_error = slot.try_resolve().unwrap_err();
-    assert!(matches!(retained_error, Error::PoisonedLock(_)));
-    // If the poison payload retained its write guard this would be contention.
-    let second = slot.try_resolve();
-    assert!(matches!(second, Err(Error::PoisonedLock(_))));
-    assert!(matches!(
-        slot.try_resolve_ref(),
-        Err(Error::PoisonedLock(_))
-    ));
-    assert!(matches!(
-        slot.try_resolve_ref_mut(),
-        Err(Error::PoisonedLock(_))
-    ));
-    assert!(matches!(
-        slot.try_resolve_clone(),
-        Err(Error::PoisonedLock(_))
-    ));
-    assert_eq!(
-        retained_error.to_string(),
-        "Error: `AppContainer` encountered a poisoned lock attempting to access a Container value (another thread or context panicked while holding a write lock)."
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut guard = slot.try_resolve_ref_mut().unwrap();
+            guard.push('!');
+            panic!("caller failure");
+        }))
+        .is_err()
     );
-    assert!(std::error::Error::source(&retained_error).is_some());
+    assert_eq!(slot.try_resolve().unwrap(), "value!");
 }
 
-#[cfg(feature = "std")]
 #[test]
-fn caller_read_panic_does_not_poison_lock() {
+fn caller_read_panic_releases_lock() {
     let slot = TakeSlot::new(7_u32);
     assert!(
-        std::panic::catch_unwind(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _guard = slot.try_resolve_ref().unwrap();
             panic!("caller failure");
-        })
+        }))
         .is_err()
     );
     assert_eq!(slot.try_resolve().unwrap(), 7);
+}
+
+#[test]
+fn guards_can_be_transferred_and_dropped_on_another_thread() {
+    let slot = TakeSlot::new(String::from("value"));
+    std::thread::scope(|scope| {
+        let reader = slot.try_resolve_ref().unwrap();
+        scope
+            .spawn(move || assert_eq!(&*reader, "value"))
+            .join()
+            .unwrap();
+        let projected = Ref::map(slot.try_resolve_ref().unwrap(), String::as_str);
+        scope
+            .spawn(move || assert_eq!(&*projected, "value"))
+            .join()
+            .unwrap();
+        let mut writer = slot.try_resolve_ref_mut().unwrap();
+        scope.spawn(move || writer.push('!')).join().unwrap();
+    });
+    assert_eq!(slot.try_resolve().unwrap(), "value!");
 }
 
 #[test]

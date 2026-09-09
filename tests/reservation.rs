@@ -146,27 +146,3 @@ fn zero_sized_and_overaligned_reservations_remain_valid() {
     assert_contended(aligned.try_resolve());
     assert_eq!(reserved.0, 7);
 }
-
-#[cfg(feature = "std")]
-#[test]
-fn failed_poisoned_reservation_releases_the_error_guard() {
-    let slot = TakeSlot::new(String::from("value"));
-    assert!(
-        std::panic::catch_unwind(|| {
-            let _writer = slot.try_resolve_ref_mut().unwrap();
-            panic!("caller panic");
-        })
-        .is_err()
-    );
-    let retained_error = slot.try_reserve_ref().unwrap_err();
-    assert!(matches!(retained_error, Error::PoisonedLock(_)));
-    assert!(matches!(
-        slot.try_reserve_ref(),
-        Err(Error::PoisonedLock(_))
-    ));
-    assert!(matches!(
-        slot.try_resolve_ref_mut(),
-        Err(Error::PoisonedLock(_))
-    ));
-    assert!(std::error::Error::source(&retained_error).is_some());
-}

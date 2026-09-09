@@ -3,6 +3,25 @@
 
 use systasis::{Fallible, app_container::Error};
 
+#[cfg(feature = "bad-local-sync")]
+pub fn local_slot_cannot_be_shared() {
+    fn sync<T: Sync>() {}
+    sync::<systasis::__private::LocalTakeSlot<u32>>();
+}
+
+#[cfg(feature = "bad-local-guard-send")]
+pub fn local_guard_cannot_cross_threads() {
+    fn send<T: Send>(_: T) {}
+    let slot = systasis::__private::LocalTakeSlot::new(7_u32);
+    send(slot.try_resolve_ref().unwrap());
+}
+
+#[cfg(feature = "bad-readonly-take")]
+pub fn readonly_value_cannot_be_taken() {
+    let slot = systasis::__private::ReadSlot::new(7_u32);
+    slot.try_resolve();
+}
+
 extern crate alloc;
 
 /// Positive control: reservation adds no independent lifetime or guard type.
@@ -20,7 +39,6 @@ pub fn slot_and_guard_traits() {
     sync::<systasis::__private::TakeSlot<u32>>();
     sync::<systasis::Ref<'static, u32>>();
     sync::<systasis::RefMut<'static, u32>>();
-    #[cfg(not(feature = "std"))]
     {
         send::<systasis::Ref<'static, u32>>();
         send::<systasis::RefMut<'static, core::cell::Cell<u32>>>();
@@ -50,18 +68,6 @@ pub fn poison_requires_std(error: Error) -> bool {
 pub fn ordinary_value_is_not_fallible() {
     fn requires_fallible<T: Fallible>() {}
     requires_fallible::<u32>();
-}
-
-#[cfg(feature = "bad-send-guard")]
-pub fn std_guard_cannot_move_between_threads() {
-    fn requires_send<T: Send>() {}
-    requires_send::<systasis::Ref<'static, u32>>();
-}
-
-#[cfg(feature = "bad-send-mut-guard")]
-pub fn std_mut_guard_cannot_move_between_threads() {
-    fn requires_send<T: Send>() {}
-    requires_send::<systasis::RefMut<'static, u32>>();
 }
 
 #[cfg(feature = "bad-guard-escape")]

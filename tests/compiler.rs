@@ -150,22 +150,9 @@ fn ordinary_values_do_not_implement_fallible() {
     rejects("bad-fallible", "E0277", &["u32", "Fallible"]);
 }
 
-#[cfg(not(feature = "std"))]
 #[test]
-fn poison_variant_does_not_exist_without_std() {
+fn poison_variant_does_not_exist() {
     rejects("bad-poison-in-no-std", "E0599", &["PoisonedLock"]);
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn std_guard_is_not_send() {
-    rejects("bad-send-guard", "E0277", &["RwLockReadGuard", "sent"]);
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn std_mut_guard_is_not_send() {
-    rejects("bad-send-mut-guard", "E0277", &["RwLockWriteGuard", "sent"]);
 }
 
 #[test]
@@ -198,13 +185,27 @@ fn reservation_does_not_make_rc_slot_send() {
     rejects("bad-send-rc-slot", "E0277", &["Rc", "sent"]);
 }
 
-#[cfg(not(feature = "std"))]
 #[test]
-fn spin_shared_guard_requires_sync_payload_to_be_send() {
+fn shared_guard_requires_sync_payload_to_be_send() {
     rejects("bad-send-cell-reader", "E0277", &["Cell", "shared"]);
 }
 
 #[test]
 fn mutable_guard_preserves_payload_lifetime_invariance() {
     rejects("bad-mutable-lifetime", "E0521", &["escapes"]);
+}
+
+#[test]
+fn local_slot_is_not_sync() {
+    rejects("bad-local-sync", "E0277", &["RefCell", "shared"]);
+}
+
+#[test]
+fn local_guard_is_not_send() {
+    rejects("bad-local-guard-send", "E0277", &["sent"]);
+}
+
+#[test]
+fn readonly_slot_has_no_take_operation() {
+    rejects("bad-readonly-take", "E0599", &["try_resolve"]);
 }
