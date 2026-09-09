@@ -31,6 +31,14 @@ optimizer or standard library stops exercising an expected allocator hook.
 
 ### Other integration evidence
 
+Capture elision (c1ce92c) passes four regressions on each backend: a captured
+reference parameter, independent references including a nested generic capture,
+and function-pointer/Fn signature lifetimes that must remain higher-ranked.
+Nested dyn type metadata (21b7309) passes short intermediate-borrow and non-static
+payload cases on both backends, with associated bindings and local storage.
+These fixes add no caller annotation or unsafe code. A separate implied nested
+child lifetime-bound case is still being investigated.
+
 Portable atomics (3a55999) use optional portable-atomic 1.15.0 with its
 critical-section feature, without enabling either unsafe platform assumption.
 Feature-tree inspection for thumbv6m confirms no runtime std feature. The
@@ -56,8 +64,8 @@ all-feature and no_std unchecked-enabled suites pass; both Clippy configurations
 pass. The subsequently added `child_unchecked` test passes natively and under
 Miri on both backends, checking guard retention, contention and consumption.
 No new dependency or unsafe storage mechanism was introduced. Cross-crate child
-composition and semantic equivalence of differently spelled interface keys need
-further validation; do not infer them from the module-level alias tests.
+composition has the dedicated evidence recorded above. Semantic equivalence of
+differently spelled interface keys still needs implementation and validation.
 
 Reproduce the new Miri check with `cargo +nightly miri test --offline
 --features resolve_unchecked --test child_unchecked`, adding
@@ -215,6 +223,18 @@ that extracted macro package. This is local artifact validation, not evidence
 that the unpublished dependency can be downloaded from a registry. No package
 was published; no persistent patch or lockfile change was retained.
 
+`tests/packaged_consumer.rs` (54c354e) now stages tracked sources, creates and
+extracts both actual crate archives, checks both license texts in each, and
+compiles/runs downstream std and no_std-library consumers. It checks nameable
+AppContainer/child scope types, child aliases and checked contention/consumption.
+The unpublished macro dependency is patched to the extracted macro package only
+for these commands. Source manifests and Cargo.lock are verified unchanged.
+Run `cargo +stable test --test packaged_consumer --offline --locked -- --ignored
+--nocapture`; the explicitly selected test always exercises both backends.
+It is excluded from ordinary test runs because it stages/package-builds sources
+and creates isolated downstream builds (about four seconds on the tested host).
+The no_std library is executed by a std host binary, not on embedded hardware.
+
 - The legacy reservation API retains its regression tests but is not called by
   current generated containers. Stored services retaining internal borrows remain
   deferred. See SAFETY.md for the current split-payload storage obligations.
@@ -236,6 +256,6 @@ was published; no persistent patch or lockfile change was retained.
   fails to link without the application's critical-section acquire/release
   symbols. This is an intended diagnostic check, not a successful fallback link.
   No test installs a pretend platform implementation or validates physical hardware.
-- Remaining semantic identity cases, broader allocation/performance validation and
-  packaged-consumer testing remain. Container generation, composition, scheduling and unchecked access have the
+- Remaining semantic identity cases and broader allocation/performance validation
+  remain. Container generation, composition, scheduling and unchecked access have the
   tested coverage recorded at the top of this document.

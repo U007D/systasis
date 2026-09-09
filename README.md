@@ -19,8 +19,9 @@ Custom constructors own explicitly typed captured bindings and run on resolution
 Fallible constructors preserve their annotated return type. Returned values may
 borrow captures or retain dependency guards; storing such borrowed results inside
 the container remains deferred. See [constructor tests](tests/custom_constructor.rs).
-Capture analysis supports explicitly typed tuple/array destructuring and explicit
-reference patterns. Explicit imports are preserved when they do not conflict with
+Capture analysis supports explicitly typed tuple/array destructuring, explicit
+reference patterns and elided reference lifetimes in typed function parameters.
+Explicit imports are preserved when they do not conflict with
 capture names or depend on unhoisted function-local items. Opaque macros, glob imports,
 struct/alias destructuring and implicit reference-pattern binding modes remain
 implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
@@ -55,7 +56,7 @@ specified workloads, not arbitrary caller constructors or Clone implementations.
 See [the test driver](tests/allocations.rs) and [evidence](docs/VALIDATION.md).
 
 Still pending: remaining identity/capture cases, broader performance checks,
-packaged-consumer checks and hardware validation. Container-stored services retaining internal borrows are
+and hardware validation. Container-stored services retaining internal borrows are
 deferred. Renamed Cargo dependency support is out of the current scope; no import
 placement restriction or new dependency has been adopted for it.
 
@@ -82,6 +83,9 @@ Run `cargo test --workspace` and repeat with `--no-default-features`. The Rust
 compiler-test driver checks downstream rejection reasons, not just failed exits.
 See [storage safety](docs/SAFETY.md) for invariants and [validation evidence](docs/VALIDATION.md)
 for the tested scope. Physical-board behavior has not been validated.
+Local extracted-package consumers are checked separately with
+`cargo test --test packaged_consumer --offline --locked -- --ignored --nocapture`;
+this does not publish either crate.
 
 ## License
 
