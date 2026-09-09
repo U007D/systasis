@@ -18,7 +18,17 @@ mod requirements;
 mod scopegen;
 mod wiring;
 
-/// Generate a stored-value container declared inside this function.
+/// Generate the module-scope `AppContainer` declared inside this function.
+///
+/// The function contains one `systasis_container!` declaration with stored values,
+/// fresh constructors, or named child containers. Its consuming `.build()`
+/// transition returns `Result<&AppContainer, E>`; generated code retains the
+/// pinned owner until the enclosing scope exits.
+///
+/// Optional `require(Send)`, `require(Sync)`, or `require(Send, Sync)` arguments
+/// assert the completed container's auto traits. `require(!Sync)` instead selects
+/// local, non-atomic borrow tracking for mutable/takeable values; it may be
+/// combined with `Send`, but not `Sync`.
 #[proc_macro_attribute]
 pub fn container(
     args: proc_macro::TokenStream,
@@ -34,7 +44,17 @@ pub fn container(
     .into()
 }
 
-/// A container declaration must be processed by the enclosing attribute.
+/// Declare registrations inside a `#[systasis::container]` function.
+///
+/// Use `register_value!(expression: Type as Interface)` for a stored value,
+/// `register_type!(Type as Interface)` for a fresh `Default` value, and
+/// `register_type_with!(Type as Interface, move || expression)` for a repeatable
+/// constructor. Captured local bindings need explicit type annotations.
+/// `register_container!(name: &ChildType)` composes an independently owned child
+/// behind a named scope rather than importing its registrations into the parent.
+///
+/// The enclosing attribute processes this declaration and its dependency queries
+/// together. Invoke `.build()` before using the generated resolution methods.
 #[proc_macro]
 pub fn systasis_container(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     if input.to_string() == "@ __systasis_marker" {

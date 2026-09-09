@@ -25,8 +25,10 @@ Capture analysis supports explicitly typed tuple/array destructuring, explicit
 and implicit reference bindings, and elided reference lifetimes in typed function parameters.
 Explicit imports are preserved when they do not conflict with
 capture names or depend on unhoisted function-local items. Opaque macros, glob imports,
-struct/alias destructuring and bound rest patterns remain
+struct/alias destructuring and cfg-controlled capture bindings remain
 implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
+Array/slice rest captures support literal lengths, simple concrete const paths
+and arithmetic, and borrowed slices.
 
 Generic enclosing functions preserve authored type, const and lifetime parameters
 in `AppContainer`, with registration-site Copy policy. See

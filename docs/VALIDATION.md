@@ -2,6 +2,26 @@
 
 ## Current generated-container checks
 
+The crate-level [usage guide](USAGE.md), included by src/lib.rs, now has three
+executable doctests: stored Copy/non-Copy access with a lazy captured constructor,
+an exactly typed fallible constructor, and owned dependency injection. All three
+pass on std and no_std. The standalone scope-injection example also runs on both
+backends, passing a nameable restricted child reference to an ordinary function.
+
+Async guard checks (cc4ffe3/2603e3d) use safe manual polling without an executor
+dependency. Both backends verify shared/exclusive contention while suspended,
+release on cancellation, and guard release before suspension. Synchronized guard
+futures satisfy Send for the tested payload. Compiler fixtures separately reject
+local guards and &!Sync containers in Send futures, while a local Send container
+and a future containing only its owned cloned result pass. Each negative check
+matches an actual error at the expected fixture assertion.
+
+Rest-capture support (96f3c3b/032725d) passes two integration tests per backend:
+selected owned elements move/drop once; borrowed arrays/slices retain their
+reference types. Unit coverage checks literal, named concrete and arithmetic
+lengths, binding modes, invalid literal shapes, and generic expressions that must
+not gain a generated subtraction. More complex const expressions remain a gap.
+
 ### Allocation observations
 
 `tests/allocations.rs` has thirteen passing checks on std and no_std runtime
@@ -303,6 +323,6 @@ The no_std library is executed by a std host binary, not on embedded hardware.
   fails to link without the application's critical-section acquire/release
   symbols. This is an intended diagnostic check, not a successful fallback link.
   No test installs a pretend platform implementation or validates physical hardware.
-- Remaining capture cases, documentation/example coverage and broader performance
+- Remaining capture cases, documentation completeness and broader performance
   validation remain. Container generation, composition, scheduling and unchecked access have the
   tested coverage recorded at the top of this document.

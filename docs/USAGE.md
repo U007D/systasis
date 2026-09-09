@@ -75,6 +75,31 @@ Infallible builds infer the never error type, allowing `let Ok(container) = ...`
 Use `.build::<E>()` when a fallible initializer needs an explicit error type.
 A fallible constructor alone does not make build fallible: it has not run yet.
 
+An explicit `try` constructor preserves its annotated return type:
+
+```rust
+use std::num::ParseIntError;
+
+trait IPort {}
+impl IPort for u16 {}
+
+#[systasis::container]
+fn main() -> Result<(), ParseIntError> {
+    let configured_port: String = String::from("8080");
+    let Ok(container) = systasis::systasis_container! {
+        register_type_with!(u16 as IPort, try move || -> Result<u16, ParseIntError> {
+            configured_port.parse()
+        });
+    }.build();
+    let port: u16 = container.try_resolve_i_port()?;
+    assert_eq!(port, 8080);
+    Ok(())
+}
+```
+
+An annotated `Option<T>` constructor likewise returns `Option<T>`. Constructor
+errors are not wrapped in the container's stored-value access error.
+
 ## Owned dependency injection
 
 Services and constructors remain ordinary Rust. `registered_type!(Interface)`

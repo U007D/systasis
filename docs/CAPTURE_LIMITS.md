@@ -35,11 +35,18 @@ Those alternatives would need separate evaluation and user approval.
 Tuple/array annotations and explicit reference patterns can supply individual
 binding types. Implicit reference bindings from structurally annotated tuples
 and arrays are also supported, including nested shared/mutable reference layers.
-Their original patterns remain in place for rustc's edition checks. Struct-field
-types, aliases hiding a destructured shape, and bound rest patterns still need
-further work. See [capture-pattern regressions](../tests/capture_patterns.rs).
+Their original patterns remain in place for rustc's edition checks. Array/slice
+rest bindings are supported for literal lengths, simple concrete const paths and
+arithmetic, and borrowed slices. Generic-dependent remainder expressions are not
+synthesized; other const-expression shapes still need work. See
+[rest-capture regressions](../tests/capture_rest.rs).
+Struct-field types and aliases hiding a destructured shape remain unresolved.
+See [capture-pattern regressions](../tests/capture_patterns.rs).
 Explicit imports are preserved where their names do not conflict with capture
 candidates and they do not depend on unhoisted function-local items. This includes
 ordinary `use std::...` and function-local imports of `systasis_container`.
 Glob imports and imports depending on function-local modules remain unsupported.
+Cfg-controlled local bindings also need correction: analysis can select a type
+annotation from a binding that rustc later removes. A discarded enclosing
+function is a different case and does not demonstrate active-body cfg support.
 These are implementation limitations, not changes to the agreed requirements.
