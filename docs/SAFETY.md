@@ -16,8 +16,8 @@ The generator selects plain Copy storage or consumable storage using the
 registration-site Copy policy. Selection must consider every access path, including independently
 shared subcontainers. Absence of require(Sync) is not proof of single-threaded
 use and must not silently disable the container's natural Sync capability.
-Local guard types and synchronized guard types differ; generated injection
-type mapping must select the actual policy without erasing their auto traits.
+Local guard types and synchronized guard types differ; generated resolver
+return types must select the actual policy without erasing their auto traits.
 
 ## Synchronized slots and guards
 
@@ -49,7 +49,7 @@ Systasis does not catch or repair caller constructors, destructors, or mutations
 ## Legacy reservation operation
 
 The internal try_reserve_ref API remains for existing research compatibility.
-It is not an approved premise for the current injected-field design.
+It is not an approved premise for the current generated-container API.
 It sets an irreversible flag under exclusive locking before returning &T.
 Taking/mutable access check the flag before forming any mutable payload reference.
 Shared access remains permitted. This operation extends neither lifetimes nor

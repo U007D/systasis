@@ -5,8 +5,9 @@
 Unchecked generation (694a7a4) passes four behavior tests natively and under Miri
 on both backends. Feature-enabled compiler cases verify unsafe context, Copy/fresh
 method absence and constructor-borrow ownership exclusion. Both feature-enabled
-Clippy configurations pass; the full std feature-enabled workspace suite passed
-before the final forbid-unsafe consumer regression was added.
+Clippy configurations pass. The full no_std feature-enabled workspace suite
+passes, including the forbid-unsafe consumer regression; the full std run passed
+before that final regression, which also passes its focused std check.
 
 Local namespaces (58bc418/c577507) pass full workspace std/no_std tests and
 both Clippy configurations. Coverage includes seven public behavior tests,
@@ -141,26 +142,24 @@ An ancestor Cargo configuration in the development environment wraps rustc
 with Clippy. Runs here set `CARGO_BUILD_RUSTC_WRAPPER=`; Clippy additionally uses
 `RUSTC_WRAPPER=`. No global configuration was changed.
 
-## Boundaries
+## Current boundaries
 
-- Permanent shared reservations now use the accepted lock-protected flag and
-  split payload. Std has seven unsafe blocks and three unsafe Sync impls;
-  Spin has four unsafe blocks and one unsafe Sync impl. See SAFETY.md for each
-  obligation. No lifetime extension, new dependency or allocation was added.
-- Reservation cases check permanent contention after last reference use and
-  dependent destruction, compatible reads/cloning/projection, repeated and
-  failed acquisition, consumption, poisoning, concurrent access, forgotten
+- The legacy reservation API retains its regression tests but is not called by
+  current generated containers. Stored services retaining internal borrows remain
+  deferred. See SAFETY.md for the current split-payload storage obligations.
+- Reservation cases cover contention, compatible reads/cloning/projection,
+  repeated and failed acquisition, consumption, concurrent access, forgotten
   guards, non-Sync local values, alignment and zero-sized payloads.
 - Compiler cases reject escaping reserved references, moving their borrowed
   slot, incorrect Send/Sync bounds and mutable payload lifetime substitution.
   Positive controls preserve Spin guard Send bounds and slot Send-without-Sync.
-- Poison conversion drops the acquired guard before constructing PoisonError<()>.
-  Reviewed std source shows unwind-built new is plain construction; abort-built
-  PoisonError contains an uninhabited field and cannot originate from a lock.
+- Both current backends are nonpoisoning; the old poison-conversion investigation
+  above is historical, not a current error case or implementation obligation.
 - thiserror has default features disabled; std explicitly forwards thiserror/std.
   Feature-tree inspection confirms no runtime thiserror/std activation in no_std.
   Its proc-macro dependencies build for the host.
 - Cross-compilation is not firmware linking or physical-board testing. Neither
   portable-atomic integration nor the temporary hardware feature exists yet.
-- Container generation, scoped composition, scheduling, unchecked access,
-  full allocation/performance validation and packaged-consumer testing remain.
+- Scoped composition, full allocation/performance validation and packaged-consumer
+  testing remain. Container generation, scheduling and unchecked access have the
+  tested coverage recorded at the top of this document.
