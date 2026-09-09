@@ -209,12 +209,13 @@ mod imported_capture {
 
     #[systasis::container]
     #[test]
-    fn absolute_function_local_imports_remain_available_to_capture_storage() {
+    fn explicit_function_local_imports_remain_available_to_capture_storage() {
         use crate::import_types::Configuration as Config;
+        use systasis::systasis_container;
         let config: Config = String::from("imported");
-        let Ok(container) = systasis::systasis_container! {
+        let Ok(container) = systasis_container! {
             register_type_with!(Service as IService, move || {
-                use ::std::string::String as OutputString;
+                use std::string::String as OutputString;
                 let output: OutputString = config.clone();
                 Service(output)
             });

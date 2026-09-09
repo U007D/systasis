@@ -22,6 +22,27 @@ pub(crate) struct Bindings {
 impl Bindings {
     pub(crate) fn from_function(function: &ItemFn) -> Self {
         let mut bindings = Self::default();
+        let local_items = function
+            .block
+            .stmts
+            .iter()
+            .filter_map(|statement| {
+                let Stmt::Item(item) = statement else {
+                    return None;
+                };
+                match item {
+                    Item::Mod(item) => Some(name(&item.ident)),
+                    Item::Type(item) => Some(name(&item.ident)),
+                    Item::Struct(item) => Some(name(&item.ident)),
+                    Item::Enum(item) => Some(name(&item.ident)),
+                    Item::Union(item) => Some(name(&item.ident)),
+                    Item::ExternCrate(item) => Some(name(
+                        item.rename.as_ref().map_or(&item.ident, |(_, name)| name),
+                    )),
+                    _ => None,
+                }
+            })
+            .collect::<BTreeSet<_>>();
         for argument in &function.sig.inputs {
             if let FnArg::Typed(argument) = argument {
                 bindings.observe_pattern(&argument.pat, Some(&argument.ty));
@@ -38,7 +59,11 @@ impl Bindings {
                     let mut names = BTreeSet::new();
                     let anchored = import.leading_colon.is_some()
                         || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate" || path.ident == "self" || path.ident == "super");
-                    if anchored
+                    let independent = anchored
+                        || import_roots(&import.tree)
+                            .iter()
+                            .all(|root| !local_items.contains(root));
+                    if independent
                         && import_names(&import.tree, &mut names)
                         && names.iter().all(|name| !bindings.types.contains_key(name))
                     {
@@ -196,6 +221,16 @@ fn import_names(tree: &syn::UseTree, output: &mut BTreeSet<String>) -> bool {
     }
 }
 
+fn import_roots(tree: &syn::UseTree) -> Vec<String> {
+    match tree {
+        syn::UseTree::Path(path) => vec![name(&path.ident)],
+        syn::UseTree::Name(binding) => vec![name(&binding.ident)],
+        syn::UseTree::Rename(binding) => vec![name(&binding.ident)],
+        syn::UseTree::Group(group) => group.items.iter().flat_map(import_roots).collect(),
+        syn::UseTree::Glob(_) => Vec::new(),
+    }
+}
+
 /// Return true for opaque patterns whose introduced names are unknown.
 fn pattern_names(pattern: &Pat, output: &mut BTreeSet<String>) -> bool {
     match pattern {
@@ -330,10 +365,9 @@ impl VisitMut for Visitor<'_> {
                 }
                 if let Item::Use(import) = item {
                     let mut imported = BTreeSet::new();
-                    let anchored = import.leading_colon.is_some()
-                        || matches!(&import.tree, syn::UseTree::Path(path) if path.ident == "crate" || path.ident == "self" || path.ident == "super");
-                    if !anchored
-                        || !import_names(&import.tree, &mut imported)
+                    // Block-local items move with the constructor body, unlike
+                    // items in the enclosing configuration function.
+                    if !import_names(&import.tree, &mut imported)
                         || imported
                             .iter()
                             .any(|name| self.bindings.types.contains_key(name))
@@ -562,6 +596,45 @@ mod tests {
             prepare(
                 &parse_quote!(|| Config),
                 &Bindings::from_function(&function),
+                &parse_quote!(__captures)
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn explicit_external_imports_are_preserved_but_local_module_imports_are_not() {
+        let function = parse_quote!(
+            fn main(config: String) {
+                use std::string::String as Text;
+                use systasis::systasis_container;
+            }
+        );
+        let bindings = Bindings::from_function(&function);
+        assert_eq!(bindings.imports().len(), 2);
+        assert!(
+            prepare(
+                &parse_quote!(|| config.clone()),
+                &bindings,
+                &parse_quote!(__captures)
+            )
+            .is_ok()
+        );
+
+        let function = parse_quote!(
+            fn main(config: String) {
+                use std::Text;
+                mod std {
+                    pub struct Text;
+                }
+            }
+        );
+        let bindings = Bindings::from_function(&function);
+        assert!(bindings.imports().is_empty());
+        assert!(
+            prepare(
+                &parse_quote!(|| config.clone()),
+                &bindings,
                 &parse_quote!(__captures)
             )
             .is_err()
