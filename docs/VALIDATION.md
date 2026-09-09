@@ -2,6 +2,13 @@
 
 ## Current generated-container checks
 
+Portable atomics (3a55999) use optional portable-atomic 1.15.0 with its
+critical-section feature, without enabling either unsafe platform assumption.
+Feature-tree inspection for thumbv6m confirms no runtime std feature. The
+`storage`, `reservation`, `unsynchronized` and `child_unchecked` Miri suites pass
+with portable atomics enabled on both host backends: 32 tests per backend.
+Those runs exercise native host atomics, not a physical target's critical section.
+
 `tests/generic_cross_crate.rs` compiles and executes downstream composition through
 generic aliases and import renames, including non-static child references and
 nameable child scopes, on std/no_std. Direct `resolve_type_from!` registered-type
@@ -193,8 +200,13 @@ was published; no persistent patch or lockfile change was retained.
 - thiserror has default features disabled; std explicitly forwards thiserror/std.
   Feature-tree inspection confirms no runtime thiserror/std activation in no_std.
   Its proc-macro dependencies build for the host.
-- Cross-compilation is not firmware linking or physical-board testing. Neither
-  portable-atomic integration nor the temporary hardware feature exists yet.
+- `experimental-hardware` gates the embedded Rust test driver and enables
+  portable atomics. Its generated non-Copy container fixture links without an
+  allocator on thumbv8m.main-none-eabihf and riscv32imac-unknown-none-elf.
+  For thumbv6m-none-eabi, library compilation passes and the fixture deliberately
+  fails to link without the application's critical-section acquire/release
+  symbols. This is an intended diagnostic check, not a successful fallback link.
+  No test installs a pretend platform implementation or validates physical hardware.
 - Remaining semantic identity cases, full allocation/performance validation and
   packaged-consumer testing remain. Container generation, composition, scheduling and unchecked access have the
   tested coverage recorded at the top of this document.
