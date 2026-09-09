@@ -71,7 +71,7 @@ mod fresh {
     trait IDefault {}
     impl IDefault for [u8; 16] {}
     #[systasis::container]
-    fn constructors<'a>(calls: &'a Cell<usize>, drops: &Cell<usize>) {
+    fn constructors(calls: &Cell<usize>, drops: &Cell<usize>) {
         let capture: Tracked<'_> = Tracked(drops);
         let Ok(container) = systasis::systasis_container! {
             register_type!([u8; 16] as IDefault);
