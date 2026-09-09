@@ -2,6 +2,14 @@
 
 ## Current generated-container checks
 
+Capture follow-ups b7e99c6 through f7059c0 add structural tuple/array type
+extraction, explicit reference patterns, and absolute local-import preservation.
+Eleven custom-constructor tests pass on each backend. Full workspace tests and
+both Clippy runs passed with the import integration; the final reference-pattern
+addition passed focused constructor suites and macro tests. Commit 8719086 adds
+three dyn type-query tests and two compiler cases (29 cases total), including
+associated-type bindings. These changes introduce no unsafe code or dependencies.
+
 Latest update: typed captures and repeatable custom constructors pass both full
 stable workspace suites and both Clippy configurations. Seven constructor tests
 cover repeated calls, exact fallible returns, capture cleanup, and returned

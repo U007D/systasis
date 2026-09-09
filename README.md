@@ -19,8 +19,11 @@ Custom constructors own explicitly typed captured bindings and run on resolution
 Fallible constructors preserve their annotated return type. Returned values may
 borrow captures or retain dependency guards; storing such borrowed results inside
 the container remains deferred. See [constructor tests](tests/custom_constructor.rs).
-Capture analysis currently rejects opaque macros, function-local imports, and
-captured destructuring patterns; these are implementation gaps, not new API rules.
+Capture analysis supports explicitly typed tuple/array destructuring and explicit
+reference patterns. Absolute, non-glob function-local imports are preserved when
+they do not conflict with capture names. Opaque macros, other local imports,
+struct/alias destructuring and implicit reference-pattern binding modes remain
+implementation gaps, not new API rules.
 
 Still pending: generic enclosing functions,
 interface groups, named namespaces and composition, unchecked generation,
