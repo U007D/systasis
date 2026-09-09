@@ -1,7 +1,35 @@
+use quote::{ToTokens, quote};
 use syn::{
     parse::{Parse, ParseStream},
     *,
 };
+
+/// A registration's complete, order-independent interface identity.
+#[derive(Clone)]
+pub(crate) struct InterfaceGroup(pub(crate) Vec<Path>);
+
+impl Parse for InterfaceGroup {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let mut paths = vec![input.parse::<Path>()?];
+        while input.peek(Token![+]) {
+            input.parse::<Token![+]>()?;
+            paths.push(input.parse()?);
+        }
+        paths.sort_by_cached_key(|path| path.to_token_stream().to_string());
+        paths.dedup_by(|left, right| {
+            left.to_token_stream().to_string() == right.to_token_stream().to_string()
+        });
+        Ok(Self(paths))
+    }
+}
+
+impl ToTokens for InterfaceGroup {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let paths = &self.0;
+        tokens.extend(quote!(#(#paths)+*));
+    }
+}
+
 pub(crate) struct Registration {
     pub(crate) fresh: bool,
     pub(crate) constructor: Option<ExprClosure>,
@@ -9,7 +37,7 @@ pub(crate) struct Registration {
     pub(crate) dynamic: bool,
     pub(crate) value: Expr,
     pub(crate) ty: Type,
-    pub(crate) interface: Path,
+    pub(crate) interface: InterfaceGroup,
 }
 impl Parse for Registration {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
@@ -18,6 +46,13 @@ impl Parse for Registration {
         let ty = input.parse()?;
         input.parse::<Token![as]>()?;
         let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
+        let interface: InterfaceGroup = input.parse()?;
+        if dynamic && interface.0.len() > 1 {
+            return Err(Error::new_spanned(
+                &interface,
+                "combined dyn trait accessors are not implemented yet",
+            ));
+        }
         Ok(Self {
             fresh: false,
             constructor: None,
@@ -25,7 +60,7 @@ impl Parse for Registration {
             dynamic,
             value,
             ty,
-            interface: input.parse()?,
+            interface,
         })
     }
 }
@@ -87,5 +122,27 @@ impl Parse for Registrations {
             input.parse::<Token![;]>()?;
         }
         Ok(Self(entries))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_identity_normalizes_order_without_erasing_paths_or_arguments() {
+        let key = |source: &str| {
+            syn::parse_str::<InterfaceGroup>(source)
+                .unwrap()
+                .to_token_stream()
+                .to_string()
+        };
+        assert_eq!(
+            key("b::IWrite + a::IRead<u8>"),
+            key("a::IRead<u8> + b::IWrite")
+        );
+        assert_ne!(key("a::IRead<u8>"), key("a::IRead<u16>"));
+        assert_ne!(key("a::IRead<u8>"), key("b::IRead<u8>"));
+        assert_ne!(key("a::IRead<u8>"), key("a::IRead<u8> + b::IWrite"));
     }
 }

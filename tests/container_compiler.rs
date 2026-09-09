@@ -30,6 +30,48 @@ fn container_diagnostics() {
 
     let cases = [
         (
+            "group_has_no_individual_accessor",
+            "",
+            "register_value!(String::new(): String as IValue + a::IValue);",
+            "built.unwrap().try_resolve_i_value();",
+            Some("E0599"),
+        ),
+        (
+            "group_member_is_not_dependency",
+            "",
+            "register_value!(String::new(): String as IValue + a::IValue); register_value!(try_resolve!(IValue)?: String as b::IValue);",
+            "",
+            Some("unregistered dependency"),
+        ),
+        (
+            "group_member_is_not_type_lookup",
+            "",
+            "register_value!(String::new(): String as IValue + a::IValue); register_value!(String::new(): registered_type!(IValue) as b::IValue);",
+            "",
+            Some("unregistered type lookup"),
+        ),
+        (
+            "all_group_traits_are_checked",
+            "",
+            "register_value!(String::new(): String as IValue + INumber);",
+            "",
+            Some("E0277"),
+        ),
+        (
+            "combined_dyn_is_not_yet_implemented",
+            "",
+            "register_value!(String::new(): String as dyn IValue + a::IValue);",
+            "",
+            Some("combined dyn trait accessors are not implemented yet"),
+        ),
+        (
+            "normalized_group_override",
+            "",
+            "register_value!(unknown!(): MissingType as a::IValue + IValue); register_value!(String::new(): String as IValue + a::IValue);",
+            "built.unwrap().try_resolve_i_value_i_value().unwrap();",
+            None,
+        ),
+        (
             "dyn_type_query_requires_opt_in",
             "",
             "register_value!(String::new(): String as IValue); register_value!({ let _: Option<&resolve_type!(dyn IValue)> = None; 1 }: u32 as INumber);",

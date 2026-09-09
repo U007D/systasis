@@ -306,32 +306,36 @@ pub(crate) fn expand(
         let mut values = Vec::new();
         let mut implementations = Vec::new();
         let mut constructor_functions = Vec::new();
-        let mut method_names = BTreeMap::<String, Path>::new();
+        let mut method_names = BTreeMap::<String, crate::parse::InterfaceGroup>::new();
         for (i, registration) in registrations.iter().enumerate() {
             let field = &fields[i];
             let slot = &slots[i];
             let storage = &selected[i];
             field_types.push(storage.clone());
             values.push(quote!(#field: #slot.unwrap_or_else(|| ::core::unreachable!("successful build initialized every slot"))));
-            let raw = registration
+            let mut names = registration
                 .interface
-                .segments
-                .last()
-                .unwrap()
-                .ident
-                .unraw()
-                .to_string();
-            let snake = raw
-                .chars()
-                .enumerate()
-                .flat_map(|(i, c)| {
-                    if c.is_uppercase() && i > 0 {
-                        vec!['_', c.to_ascii_lowercase()]
-                    } else {
-                        vec![c.to_ascii_lowercase()]
-                    }
+                .0
+                .iter()
+                .map(|path| path.segments.last().unwrap().ident.unraw().to_string())
+                .collect::<Vec<_>>();
+            names.sort();
+            let snake = names
+                .iter()
+                .map(|name| {
+                    name.chars()
+                        .enumerate()
+                        .flat_map(|(i, c)| {
+                            if c.is_uppercase() && i > 0 {
+                                vec!['_', c.to_ascii_lowercase()]
+                            } else {
+                                vec![c.to_ascii_lowercase()]
+                            }
+                        })
+                        .collect::<String>()
                 })
-                .collect::<String>();
+                .collect::<Vec<_>>()
+                .join("_");
             if let Some(previous) =
                 method_names.insert(snake.clone(), registration.interface.clone())
             {

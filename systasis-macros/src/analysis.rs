@@ -1,3 +1,4 @@
+use crate::parse::InterfaceGroup;
 use quote::ToTokens;
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{
@@ -29,7 +30,7 @@ impl VisitMut for Queries<'_> {
             .iter()
             .any(|name| query.mac.path.is_ident(name))
         {
-            let interface = match syn::parse2::<Path>(query.mac.tokens.clone()) {
+            let interface = match syn::parse2::<InterfaceGroup>(query.mac.tokens.clone()) {
                 Ok(interface) => interface,
                 Err(error) => {
                     self.error = Some(error);
@@ -91,7 +92,7 @@ impl VisitMut for TypeLookup<'_> {
         {
             let parsed = (|input: syn::parse::ParseStream<'_>| {
                 let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
-                let interface = input.parse::<Path>()?;
+                let interface = input.parse::<InterfaceGroup>()?;
                 Ok((dynamic, interface))
             })
             .parse2(query.mac.tokens.clone());
