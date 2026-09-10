@@ -41,11 +41,14 @@ This rules out that particular expansion mechanism; it is not a proof that all
 possible implementations of the desired inline syntax are impossible.
 
 A source-local-method candidate preserved noncapturing macros in tested cases,
-but was not adopted: an inner macro declaration could bypass its hidden-query
-rejection and invoke caller code instead of resolving the registered value.
-Typed outer captures through macros also remain unimplemented. Production
-continues to reject opaque constructors; the failed candidate is not proof
-that a correct stable implementation is impossible.
+but remains outside production. Its earlier rejection report overstated one
+counterexample: a caller-defined macro named `try_resolve` discarded its argument
+and returned caller data. That demonstrates ordinary macro shadowing, not an
+actual systasis lookup falling back to an outside registration. Genuine queries
+introduced by macro expansion still need dependency-analysis and exclusion
+checks. Typed outer captures through macros also remain unimplemented.
+Production continues to reject opaque constructors; these remaining gaps are
+not proof that a correct stable implementation is impossible.
 
 Moving the macro into an ordinary function called by the constructor works:
 see [the tested example](../tests/constructor_macro_helper.rs). Both host backends
