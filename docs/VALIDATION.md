@@ -2,6 +2,17 @@
 
 ## Current generated-container checks
 
+The temporary reserved-name convention is documented in 7ce59f1. The three
+`initializer_names` tests pass on stable with std and no_std: ordinary glob
+imports preserve caller constants/type aliases, local and nested-child queries
+consume their actual slots, untaken queries leave values available, temporary
+input borrowing permits later reuse, and nested labelled breaks preserve
+branch-sensitive moves. Both targeted Clippy runs pass with warnings denied.
+These tests use supported names; they do not fix or guarantee diagnostics for
+collisions with the reserved `__systasis_*` prefix. The research reproducer of
+wrong-value lookup remains outside production. Updated usage doctests pass
+on both backends (three each). No unsafe/dependency change triggered Miri.
+
 At 020f06e, the full stable workspace suite passes in four host configurations:
 default std, std with all features, no_std, and no_std with
 resolve_unchecked,experimental-hardware. Both feature-enabled all-targets Clippy
