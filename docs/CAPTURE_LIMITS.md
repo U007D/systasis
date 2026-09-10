@@ -40,6 +40,13 @@ and [proc_macro API](https://doc.rust-lang.org/proc_macro/struct.TokenStream.htm
 This rules out that particular expansion mechanism; it is not a proof that all
 possible implementations of the desired inline syntax are impossible.
 
+A source-local-method candidate preserved noncapturing macros in tested cases,
+but was not adopted: an inner macro declaration could bypass its hidden-query
+rejection and invoke caller code instead of resolving the registered value.
+Typed outer captures through macros also remain unimplemented. Production
+continues to reject opaque constructors; the failed candidate is not proof
+that a correct stable implementation is impossible.
+
 Moving the macro into an ordinary function called by the constructor works:
 see [the tested example](../tests/constructor_macro_helper.rs). Both host backends
 verify zero calls at build and one call per resolution. This is a workaround,
