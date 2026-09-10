@@ -4,6 +4,16 @@ The current generator stores captured bindings in typed fields. It identifies
 those bindings before emitting the module-scope container type. Explicit binding
 annotations remain the accepted source of capture types.
 
+## Known value-initializer lookup bug
+
+A glob import inside a value initializer can shadow a generated storage or child
+identifier. A compatible caller-owned mock can then supply the resolver result
+instead of the registered value. The constructor-context fix does not protect
+this path. This violates container-only resolution and remains a release blocker;
+it is not an accepted fallback or a requirement to avoid glob imports.
+The parent research/initializer-hygiene directory records the reproducer and a
+nightly-only candidate. Production has not adopted that compiler feature.
+
 ## Macros inside the constructor
 
 Capture analysis currently rejects unexpanded macros inside custom constructors.
