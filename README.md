@@ -59,10 +59,12 @@ only inside the selected container or subcontainer. No trait import is required
 for a child query; unrelated surrounding names do not affect it. A missing
 registration is an error, with no fallback to an outside trait or alias.
 Registration type/interface annotations still refer to ordinary Rust types/traits.
-Known implementation exception: a glob import inside a value initializer can
-shadow generated storage and redirect a query. This violates the intended
-container-only lookup contract and blocks release; see
-[the current limitation](docs/CAPTURE_LIMITS.md#known-value-initializer-lookup-bug).
+The temporary stable naming convention reserves `__systasis_*` for generated
+code. Caller declarations/imports/macros must not introduce these names into
+generated-code scopes. This is not compiler-enforced: a collision can compile
+and redirect an initializer query. Ordinary nonconflicting globs remain allowed.
+Generated implementation names may appear in compiler diagnostics; see
+[the convention and its limits](docs/CAPTURE_LIMITS.md#reserved-generated-names-on-stable).
 
 The default-off `resolve_unchecked` feature adds unsafe nonblocking accessors
 for consumable values. Guards and ownership exclusions are preserved; see

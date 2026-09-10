@@ -6,6 +6,13 @@ types and traits; dependency queries select registrations in the container.
 The crate is under development: see the repository README and
 `docs/CAPTURE_LIMITS.md` for remaining implementation limits.
 
+For now, `__systasis_*` names are reserved for stable code generation. Do not
+introduce them through caller declarations, imports (including globs), or macro
+expansions into generated-code scopes. A violation may compile and resolve the
+wrong value; this is not a compiler-enforced naming check. Other glob imports
+remain allowed. Rust diagnostics may display generated implementation types and
+paths instead of public aliases such as `AppContainer`.
+
 ## Stored values and fresh constructors
 
 `register_value!` evaluates its initializer once at build time.
