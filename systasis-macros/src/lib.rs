@@ -1,5 +1,7 @@
 //! Container-generation macros for systasis, under development.
 #![forbid(unsafe_code)]
+#![feature(allow_internal_unstable)]
+#![allow(internal_features)]
 
 mod analysis;
 mod captures;
@@ -25,6 +27,7 @@ mod wiring;
     __SystasisSelectConfiguration,
     attributes(__systasis_configuration_source, __systasis_configuration_args)
 )]
+#[allow_internal_unstable(type_alias_impl_trait)]
 pub fn select_configuration(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     configuration::resume(syn::parse_macro_input!(input as syn::ItemStruct))
         .unwrap_or_else(syn::Error::into_compile_error)
@@ -53,6 +56,7 @@ pub fn __systasis_erase_configuration(
 /// local, non-atomic borrow tracking for mutable/takeable values; it may be
 /// combined with `Send`, but not `Sync`.
 #[proc_macro_attribute]
+#[allow_internal_unstable(type_alias_impl_trait)]
 pub fn container(
     args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,

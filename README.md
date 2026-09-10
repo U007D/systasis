@@ -85,10 +85,11 @@ workspace member. The implementation follows the accepted design documents
 in the parent directory. Research artifacts remain outside this package.
 
 `std` is enabled by default. Disable default features for the no_std runtime.
-The current generated path and runtime pass stable Rust tests. Infallible builds
-infer the never error type without spelling `!` in generated source. Explicit
-`.build::<!>()` still depends on the caller's compiler accepting that type syntax.
-No nightly guard feature is used.
+The project temporarily pins nightly Rust while native constructor closure
+storage is integrated. See [the feature inventory](docs/NIGHTLY.md) for what
+requires nightly and the later stable-support checks. Infallible builds infer
+the never error type without spelling `!` in generated source. No nightly guard
+feature is used.
 
 For targets without native atomic compare-and-swap, enable `portable-atomic`
 alongside `default-features = false`. It enables Spin's portable atomics and the
