@@ -1213,7 +1213,7 @@ pub(crate) fn expand(
                 })
             };
             initialization.push(quote!(let (#slot,#systasis_error_ident)=match #systasis_error_ident {
-                ::core::option::Option::Some(error)=>{#skipped_capture (::core::option::Option::None,::core::option::Option::Some(error))},
+                error @ ::core::option::Option::Some(_)=>{#skipped_capture (::core::option::Option::None,error)},
                 ::core::option::Option::None=>::systasis::__private::split((|| -> ::core::result::Result<_, #error_ty> {
                     // An empty match coerces into the contextual error type.
                     // It cannot execute: this expression constructs Ok, whose
@@ -1250,12 +1250,14 @@ pub(crate) fn expand(
                     let container: #construction_type = AppContainer {#(#values,)*_children: #children_ident, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
                     ::core::result::Result::Ok(container)
                 },
+                #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]
                 ::core::option::Option::Some(error)=>{#(::systasis::__private::discard(#reverse);)* ::core::result::Result::Err(error)},
             };
             let (#systasis_value_ident,#systasis_error_ident)=::systasis::__private::split(#systasis_result_ident);
             let #systasis_owner_ident=::core::pin::pin!(#systasis_value_ident);
             let #systasis_published_ident=match (#systasis_owner_ident.as_ref().get_ref(),#systasis_error_ident) {
                 (::core::option::Option::Some(container),::core::option::Option::None)=>::core::result::Result::Ok(container),
+                #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]
                 (::core::option::Option::None,::core::option::Option::Some(error))=>::core::result::Result::Err(error),
                 _=>::core::unreachable!("split result has exactly one occupied branch"),
             };
