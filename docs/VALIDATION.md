@@ -33,6 +33,12 @@ observes no allocator calls during build, repeated resolution and destruction.
 Capture-annotation omission where rustc safely infers the types was accepted on
 2026-09-10; documented examples remain explicitly typed.
 
+The extracted-package driver also passes on the pinned nightly with both std
+and no_std consumers. Its native constructor uses a private output type, typed
+array capture, concrete AppContainer parameter and required Send+Sync, without
+application feature attributes or unsafe code. Both package license texts and
+unchanged source manifests/lockfile are checked; nothing is published.
+
 The temporary reserved-name convention is documented in 7ce59f1. The three
 `initializer_names` tests pass on stable with std and no_std: ordinary glob
 imports preserve caller constants/type aliases, local and nested-child queries

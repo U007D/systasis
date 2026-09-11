@@ -1,7 +1,7 @@
 //! Local archive validation; never publishes or fetches registry dependencies.
 //!
 //! Run explicitly with:
-//! `cargo +stable test --test packaged_consumer --offline -- --ignored --nocapture`
+//! `cargo test --test packaged_consumer --offline -- --ignored --nocapture`
 //! This stages sources, packages both crates and builds two downstream consumers,
 //! so it is excluded from the fast default test run.
 #![cfg(not(miri))]
@@ -203,9 +203,30 @@ pub mod outer {
         result
     }
 }
+pub mod native {
+    struct Word([u8; 4]);
+    trait IWord {}
+    impl IWord for Word {}
+    fn named(container: &AppContainer) -> u32 {
+        u32::from_le_bytes(container.resolve_i_word().0)
+    }
+    #[systasis::container(require(Send, Sync))]
+    pub fn run() -> u32 {
+        let bytes: [u8; 4] = 42u32.to_le_bytes();
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(Word as IWord, move || {
+                assert_eq!(bytes.len(), 4);
+                Word(bytes)
+            });
+        }.build();
+        assert_eq!(named(container), 42);
+        named(container)
+    }
+}
 pub fn run() -> u32 {
     let mut value = 0;
     child::run(|child| value = outer::run(child));
+    assert_eq!(native::run(), value);
     value
 }
 "#).expect("write consumer library");
