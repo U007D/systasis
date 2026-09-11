@@ -12,7 +12,7 @@ type-bound diagnostic. Nightly embedded compile/link checks now also pass on
 thumbv8m.main-none-eabihf, riscv32imac-unknown-none-elf and thumbv6m-none-eabi.
 This is not physical-board validation.
 
-Native constructor integration passes ten source-syntax tests per backend and
+Native constructor integration passes eleven source-syntax tests per backend and
 the cross-crate compiler driver: public/private result types, concrete container
 naming, generics/external lifetimes, multiple child scopes, and four intended
 privacy/ownership/auto-trait rejections. The inferred-capture regression checks
@@ -23,6 +23,10 @@ review found and verified a fix for rewriting `self` inside nested authored
 items. No allocation mechanism, dependency or unsafe operation was added;
 Miri was not rerun for this safe code-generation change. Remaining cases are
 listed in CAPTURE_LIMITS.md, not counted as implemented.
+
+The native mutable-guard regression checks repeated construction, shared and
+exclusive contention while its returned RefMut is retained, mutation through
+that guard, and successful access after the returned service is dropped.
 
 The four std/no_std checked/feature-enabled workspace suites pass with the
 native branch, as do both feature-enabled all-targets Clippy configurations.

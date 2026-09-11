@@ -88,6 +88,43 @@ mod returned_guard {
     }
 }
 
+mod returned_write_guard {
+    use systasis::app_container::Error;
+    struct View<'a>(systasis::RefMut<'a, String>);
+    trait IView {}
+    impl IView for View<'_> {}
+    trait IValue {}
+    impl IValue for String {}
+
+    #[systasis::container]
+    #[test]
+    fn native_constructor_retains_exclusive_guard_until_output_drops() -> Result<(), Error> {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(String::from("before"): String as IValue);
+            register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
+                let guard = try_resolve_ref_mut!(IValue)?;
+                assert!(!guard.is_empty());
+                Ok(View(guard))
+            });
+        }
+        .build();
+        let mut view = container.try_resolve_i_view()?;
+        assert!(matches!(
+            container.try_resolve_i_value_ref(),
+            Err(Error::ValueAccessContention)
+        ));
+        assert!(matches!(
+            container.try_resolve_i_view(),
+            Err(Error::ValueAccessContention)
+        ));
+        view.0.push_str("-after");
+        drop(view);
+        assert_eq!(&*container.try_resolve_i_value_ref()?, "before-after");
+        assert_eq!(&*container.try_resolve_i_view()?.0, "before-after");
+        Ok(())
+    }
+}
+
 mod transitive {
     use super::*;
     trait IText {}
