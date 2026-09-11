@@ -17,6 +17,9 @@ Both full feature-enabled workspace suites pass after the fallback change and
 glob fixture migration, as do both feature-enabled all-targets Clippy runs.
 The three additional generic/macro-binding/tuple-rest cases pass targeted tests
 on both backends and std Clippy with warnings denied.
+At 2c03d50, both complete checked-only suites also pass, including the seven
+fallback tests. The four host configurations therefore pass after fallback;
+separate ignored package/scaling/performance checks are not part of these runs.
 
 The temporary nightly pin is `nightly-2026-09-06` (28c6cd5). The 13 standalone
 compiler drivers now use Cargo-reported artifacts (6f630c0), including split
