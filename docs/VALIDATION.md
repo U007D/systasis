@@ -8,6 +8,10 @@ owned bindings, struct and tuple-struct destructuring, and function-local globs.
 The former untyped-capture compiler rejection is now a positive fixture. Unit
 tests separately check analysis failures, fallback from the original AST after
 partial rewrites, and preservation of the owned-capture lending path.
+The previous glob-shadowing rejection also becomes a compile-and-run positive:
+Rust selects the imported function, the caller-owned String remains usable,
+and repeat resolution returns the imported function's result. It compiles with
+warnings denied and forbid(unsafe_code) on both backends.
 
 The temporary nightly pin is `nightly-2026-09-06` (28c6cd5). The 13 standalone
 compiler drivers now use Cargo-reported artifacts (6f630c0), including split

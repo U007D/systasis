@@ -201,7 +201,7 @@ mod unused_context_generics {
 
 #[test]
 #[cfg(not(miri))]
-fn potentially_shadowed_capture_reports_the_ambiguity() {
+fn potentially_shadowed_capture_uses_rust_name_resolution() {
     use std::{fs, path::Path, process::Command};
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let target = root
@@ -221,27 +221,33 @@ fn potentially_shadowed_capture_reports_the_ambiguity() {
     }
     let artifacts = support::Artifacts::build(&mut build);
     let source = r#"
+#![forbid(unsafe_code)]
 mod imported { pub fn answer() -> usize { 3 } }
 trait IValue {} impl IValue for usize {}
 #[systasis::container]
 fn main() {
-    let answer: usize = 7;
-    let Ok(_) = systasis::systasis_container! {
+    let answer: String = String::from("caller");
+    let Ok(container) = systasis::systasis_container! {
         register_type_with!(usize as IValue, || { use imported::*; answer() });
     }.build();
+    assert_eq!(container.resolve_i_value(), 3);
+    assert_eq!(container.resolve_i_value(), 3);
+    assert_eq!(answer, "caller");
 }
 "#;
     let path = target.join("ambiguous.rs");
     fs::write(&path, source).unwrap();
+    let binary = target.join("ambiguous");
     let output = artifacts
         .rustc()
-        .args(["--edition=2024", "--emit=metadata", "--error-format=short"])
+        .args(["--edition=2024", "-Dwarnings", "--error-format=short"])
         .arg(path)
-        .arg("--out-dir")
-        .arg(&target)
+        .arg("-o")
+        .arg(&binary)
         .output()
         .unwrap();
     fs::write(target.join("ambiguous.stderr"), &output.stderr).unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success() && stderr.contains("constructor capture analysis cannot determine whether this glob import shadows the referenced outer binding") && stderr.contains("ambiguous.rs:8:"), "{stderr}");
+    assert!(output.status.success(), "{stderr}");
+    assert!(Command::new(binary).status().unwrap().success());
 }
