@@ -1,6 +1,9 @@
 //! Async guard ownership without an executor or additional dependencies.
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use std::{
     future::Future,
     pin::pin,
@@ -138,12 +141,7 @@ fn compiler_distinguishes_local_container_and_future_traits() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().expect("build compiler fixture dependency");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
     let source = target.join("async_traits.rs");
     fs::write(
         &source,
@@ -227,22 +225,12 @@ fn main() {
             &["cannot be shared between threads safely", "Sync", "RefCell"][..],
         ),
     ] {
-        let mut command = Command::new("rustc");
+        let mut command = artifacts.rustc();
         command
             .args(["--edition=2024", "--crate-name", case, "--cfg", case])
             .arg(&source)
             .arg("--out-dir")
-            .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ));
+            .arg(&target);
         let output = command.output().expect("compile async trait case");
         let diagnostics = String::from_utf8_lossy(&output.stderr);
         fs::write(target.join(format!("{case}.log")), diagnostics.as_bytes())

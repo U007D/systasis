@@ -2,6 +2,9 @@
 #![cfg(not(miri))]
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use std::{fmt::Write as _, fs, path::Path, process::Command};
 
 #[test]
@@ -22,12 +25,7 @@ fn many_conditions_preserve_ancestry_hygiene_and_module_scope() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().expect("build selector dependency");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
 
     let mut source = String::from(
         r#"
@@ -151,21 +149,12 @@ fn main() {
     ] {
         let file = target.join(format!("{name}.rs"));
         fs::write(&file, source).expect("write configuration fixture");
-        let output = Command::new("rustc")
+        let output = artifacts
+            .rustc()
             .args(["--edition=2024", "--crate-name", name])
             .arg(&file)
             .arg("--out-dir")
             .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ))
             .output()
             .expect("compile configuration fixture");
         let diagnostics = String::from_utf8_lossy(&output.stderr);

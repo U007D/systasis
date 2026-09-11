@@ -1,6 +1,9 @@
 //! Parent constructor borrows exclude child ownership without restricting siblings.
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use systasis::app_container::Error;
 
 mod child {
@@ -71,12 +74,7 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
     for (name, access, rejected) in [
         ("take", "container.primary().try_resolve_i_value()", true),
         (
@@ -129,21 +127,12 @@ fn main() {{}}
         );
         let path = target.join(format!("{name}.rs"));
         fs::write(&path, source).unwrap();
-        let output = Command::new("rustc")
+        let output = artifacts
+            .rustc()
             .args(["--edition=2024", "--emit=metadata", "--error-format=json"])
             .arg(&path)
             .arg("--out-dir")
             .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ))
             .output()
             .unwrap();
         let diagnostics = String::from_utf8_lossy(&output.stderr);

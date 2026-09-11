@@ -1,5 +1,8 @@
 //! Capture projections preserve ordinary tuple aliases and borrow modes.
 #![forbid(unsafe_code)]
+
+#[cfg(all(test, not(miri)))]
+mod support;
 use std::cell::Cell;
 trait IText {}
 impl IText for &str {}
@@ -247,12 +250,7 @@ fn exported_container_hides_private_capture_types_across_crates() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
     let provider = r#"
 #![forbid(unsafe_code)]
 use std::cell::Cell;
@@ -282,22 +280,12 @@ fn main() { provider::run(&std::cell::Cell::new(17), |container| assert_eq!(rece
     for (name, source) in [("provider", provider), ("consumer", consumer)] {
         let path = target.join(format!("{name}.rs"));
         fs::write(&path, source).unwrap();
-        let mut compiler = Command::new("rustc");
+        let mut compiler = artifacts.rustc();
         compiler
             .args(["--edition=2024", "-Dwarnings"])
             .arg(&path)
             .arg("--out-dir")
-            .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ));
+            .arg(&target);
         if name == "provider" {
             compiler.arg("--crate-type=rlib");
         } else {
@@ -326,7 +314,8 @@ fn main() { provider::run(&std::cell::Cell::new(17), |container| assert_eq!(rece
         "type Hidden = provider::__systasis_injected::__CaptureOwned; fn main() {}",
     )
     .unwrap();
-    let output = Command::new("rustc")
+    let output = artifacts
+        .rustc()
         .args(["--edition=2024", "--emit=metadata", "--error-format=short"])
         .arg(private)
         .arg("--out-dir")
@@ -335,11 +324,6 @@ fn main() { provider::run(&std::cell::Cell::new(17), |container| assert_eq!(rece
         .arg(format!(
             "provider={}",
             target.join("libprovider.rlib").display()
-        ))
-        .arg("-L")
-        .arg(format!(
-            "dependency={}",
-            target.join("debug/deps").display()
         ))
         .output()
         .unwrap();

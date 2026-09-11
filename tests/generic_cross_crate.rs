@@ -2,24 +2,18 @@
 #![cfg(not(miri))]
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use std::{fs, path::Path, process::Command};
 
-fn compile(target: &Path, source: &Path, arguments: &[&str]) {
-    let output = Command::new("rustc")
+fn compile(artifacts: &support::Artifacts, target: &Path, source: &Path, arguments: &[&str]) {
+    let output = artifacts
+        .rustc()
         .args(["--edition=2024", "--out-dir"])
         .arg(target)
         .arg(source)
         .args(arguments)
-        .arg("--extern")
-        .arg(format!(
-            "systasis={}",
-            target.join("debug/libsystasis.rlib").display()
-        ))
-        .arg("-L")
-        .arg(format!(
-            "dependency={}",
-            target.join("debug/deps").display()
-        ))
         .output()
         .expect("compile cross-crate fixture");
     assert!(
@@ -46,14 +40,7 @@ fn exported_alias_preserves_generic_type_const_and_lifetime_parameters() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build
-        .output()
-        .expect("build systasis for cross-crate fixture");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
 
     let library = target.join("generic_provider.rs");
     fs::write(
@@ -101,6 +88,7 @@ pub mod borrowed {
     )
     .expect("write provider fixture");
     compile(
+        &artifacts,
         &target,
         &library,
         &["--crate-type=rlib", "--crate-name=generic_provider"],
@@ -170,7 +158,7 @@ fn main() {
         "generic_provider={}",
         target.join("libgeneric_provider.rlib").display()
     );
-    compile(&target, &caller, &["--extern", &provider]);
+    compile(&artifacts, &target, &caller, &["--extern", &provider]);
     let output = Command::new(target.join("generic_caller"))
         .output()
         .expect("run cross-crate caller");

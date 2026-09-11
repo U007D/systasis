@@ -2,6 +2,9 @@
 #![cfg(not(miri))]
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use std::{fs, path::PathBuf, process::Command};
 
 #[test]
@@ -32,12 +35,7 @@ fn container_diagnostics() {
     if cfg!(feature = "resolve_unchecked") {
         build.args(["--features", "resolve_unchecked"]);
     }
-    let output = build.output().expect("build library");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
 
     let cases = [
         (
@@ -559,21 +557,12 @@ fn main() {{
         );
         let path = target.join(format!("{name}.rs"));
         fs::write(&path, source).expect("write compiler fixture");
-        let output = Command::new("rustc")
+        let output = artifacts
+            .rustc()
             .args(["--edition=2024", "--emit=metadata", "--error-format=json"])
             .arg(&path)
             .arg("--out-dir")
             .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ))
             .output()
             .expect("compile fixture");
         let diagnostics = String::from_utf8_lossy(&output.stderr);

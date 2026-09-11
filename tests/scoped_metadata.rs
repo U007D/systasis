@@ -1,6 +1,9 @@
 //! Foundation checks, not proof of generated register_container! integration.
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use systasis::{
     __private::{CopySlot, FreshSlot, LocalTakeSlot, ReadSlot, TakeSlot},
     app_container::Error,
@@ -138,29 +141,15 @@ fn cross_crate_aliases_preserve_metadata_and_restricted_guard_lifetimes() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().expect("build metadata foundation");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
 
     let compile = |source: &Path, arguments: &[&str]| {
-        Command::new("rustc")
+        artifacts
+            .rustc()
             .args(["--edition=2024", "--out-dir"])
             .arg(&target)
             .arg(source)
             .args(arguments)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ))
             .output()
             .expect("compile metadata fixture")
     };

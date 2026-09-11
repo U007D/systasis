@@ -1,5 +1,8 @@
 //! Closure-local globs are preserved; ambiguous outer captures are rejected.
 #![forbid(unsafe_code)]
+
+#[cfg(all(test, not(miri)))]
+mod support;
 mod imported {
     #[allow(non_upper_case_globals)]
     pub const __systasis_slot_1: usize = 77;
@@ -216,12 +219,7 @@ fn potentially_shadowed_capture_reports_the_ambiguity() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
     let source = r#"
 mod imported { pub fn answer() -> usize { 3 } }
 trait IValue {} impl IValue for usize {}
@@ -235,21 +233,12 @@ fn main() {
 "#;
     let path = target.join("ambiguous.rs");
     fs::write(&path, source).unwrap();
-    let output = Command::new("rustc")
+    let output = artifacts
+        .rustc()
         .args(["--edition=2024", "--emit=metadata", "--error-format=short"])
         .arg(path)
         .arg("--out-dir")
         .arg(&target)
-        .arg("--extern")
-        .arg(format!(
-            "systasis={}",
-            target.join("debug/libsystasis.rlib").display()
-        ))
-        .arg("-L")
-        .arg(format!(
-            "dependency={}",
-            target.join("debug/deps").display()
-        ))
         .output()
         .unwrap();
     fs::write(target.join("ambiguous.stderr"), &output.stderr).unwrap();

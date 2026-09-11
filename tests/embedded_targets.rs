@@ -2,6 +2,9 @@
 #![cfg(all(not(miri), feature = "experimental-hardware"))]
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use std::{fs, path::PathBuf, process::Command};
 
 #[test]
@@ -13,27 +16,22 @@ fn generated_no_std_containers_link_on_native_cas_targets_and_require_platform_f
         ("thumbv6m-none-eabi", false),
     ] {
         let target_dir = root.join("target/embedded-contracts").join(target_triple);
-        let output = Command::new(env!("CARGO"))
-            .current_dir(&root)
-            .args([
-                "build",
-                "--lib",
-                "--offline",
-                "--locked",
-                "--no-default-features",
-                "--features",
-                "portable-atomic",
-                "--target",
-                target_triple,
-                "--target-dir",
-            ])
-            .arg(&target_dir)
-            .output()
-            .expect("build embedded runtime");
-        assert!(
-            output.status.success(),
-            "{target_triple} library build: {}",
-            String::from_utf8_lossy(&output.stderr)
+        let artifacts = support::Artifacts::build(
+            Command::new(env!("CARGO"))
+                .current_dir(&root)
+                .args([
+                    "build",
+                    "--lib",
+                    "--offline",
+                    "--locked",
+                    "--no-default-features",
+                    "--features",
+                    "portable-atomic",
+                    "--target",
+                    target_triple,
+                    "--target-dir",
+                ])
+                .arg(&target_dir),
         );
 
         let source = target_dir.join("generated_firmware.rs");
@@ -65,8 +63,8 @@ pub extern "C" fn systasis_embedded_probe_entry() -> ! {
         )
         .expect("write generated firmware fixture");
         let artifact = target_dir.join("generated_firmware.elf");
-        let library_dir = target_dir.join(target_triple).join("debug");
-        let output = Command::new("rustc")
+        let output = artifacts
+            .rustc()
             .args([
                 "--edition=2024",
                 "--target",
@@ -79,18 +77,6 @@ pub extern "C" fn systasis_embedded_probe_entry() -> ! {
             .arg(&source)
             .arg("-o")
             .arg(&artifact)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                library_dir.join("libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!("dependency={}", library_dir.join("deps").display()))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target_dir.join("debug/deps").display()
-            ))
             .output()
             .expect("link generated firmware fixture");
         fs::write(target_dir.join("link-diagnostics.txt"), &output.stderr)

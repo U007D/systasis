@@ -1,6 +1,9 @@
 //! Nested descriptors retain child exclusions and independent sibling state.
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use systasis::app_container::Error;
 
 mod leaf {
@@ -108,12 +111,7 @@ fn nested_scopes_cannot_restore_direct_or_indirect_ownership() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
     for method in ["try_resolve_i_value", "try_resolve_i_size"] {
         let source = include_str!("nested_children.rs").replace(
             concat!("// NEGATIVE", "_ACCESS"),
@@ -121,7 +119,8 @@ fn nested_scopes_cannot_restore_direct_or_indirect_ownership() {
         );
         let path = target.join(format!("{method}.rs"));
         fs::write(&path, source).unwrap();
-        let output = Command::new("rustc")
+        let output = artifacts
+            .rustc()
             .args([
                 "--edition=2024",
                 "--crate-type=lib",
@@ -131,16 +130,6 @@ fn nested_scopes_cannot_restore_direct_or_indirect_ownership() {
             .arg(&path)
             .arg("--out-dir")
             .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ))
             .output()
             .unwrap();
         let diagnostics = String::from_utf8_lossy(&output.stderr);

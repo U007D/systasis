@@ -4,6 +4,9 @@
 #![cfg(not(miri))]
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 use std::{
     fmt::Write as _,
     fs,
@@ -180,7 +183,7 @@ fn stable_stored_constructor_and_nested_container_scaling() {
         build.arg("--no-default-features");
     }
     let warmed = Instant::now();
-    checked(&mut build);
+    let artifacts = support::Artifacts::build(&mut build);
     eprintln!(
         "Dependency artifact preparation (excluded from sample timing): {:.3}s",
         warmed.elapsed().as_secs_f64()
@@ -226,7 +229,7 @@ fn stable_stored_constructor_and_nested_container_scaling() {
             let file = samples.join(format!("{crate_name}.rs"));
             fs::write(&file, source).expect("write independent source fixture");
             let compile = |emit: &str| {
-                let mut command = Command::new("rustc");
+                let mut command = artifacts.rustc();
                 command
                     .args([
                         "--edition=2024",
@@ -239,17 +242,7 @@ fn stable_stored_constructor_and_nested_container_scaling() {
                     ])
                     .arg(&file)
                     .arg("--out-dir")
-                    .arg(&samples)
-                    .arg("--extern")
-                    .arg(format!(
-                        "systasis={}",
-                        target.join("debug/libsystasis.rlib").display()
-                    ))
-                    .arg("-L")
-                    .arg(format!(
-                        "dependency={}",
-                        target.join("debug/deps").display()
-                    ));
+                    .arg(&samples);
                 let start = Instant::now();
                 checked(&mut command);
                 start.elapsed().as_secs_f64()

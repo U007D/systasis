@@ -1,6 +1,9 @@
 //! Resolver names belong to the selected registration catalog, not lexical scope.
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, not(miri)))]
+mod support;
+
 trait IValue {}
 impl IValue for u32 {}
 trait IOutput {}
@@ -152,12 +155,7 @@ fn missing_registration_never_falls_back_to_external_trait() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
     for (name, query, diagnostic) in [
         ("local", "resolve!(IMissing)", "unregistered dependency"),
         ("alias", "resolve!(Renamed)", "unregistered dependency"),
@@ -193,21 +191,12 @@ fn main() {{ leaf::run(outer); }}
         );
         let path = target.join(format!("{name}.rs"));
         fs::write(&path, &source).unwrap();
-        let output = Command::new("rustc")
+        let output = artifacts
+            .rustc()
             .args(["--edition=2024", "--emit=metadata", "--error-format=short"])
             .arg(path)
             .arg("--out-dir")
             .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ))
             .output()
             .unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -217,7 +206,14 @@ fn main() {{ leaf::run(outer); }}
             "{name}: {stderr}"
         );
         let error_line = if name == "child" {
-            assert!(stderr.contains("the trait bound `__SystasisScope<'_, ..., ...>: Resolve<'_, ..., ..., ...>` is not satisfied"), "{stderr}");
+            // rustc versions abbreviate this same failed scope bound differently.
+            assert!(
+                [
+                    "the trait bound `__SystasisScope<'_, ..., ...>: Resolve<'_, ..., ..., ...>` is not satisfied",
+                    "the trait bound `__SystasisScope<'_, _, Empty>: Resolve<'_, Here, _, Owned>` is not satisfied",
+                ].iter().any(|bound| stderr.contains(bound)),
+                "{stderr}"
+            );
             source
                 .lines()
                 .position(|line| line == "#[systasis::container]")

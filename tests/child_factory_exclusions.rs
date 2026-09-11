@@ -1,5 +1,8 @@
 //! Consuming child calls propagate through local factory chains without blocking siblings.
 #![forbid(unsafe_code)]
+
+#[cfg(all(test, not(miri)))]
+mod support;
 use systasis::app_container::Error;
 
 mod leaf {
@@ -100,12 +103,7 @@ fn direct_and_transitive_child_consuming_factories_are_excluded() {
     if !cfg!(feature = "std") {
         build.arg("--no-default-features");
     }
-    let output = build.output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let artifacts = support::Artifacts::build(&mut build);
     for method in ["try_resolve_i_first", "try_resolve_i_second"] {
         let source = include_str!("child_factory_exclusions.rs").replace(
             concat!("// EXCLUDED", "_FACTORY"),
@@ -113,7 +111,8 @@ fn direct_and_transitive_child_consuming_factories_are_excluded() {
         );
         let path = target.join(format!("{method}.rs"));
         fs::write(&path, source).unwrap();
-        let output = Command::new("rustc")
+        let output = artifacts
+            .rustc()
             .args([
                 "--edition=2024",
                 "--crate-type=lib",
@@ -123,16 +122,6 @@ fn direct_and_transitive_child_consuming_factories_are_excluded() {
             .arg(&path)
             .arg("--out-dir")
             .arg(&target)
-            .arg("--extern")
-            .arg(format!(
-                "systasis={}",
-                target.join("debug/libsystasis.rlib").display()
-            ))
-            .arg("-L")
-            .arg(format!(
-                "dependency={}",
-                target.join("debug/deps").display()
-            ))
             .output()
             .unwrap();
         let diagnostics = String::from_utf8_lossy(&output.stderr);
