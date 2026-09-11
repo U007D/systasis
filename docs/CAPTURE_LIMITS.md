@@ -8,7 +8,8 @@ without changing ownership or auto traits. Reconstruction still needs enough
 source type information to name its capture fields. A failed reconstruction
 restarts from the original closure body, without retaining partial rewrites.
 See [fallback regressions](../tests/native_fallback.rs) for inferred owned
-bindings, struct/tuple-struct patterns and enclosing-function glob imports.
+bindings (including authored generics), struct/tuple-struct patterns, tuple-alias
+rest patterns, macro-created bindings and enclosing-function glob imports.
 
 ## Reserved generated names on stable
 
@@ -104,8 +105,9 @@ They retain the exact array or slice type rather than coercing arrays to slices.
 Generic-argument array remainder aliases remain unresolved in this implementation. See
 [sequence-alias regressions](../tests/capture_sequence_aliases.rs).
 Reconstruction cannot determine struct-field types or tuple aliases with
-unknown-arity rest patterns. Native fallback handles the tested struct and
-tuple-struct captures without naming those field types in generated signatures.
+unknown-arity rest patterns. Native fallback handles the tested struct,
+tuple-struct and tuple-alias rest captures without naming those field types in
+generated signatures.
 See [capture-pattern regressions](../tests/capture_patterns.rs) and the fallback
 tests above; remaining native lifetime limits still apply.
 Explicit imports are preserved where their names do not conflict with capture

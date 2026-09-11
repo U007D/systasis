@@ -3,8 +3,9 @@
 ## Current generated-container checks
 
 Capture-analysis fallback preserves successful typed reconstruction and delegates
-unnameable captures to native Rust closures. Four new source tests cover inferred
-owned bindings, struct and tuple-struct destructuring, and function-local globs.
+unnameable captures to native Rust closures. Seven source tests cover inferred
+owned/generic bindings, struct/tuple-struct and tuple-alias rest destructuring,
+macro-created bindings, and function-local globs; they pass on both backends.
 The former untyped-capture compiler rejection is now a positive fixture. Unit
 tests separately check analysis failures, fallback from the original AST after
 partial rewrites, and preservation of the owned-capture lending path.
@@ -12,6 +13,10 @@ The previous glob-shadowing rejection also becomes a compile-and-run positive:
 Rust selects the imported function, the caller-owned String remains usable,
 and repeat resolution returns the imported function's result. It compiles with
 warnings denied and forbid(unsafe_code) on both backends.
+Both full feature-enabled workspace suites pass after the fallback change and
+glob fixture migration, as do both feature-enabled all-targets Clippy runs.
+The three additional generic/macro-binding/tuple-rest cases pass targeted tests
+on both backends and std Clippy with warnings denied.
 
 The temporary nightly pin is `nightly-2026-09-06` (28c6cd5). The 13 standalone
 compiler drivers now use Cargo-reported artifacts (6f630c0), including split

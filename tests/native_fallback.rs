@@ -86,3 +86,71 @@ mod imported {
         assert_eq!(container.resolve_i_text(), "text");
     }
 }
+
+mod generic {
+    trait IValue {}
+    impl<T> IValue for T {}
+
+    fn receive<T: Clone>(container: &AppContainer<T>) -> T {
+        container.resolve_i_value()
+    }
+
+    #[systasis::container]
+    fn run<T: Clone>(value: T) -> (T, T) {
+        let capture = value;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(T as IValue, move || capture.clone());
+        }
+        .build();
+        (receive(container), receive(container))
+    }
+
+    #[test]
+    fn inferred_generic_capture_keeps_the_authored_type_parameter() {
+        assert_eq!(
+            run(String::from("generic")),
+            ("generic".into(), "generic".into())
+        );
+        assert_eq!(run(42u32), (42, 42));
+    }
+}
+
+mod introduced_binding {
+    trait IText {}
+    impl IText for String {}
+
+    #[systasis::container]
+    #[test]
+    fn binding_introduced_by_a_macro_is_captured_after_expansion() {
+        macro_rules! configure {
+            ($binding:ident) => {
+                let $binding: String = String::from("macro input");
+            };
+        }
+        configure!(config);
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(String as IText, move || config.clone());
+        }
+        .build();
+        assert_eq!(container.resolve_i_text(), "macro input");
+        assert_eq!(container.resolve_i_text(), "macro input");
+    }
+}
+
+mod tuple_rest {
+    type Inputs = (String, bool, u16);
+    trait IText {}
+    impl IText for String {}
+
+    #[systasis::container]
+    #[test]
+    fn unknown_arity_tuple_alias_rest_keeps_uncaptured_values_local() {
+        let (text, .., number): Inputs = (String::from("rest"), true, 7);
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(String as IText, move || text.clone());
+        }
+        .build();
+        assert_eq!(container.resolve_i_text(), "rest");
+        assert_eq!(number, 7);
+    }
+}
