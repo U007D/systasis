@@ -6,6 +6,32 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::{ext::IdentExt, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
 struct CallLifetime(Lifetime);
+struct SourceLifetimes<'a>(&'a [Lifetime]);
+struct NativeContext<'a>(&'a Ident);
+
+impl VisitMut for SourceLifetimes<'_> {
+    fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
+        if lifetime.ident == "__systasis_call"
+            || self.0.iter().any(|lifted| lifted.ident == lifetime.ident)
+        {
+            *lifetime = Lifetime::new("'_", lifetime.span());
+        }
+    }
+}
+
+impl VisitMut for NativeContext<'_> {
+    // Nested items have their own receiver and cannot capture this invocation's
+    // context. In particular, keep `self` in caller-authored impl methods intact.
+    fn visit_item_mut(&mut self, _: &mut Item) {}
+
+    fn visit_expr_path_mut(&mut self, expression: &mut ExprPath) {
+        if expression.path.is_ident("self") {
+            let context = self.0;
+            expression.path = parse_quote!(#context);
+        }
+        syn::visit_mut::visit_expr_path_mut(self, expression);
+    }
+}
 struct ProjectionLifetimes<'a> {
     lifted: &'a [Lifetime],
     predicates: Vec<WherePredicate>,
@@ -162,6 +188,7 @@ pub(crate) fn expand(
         })
         .collect::<Vec<_>>();
     let turbofish = (!type_arguments.is_empty()).then(|| quote!(::<#(#type_arguments),*>));
+    let mut opaque_definitions = Vec::new();
     let systasis_error_ident = Ident::new("__systasis_error", Span::mixed_site());
     let systasis_value_ident = Ident::new("__systasis_value", Span::mixed_site());
     let systasis_result_ident = Ident::new("__systasis_result", Span::mixed_site());
@@ -595,6 +622,12 @@ pub(crate) fn expand(
         let mut capture_record_names = BTreeMap::new();
         let (capture_parameters, capture_arguments, capture_where) = generics.split_for_impl();
         for (&index, types) in &capture_types {
+            if factories[&index].native {
+                let name = format_ident!("__NativeFactory{index}");
+                let (_, native_arguments, _) = original_generics.split_for_impl();
+                selected[index] = quote!(::systasis::__private::FactorySlot<__systasis_injected::#name #native_arguments>);
+                continue;
+            }
             if !factories[&index].requires_record {
                 continue;
             }
@@ -671,6 +704,7 @@ pub(crate) fn expand(
             })
             .collect::<Vec<(Type, Type, Type)>>();
         let mut constructor_functions = Vec::new();
+        let mut native_initializers = BTreeMap::new();
         let mut validation_calls = Vec::new();
         let mut method_names = BTreeMap::<String, proc_macro2::TokenStream>::new();
         for (i, registration) in registrations.iter().enumerate() {
@@ -831,21 +865,34 @@ pub(crate) fn expand(
                         quote!(#parameter: &#call_lifetime #ty)
                     })
                     .collect::<Vec<_>>();
-                let context_fields = arguments.iter().map(|&index| &slots[index]);
-                let context_slot_parameters = arguments
+                // Native closures receive dependencies, never their own
+                // closure slot: including that slot would make the opaque
+                // closure type occur recursively in its own Fn argument.
+                let context_arguments = arguments
+                    .iter()
+                    .copied()
+                    .filter(|&index| !factory.native || index != i)
+                    .collect::<Vec<_>>();
+                let context_fields = context_arguments.iter().map(|&index| &slots[index]);
+                let context_slot_parameters = context_arguments
                     .iter()
                     .map(|&index| format_ident!("__ContextSlot{index}"))
                     .collect::<Vec<_>>();
-                let context_slot_fields =
-                    arguments
-                        .iter()
-                        .zip(&context_slot_parameters)
-                        .map(|(&index, parameter)| {
-                            let field = &slots[index];
-                            quote!(#field: &#call_lifetime #parameter)
-                        });
-                let context_slot_arguments = arguments.iter().map(|&index| &selected[index]);
-                let context_type = quote!(#context<#call_lifetime, #(#context_slot_arguments,)* #child_tuple, fn() -> (#(#marker_types,)*)>);
+                let context_slot_fields = context_arguments
+                    .iter()
+                    .zip(&context_slot_parameters)
+                    .map(|(&index, parameter)| {
+                        let field = &slots[index];
+                        quote!(#field: &#call_lifetime #parameter)
+                    });
+                let context_slot_arguments =
+                    context_arguments.iter().map(|&index| &selected[index]);
+                let context_marker = if factory.native {
+                    quote!(())
+                } else {
+                    quote!(fn() -> (#(#marker_types,)*))
+                };
+                let context_type = quote!(#context<#call_lifetime, #(#context_slot_arguments,)* #child_tuple, #context_marker>);
                 let call_arguments = arguments.iter().map(|&index| {
                     let field = &fields[index];
                     quote!(&self.#field)
@@ -862,7 +909,64 @@ pub(crate) fn expand(
                 };
                 let (impl_generics, _, where_clause) = generics.split_for_impl();
                 let (context_parameters, _, context_where) = helper_generics.split_for_impl();
-                constructor_functions.push(quote!(
+                if factory.native {
+                    let native_name = format_ident!("__NativeFactory{i}");
+                    let opaque_name = format_ident!("__NativeClosure{i}");
+                    let (native_parameters, native_arguments, native_where) =
+                        original_generics.split_for_impl();
+                    let context_ident = Ident::new("__systasis_context", Span::mixed_site());
+                    let source_slots = context_arguments.iter().map(|&index| &selected[index]);
+                    let mut source_context: Type = parse2(
+                        quote!(__systasis_injected::#context<'_, #(#source_slots,)* #child_tuple, _>),
+                    )?;
+                    SourceLifetimes(&lifetimes.0).visit_type_mut(&mut source_context);
+                    // The HRTB is established by the opaque alias. An explicit
+                    // context annotation makes the source closure independently
+                    // valid before coercion, including returned dependency guards.
+                    let mut native_closure = closure.clone();
+                    native_closure
+                        .inputs
+                        .push(Pat::Type(parse_quote!(#context_ident: #source_context)));
+                    NativeContext(&context_ident).visit_expr_mut(&mut native_closure.body);
+                    let body = &native_closure.body;
+                    native_closure.body = if registration.fallible {
+                        parse_quote!({ ::systasis::__private::check_fallible::<#registered, #output>({ #body }) })
+                    } else {
+                        parse_quote!({ let __systasis_output: #registered = { #body }; __systasis_output })
+                    };
+                    native_initializers.insert(
+                        i,
+                        quote!(__systasis_injected::#native_name {
+                            closure: #native_closure,
+                        }),
+                    );
+                    opaque_definitions.push(quote!(__systasis_injected::#opaque_name));
+                    let native_context_fields = context_arguments
+                        .iter()
+                        .zip(&context_slot_parameters)
+                        .map(|(&index, parameter)| {
+                            let field = &slots[index];
+                            quote!(pub(super) #field: &#call_lifetime #parameter)
+                        });
+                    constructor_functions.push(quote!(
+                        pub(super) struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
+                            #(#native_context_fields,)*
+                            pub(super) _children: &#call_lifetime __ContextChildren,
+                            pub(super) _marker: ::core::marker::PhantomData<__ContextMarker>,
+                        }
+                        pub(super) type #opaque_name #native_parameters #native_where = impl for<#call_lifetime> Fn(#context_type) -> #helper_output;
+                        // The named wrapper prevents a private constructor
+                        // result from leaking through the public container alias.
+                        pub struct #native_name #native_parameters #native_where {
+                            pub(super) closure: #opaque_name #native_arguments,
+                        }
+                        pub(super) fn #helper #context_parameters (#(#helper_parameters,)* #children_ident: &#call_lifetime #child_tuple) -> #helper_output #context_where {
+                            let context: #context_type = #context { #(#context_fields,)* _children: #children_ident, _marker: ::core::marker::PhantomData };
+                            (#slot.captures().closure)(context)
+                        }
+                    ));
+                } else {
+                    constructor_functions.push(quote!(
                     // Keyword-based field access cannot be shadowed by imports
                     // within the caller's constructor body.
                     struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
@@ -880,7 +984,8 @@ pub(crate) fn expand(
                         let context: #context_type = #context { #(#context_fields,)* _children: #children_ident, _marker: ::core::marker::PhantomData };
                         context.invoke()
                     }
-                ));
+                    ));
+                }
                 implementations.push(quote!(
                     impl #impl_generics Generated<#(#selected),*> #where_clause {
                         pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments,)* &self._children) }
@@ -1180,7 +1285,9 @@ pub(crate) fn expand(
             );
             let captures = factory.captures.iter().map(|(name, _)| name);
             let types = factory.captures.iter().map(|(_, ty)| ty);
-            let capture_value = if let Some(name) = capture_record_names.get(&index) {
+            let capture_value = if let Some(initializer) = native_initializers.get(&index) {
+                initializer.clone()
+            } else if let Some(name) = capture_record_names.get(&index) {
                 quote!(__systasis_injected::#name(#(#captures,)* ::core::marker::PhantomData))
             } else {
                 quote!({ let __systasis_input: (#(#types,)*) = (#(#captures,)*); __systasis_input })
@@ -1267,6 +1374,11 @@ pub(crate) fn expand(
         statements.extend(generated.stmts);
     }
     function.block.stmts = statements;
+    if !opaque_definitions.is_empty() {
+        function
+            .attrs
+            .push(parse_quote!(#[define_opaque(#(#opaque_definitions),*)]));
+    }
     let mut definitions: syn::File = syn::parse2(quote!(#emitted))?;
     for item in &mut definitions.items {
         if let syn::Item::Mod(module) = item

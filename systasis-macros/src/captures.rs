@@ -1,8 +1,8 @@
 //! Lexical capture storage for repeatable constructors.
 //!
-//! Capture types come from explicit source annotations, never expression
-//! inference. Rust checks whether the rewritten constructor can run through a
-//! shared reference to its owned capture tuple.
+//! Reconstructed captures use explicit source annotations. Macro-containing
+//! constructors retain native closures, whose capture types Rust infers after
+//! expansion. Both paths require repeatable calls through shared access.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -454,6 +454,18 @@ pub(crate) struct Plan {
     pub(crate) captures: Vec<(Ident, Type)>,
     pub(crate) closure: ExprClosure,
     pub(crate) requires_record: bool,
+    pub(crate) native: bool,
+}
+
+/// Rust expands these bodies after the attribute has run. Leave their capture
+/// selection and source scope intact instead of interpreting macro tokens.
+#[derive(Default)]
+struct NativeBody(bool);
+
+impl VisitMut for NativeBody {
+    fn visit_macro_mut(&mut self, _: &mut syn::Macro) {
+        self.0 = true;
+    }
 }
 
 #[derive(Default)]
@@ -480,6 +492,18 @@ pub(crate) fn prepare(
     bindings: &Bindings,
     capture_root: &Ident,
 ) -> syn::Result<Plan> {
+    let mut native = NativeBody::default();
+    native.visit_expr_closure_mut(&mut closure.clone());
+    if native.0 {
+        let mut closure = closure.clone();
+        closure.capture = Some(Default::default());
+        return Ok(Plan {
+            captures: Vec::new(),
+            closure,
+            requires_record: false,
+            native: true,
+        });
+    }
     if let Some(tokens) = &bindings.uncertain {
         return Err(syn::Error::new_spanned(
             tokens,
@@ -507,6 +531,7 @@ pub(crate) fn prepare(
         captures: visitor.captures,
         closure,
         requires_record: projection.0,
+        native: false,
     })
 }
 
@@ -995,18 +1020,23 @@ mod tests {
     }
 
     #[test]
-    fn opaque_macro_capture_is_rejected() {
+    fn opaque_macro_capture_keeps_native_source_and_move_ownership() {
         let bindings = Bindings::from_function(&parse_quote!(
             fn main(url: String) {}
         ));
-        let error = prepare(
+        let plan = prepare(
             &parse_quote!(|| format!("{url}")),
             &bindings,
             &parse_quote!(__captures),
         )
-        .err()
-        .expect("opaque macro must fail");
-        assert!(error.to_string().contains("opaque macros"));
+        .expect("native closure preserves macro expansion for rustc");
+        assert!(plan.native);
+        assert!(plan.captures.is_empty());
+        let expected: ExprClosure = parse_quote!(move || format!("{url}"));
+        assert_eq!(
+            plan.closure.to_token_stream().to_string(),
+            expected.to_token_stream().to_string()
+        );
     }
 
     #[test]

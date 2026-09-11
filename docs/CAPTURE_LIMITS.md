@@ -1,8 +1,11 @@
 # Constructor capture implementation limits
 
-The current generator stores captured bindings in typed fields. It identifies
-those bindings before emitting the module-scope container type. Explicit binding
-annotations remain the accepted source of capture types.
+The generator retains reconstructed typed captures for ordinary constructors
+and uses Rust-native closure storage for macro-containing bodies. Explicit
+annotations on captured bindings remain part of the documented syntax. They may
+be omitted wherever Rust can infer their types; native storage supports this
+without changing ownership or auto traits. Reconstruction still needs enough
+source type information to name its capture fields.
 
 ## Reserved generated names on stable
 
@@ -12,7 +15,7 @@ instead of the registered value. The constructor-context fix does not protect
 this path. For now, `__systasis_*` names are reserved for generated code: caller
 declarations, imports (including globs), and macro expansions must not introduce
 them into generated-code scopes. Ordinary nonconflicting globs remain allowed.
-This accepted usage restriction keeps the stable implementation; it does not
+This accepted usage restriction remains during the nightly port; it does not
 fix the collision or guarantee a compiler diagnostic. A violating program can
 compile and resolve the wrong value. The parent research/initializer-hygiene
 directory retains the reproducer and rejected stable candidates. The nightly
@@ -26,11 +29,29 @@ must write in signatures; exact diagnostic text is compiler-dependent.
 
 ## Macros inside the constructor
 
-Capture analysis currently rejects unexpanded macros inside custom constructors.
-Their input tokens do not necessarily identify the values their expansion reads:
+Macro-containing constructors now remain native `move` closures in their original
+source scope. Rust determines their captures after expanding the body. Macro
+input tokens do not necessarily identify the values their expansion reads:
 tokens may be a macro-specific language, and formatting can refer to a binding
 inside a string literal. Replacing identifier tokens as if they were Rust
-expressions would not preserve arbitrary macro semantics.
+expressions would not preserve arbitrary macro semantics. For example, a typed
+`config: String` used by `format!("{config}")` is owned only by that constructor;
+it is not a registration. The generated container keeps its concrete name.
+
+[Native constructor tests](../tests/native_constructor.rs) cover lazy/repeated
+calls, source-local macros, failure cleanup, generic captures with explicit
+external lifetimes, direct dependency queries, returned guards and multiple
+subcontainers. [Compiler tests](../tests/native_compiler.rs) check cross-crate
+naming, private result types, scoped forwarding and ownership/auto-trait errors.
+Application code does not need feature annotations; see [NIGHTLY.md](NIGHTLY.md).
+
+This is not yet arbitrary macro-body support. Queries introduced only by a later
+macro expansion still need graph/exclusion integration. Nongeneric functions
+capturing locally borrowed inputs, enclosing argument-position `impl Trait`
+parameters, and synthesized dependency lifetimes still have native-storage
+limitations. Returning a borrow into an owned native capture also remains
+unsupported; existing non-macro constructors retain their previous returned-borrow
+implementation. These are implementation gaps, not new accepted restrictions.
 
 The compiler's eager macro expansion is not generally available to user macros.
 The experimental `TokenStream::expand_expr` API is nightly-only and currently
@@ -46,9 +67,9 @@ counterexample: a caller-defined macro named `try_resolve` discarded its argumen
 and returned caller data. That demonstrates ordinary macro shadowing, not an
 actual systasis lookup falling back to an outside registration. Genuine queries
 introduced by macro expansion still need dependency-analysis and exclusion
-checks. Typed outer captures through macros also remain unimplemented.
-Production continues to reject opaque constructors; these remaining gaps are
-not proof that a correct stable implementation is impossible.
+checks. Its typed outer captures were not solved. The native path above supersedes
+blanket rejection of macro-containing constructors, without establishing full
+macro/query integration or proving stable alternatives impossible.
 
 Moving the macro into an ordinary function called by the constructor works:
 see [the tested example](../tests/constructor_macro_helper.rs). Both host backends

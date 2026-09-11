@@ -80,7 +80,8 @@ pub fn container(
 /// Use `register_value!(expression: Type as Interface)` for a stored value,
 /// `register_type!(Type as Interface)` for a fresh `Default` value, and
 /// `register_type_with!(Type as Interface, move || expression)` for a repeatable
-/// constructor. Captured local bindings need explicit type annotations.
+/// constructor. Show captured bindings with explicit types; annotations may be
+/// omitted where Rust can infer their types.
 /// `register_container!(name: &ChildType)` composes an independently owned child
 /// behind a named scope rather than importing its registrations into the parent.
 ///
