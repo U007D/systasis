@@ -2,6 +2,37 @@
 
 ## Current generated-container checks
 
+The temporary nightly pin is `nightly-2026-09-06` (28c6cd5). The 13 standalone
+compiler drivers now use Cargo-reported artifacts (6f630c0), including split
+metadata and link artifacts. Their targeted std/no_std suites and ignored
+compiler-scaling execution checks pass on the new layout; the helper also
+passes an independent stable Cargo-layout control. Existing exact diagnostic
+codes and source-site checks remain, with two accepted renderings of one E0277
+type-bound diagnostic. Nightly embedded compile/link checks now also pass on
+thumbv8m.main-none-eabihf, riscv32imac-unknown-none-elf and thumbv6m-none-eabi.
+This is not physical-board validation.
+
+Native constructor integration passes ten source-syntax tests per backend and
+the cross-crate compiler driver: public/private result types, concrete container
+naming, generics/external lifetimes, multiple child scopes, and four intended
+privacy/ownership/auto-trait rejections. The inferred-capture regression checks
+concrete container naming, repeated calls and required Send+Sync without a
+capture annotation. The eleven existing custom-constructor
+tests still pass, including returned borrows into owned captures. Independent
+review found and verified a fix for rewriting `self` inside nested authored
+items. No allocation mechanism, dependency or unsafe operation was added;
+Miri was not rerun for this safe code-generation change. Remaining cases are
+listed in CAPTURE_LIMITS.md, not counted as implemented.
+
+The four std/no_std checked/feature-enabled workspace suites pass with the
+native branch, as do both feature-enabled all-targets Clippy configurations.
+The generated uninhabited-error correction is in 664390a; caller warnings remain
+enabled. Cargo independently warns that Spin is unused in the std compilation;
+it remains required by the no_std backend. The added native lifecycle workload
+observes no allocator calls during build, repeated resolution and destruction.
+Capture-annotation omission where rustc safely infers the types was accepted on
+2026-09-10; documented examples remain explicitly typed.
+
 The temporary reserved-name convention is documented in 7ce59f1. The three
 `initializer_names` tests pass on stable with std and no_std: ordinary glob
 imports preserve caller constants/type aliases, local and nested-child queries

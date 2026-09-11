@@ -100,6 +100,39 @@ mod fresh {
     }
 }
 
+mod native {
+    use super::*;
+
+    #[systasis::container]
+    fn constructors<'a>(calls: &'a Cell<usize>, drops: &'a Cell<usize>) {
+        let capture: Tracked<'a> = Tracked(drops);
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!([u8; 16] as IFresh, move || {
+                // The macro keeps this constructor on the native closure path.
+                assert_eq!(capture.0.get(), 0);
+                calls.set(calls.get() + 1);
+                [9; 16]
+            });
+        }
+        .build();
+        assert_eq!(calls.get(), 0);
+        assert_eq!(container.resolve_i_fresh(), [9; 16]);
+        assert_eq!(container.resolve_i_fresh(), [9; 16]);
+        assert_eq!(calls.get(), 2);
+        assert_eq!(drops.get(), 0);
+    }
+
+    #[test]
+    fn native_closure_storage_calls_and_capture_destruction_do_not_allocate() {
+        let calls = Cell::new(0);
+        let drops = Cell::new(0);
+        let (_, counts) = measure(|| constructors(&calls, &drops));
+        assert_no_allocations(counts);
+        assert_eq!(calls.get(), 2);
+        assert_eq!(drops.get(), 1);
+    }
+}
+
 mod returned_guard {
     use super::*;
     struct Value([u8; 16]);
