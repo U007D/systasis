@@ -1,11 +1,14 @@
 # Constructor capture implementation limits
 
-The generator retains reconstructed typed captures for ordinary constructors
-and uses Rust-native closure storage for macro-containing bodies. Explicit
+The generator retains reconstructed typed captures where source analysis succeeds
+and otherwise uses Rust-native closure storage, including macro-containing bodies. Explicit
 annotations on captured bindings remain part of the documented syntax. They may
 be omitted wherever Rust can infer their types; native storage supports this
 without changing ownership or auto traits. Reconstruction still needs enough
-source type information to name its capture fields.
+source type information to name its capture fields. A failed reconstruction
+restarts from the original closure body, without retaining partial rewrites.
+See [fallback regressions](../tests/native_fallback.rs) for inferred owned
+bindings, struct/tuple-struct patterns and enclosing-function glob imports.
 
 ## Reserved generated names on stable
 
@@ -100,8 +103,11 @@ array-alias remainders, and shared/mutable slice-alias remainders.
 They retain the exact array or slice type rather than coercing arrays to slices.
 Generic-argument array remainder aliases remain unresolved in this implementation. See
 [sequence-alias regressions](../tests/capture_sequence_aliases.rs).
-Struct-field types and tuple aliases with unknown-arity rest patterns remain
-unresolved. See [capture-pattern regressions](../tests/capture_patterns.rs).
+Reconstruction cannot determine struct-field types or tuple aliases with
+unknown-arity rest patterns. Native fallback handles the tested struct and
+tuple-struct captures without naming those field types in generated signatures.
+See [capture-pattern regressions](../tests/capture_patterns.rs) and the fallback
+tests above; remaining native lifetime limits still apply.
 Explicit imports are preserved where their names do not conflict with capture
 candidates and they do not depend on unhoisted function-local items. This includes
 ordinary `use std::...` and function-local imports of `systasis_container`.
@@ -109,11 +115,12 @@ Closure-local glob imports remain with their original body. They are supported
 where no referenced outer binding could be shadowed by that glob. A glob in one
 block does not disable captures in a sibling block. Generated constructor queries
 use private context fields and anchored helper paths, so imported names cannot
-replace their local or child storage. Ambiguous outer references still produce
-an implementation-limit diagnostic; the macro does not inspect a glob's exports.
+replace their local or child storage. Ambiguous outer references now select
+native capture handling; the macro does not inspect a glob's exports.
 See [glob regressions](../tests/capture_globs.rs).
-Enclosing-function globs and imports depending on function-local modules remain
-unsupported.
+Enclosing-function globs also select native handling. Imports depending on local
+modules follow that path rather than being hoisted into generated storage;
+their interaction with native lifetime limits still needs verification.
 Local `cfg` and selection-producing `cfg_attr` attributes are selected by rustc
 before capture analysis. Conditional statement ancestors are selected before
 their contents, so a disabled block does not expose its nested predicates.

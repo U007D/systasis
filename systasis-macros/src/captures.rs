@@ -1,8 +1,8 @@
 //! Lexical capture storage for repeatable constructors.
 //!
-//! Reconstructed captures use explicit source annotations. Macro-containing
-//! constructors retain native closures, whose capture types Rust infers after
-//! expansion. Both paths require repeatable calls through shared access.
+//! Reconstructed captures use explicit source annotations. Otherwise native
+//! closures let Rust infer captures after expansion. Both paths require
+//! repeatable calls through shared access.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -487,23 +487,35 @@ impl VisitMut for CaptureProjection {
     }
 }
 
-pub(crate) fn prepare(
+pub(crate) fn prepare(closure: &ExprClosure, bindings: &Bindings, capture_root: &Ident) -> Plan {
+    let mut native = NativeBody::default();
+    native.visit_expr_closure_mut(&mut closure.clone());
+    if native.0 {
+        native_plan(closure)
+    } else {
+        // Preserve successful reconstruction, including lending owned captures.
+        // A failed analysis may have rewritten part of its cloned AST: native
+        // capture selection must receive the original source, not that clone.
+        reconstruct(closure, bindings, capture_root).unwrap_or_else(|_| native_plan(closure))
+    }
+}
+
+fn native_plan(closure: &ExprClosure) -> Plan {
+    let mut closure = closure.clone();
+    closure.capture = Some(Default::default());
+    Plan {
+        captures: Vec::new(),
+        closure,
+        requires_record: false,
+        native: true,
+    }
+}
+
+fn reconstruct(
     closure: &ExprClosure,
     bindings: &Bindings,
     capture_root: &Ident,
 ) -> syn::Result<Plan> {
-    let mut native = NativeBody::default();
-    native.visit_expr_closure_mut(&mut closure.clone());
-    if native.0 {
-        let mut closure = closure.clone();
-        closure.capture = Some(Default::default());
-        return Ok(Plan {
-            captures: Vec::new(),
-            closure,
-            requires_record: false,
-            native: true,
-        });
-    }
     if let Some(tokens) = &bindings.uncertain {
         return Err(syn::Error::new_spanned(
             tokens,
@@ -845,7 +857,7 @@ mod tests {
         let function = parse_quote!(
             fn main(config: Config, url: String) {}
         );
-        prepare(
+        reconstruct(
             &closure,
             &Bindings::from_function(&function),
             &parse_quote!(__captures),
@@ -903,13 +915,13 @@ mod tests {
         );
         let mut bindings = Bindings::from_function(&function);
         bindings.observe_statement(&parse_quote!(let url = String::new();));
-        let error = prepare(
+        let error = reconstruct(
             &parse_quote!(|| url.clone()),
             &bindings,
             &parse_quote!(__captures),
         )
         .err()
-        .expect("untyped capture must fail");
+        .expect("untyped capture cannot be reconstructed from source annotations");
         assert!(error.to_string().contains("explicit type annotation"));
     }
 
@@ -917,7 +929,7 @@ mod tests {
     fn typed_local_capture_is_recorded() {
         let mut bindings = Bindings::default();
         bindings.observe_statement(&parse_quote!(let mut url: String = String::new();));
-        let result = prepare(
+        let result = reconstruct(
             &parse_quote!(|| url.clone()),
             &bindings,
             &parse_quote!(__captures),
@@ -936,7 +948,7 @@ mod tests {
         let bindings = Bindings::from_function(&function);
         assert_eq!(bindings.imports().len(), 1);
         assert!(
-            prepare(
+            reconstruct(
                 &parse_quote!(|| config.clone()),
                 &bindings,
                 &parse_quote!(__captures)
@@ -950,7 +962,7 @@ mod tests {
             }
         );
         assert!(
-            prepare(
+            reconstruct(
                 &parse_quote!(|| Config),
                 &Bindings::from_function(&function),
                 &parse_quote!(__captures)
@@ -970,7 +982,7 @@ mod tests {
         let bindings = Bindings::from_function(&function);
         assert_eq!(bindings.imports().len(), 2);
         assert!(
-            prepare(
+            reconstruct(
                 &parse_quote!(|| config.clone()),
                 &bindings,
                 &parse_quote!(__captures)
@@ -989,7 +1001,7 @@ mod tests {
         let bindings = Bindings::from_function(&function);
         assert!(bindings.imports().is_empty());
         assert!(
-            prepare(
+            reconstruct(
                 &parse_quote!(|| config.clone()),
                 &bindings,
                 &parse_quote!(__captures)
@@ -1028,8 +1040,7 @@ mod tests {
             &parse_quote!(|| format!("{url}")),
             &bindings,
             &parse_quote!(__captures),
-        )
-        .expect("native closure preserves macro expansion for rustc");
+        );
         assert!(plan.native);
         assert!(plan.captures.is_empty());
         let expected: ExprClosure = parse_quote!(move || format!("{url}"));
@@ -1055,6 +1066,40 @@ mod tests {
         });
         assert_eq!(
             result.closure.to_token_stream().to_string(),
+            expected.to_token_stream().to_string()
+        );
+    }
+
+    #[test]
+    fn fallback_discards_partial_rewrites_and_preserves_original_captures() {
+        let mut bindings = Bindings::default();
+        bindings.observe_statement(&parse_quote!(let typed: String = input;));
+        bindings.observe_statement(&parse_quote!(let inferred = other;));
+        let closure = parse_quote!(|| (typed.clone(), inferred.clone()));
+        assert!(reconstruct(&closure, &bindings, &parse_quote!(__captures)).is_err());
+        let plan = prepare(&closure, &bindings, &parse_quote!(__captures));
+        let expected: ExprClosure = parse_quote!(move || (typed.clone(), inferred.clone()));
+        assert!(plan.native);
+        assert!(plan.captures.is_empty());
+        assert!(!plan.requires_record);
+        assert_eq!(
+            plan.closure.to_token_stream().to_string(),
+            expected.to_token_stream().to_string()
+        );
+    }
+
+    #[test]
+    fn successful_reconstruction_keeps_owned_capture_lending() {
+        let bindings = Bindings::from_function(&parse_quote!(
+            fn main(config: String) {}
+        ));
+        let closure = parse_quote!(move || View(config.as_str()));
+        let plan = prepare(&closure, &bindings, &parse_quote!(__captures));
+        let expected: ExprClosure = parse_quote!(move || View(__captures.0.as_str()));
+        assert!(!plan.native);
+        assert_eq!(capture_types(&plan), ["String"]);
+        assert_eq!(
+            plan.closure.to_token_stream().to_string(),
             expected.to_token_stream().to_string()
         );
     }
@@ -1116,7 +1161,7 @@ mod tests {
         let function = parse_quote!(
             fn main((url, port): (String, u16)) {}
         );
-        let result = prepare(
+        let result = reconstruct(
             &parse_quote!(|| (url.clone(), port)),
             &Bindings::from_function(&function),
             &parse_quote!(__captures),
@@ -1138,7 +1183,7 @@ mod tests {
         bindings.observe_statement(&parse_quote!(
             let ((url, port), [first, _, last]): ((String, u16), [u8; 3]) = inputs;
         ));
-        let result = prepare(
+        let result = reconstruct(
             &parse_quote!(|| (url.clone(), port, first, last)),
             &bindings,
             &parse_quote!(__captures),
@@ -1154,7 +1199,7 @@ mod tests {
             syn::parse_quote!(let (value, #(#wildcards,)*): PrivateAlias = input;);
         let mut bindings = Bindings::default();
         bindings.observe_statement(&statement);
-        let plan = prepare(
+        let plan = reconstruct(
             &parse_quote!(|| value),
             &bindings,
             &parse_quote!(__captures),
@@ -1171,7 +1216,7 @@ mod tests {
     fn sequence_helpers_do_not_expose_private_alias_names() {
         let mut bindings = Bindings::default();
         bindings.observe_statement(&parse_quote!(let [head, tail @ ..]: PrivateArray = input;));
-        let plan = prepare(
+        let plan = reconstruct(
             &parse_quote!(|| (head, tail.len())),
             &bindings,
             &parse_quote!(__captures),
@@ -1190,7 +1235,7 @@ mod tests {
     fn closure_globs_affect_only_their_lexical_scopes() {
         let mut bindings = Bindings::default();
         bindings.observe_statement(&parse_quote!(let outside: String = input;));
-        let plan = prepare(
+        let plan = reconstruct(
             &parse_quote!(|| {
                 let from_import = {
                     use module::*;
@@ -1203,7 +1248,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(capture_types(&plan), ["String"]);
-        let error = prepare(
+        let error = reconstruct(
             &parse_quote!(|| {
                 use module::*;
                 { outside.len() }
@@ -1229,7 +1274,7 @@ mod tests {
         bindings.observe_statement(&parse_quote!(
             let [start, .., end]: [u16; COUNT] = array;
         ));
-        let result = prepare(
+        let result = reconstruct(
             &parse_quote!(|| (first, last, start, end)),
             &bindings,
             &parse_quote!(__captures),
@@ -1254,7 +1299,7 @@ mod tests {
             ));
             bindings.observe_statement(&parse_quote!(let value: OldType = input;));
             bindings.observe_statement(&statement);
-            let error = prepare(
+            let error = reconstruct(
                 &parse_quote!(|| value),
                 &bindings,
                 &parse_quote!(__captures),
@@ -1297,7 +1342,7 @@ mod tests {
         for (statement, expected) in cases {
             let mut bindings = Bindings::default();
             bindings.observe_statement(&statement);
-            let result = prepare(
+            let result = reconstruct(
                 &parse_quote!(|| value),
                 &bindings,
                 &parse_quote!(__captures),
@@ -1342,7 +1387,7 @@ mod tests {
             &parse_quote!(let (ref value, ref mut other): (String, u8) = input;),
         );
         bindings.observe_statement(&parse_quote!(let &(copied, _): &(u32, u8) = input;));
-        let result = prepare(
+        let result = reconstruct(
             &parse_quote!(|| (value, other, copied)),
             &bindings,
             &parse_quote!(__captures),
@@ -1363,7 +1408,7 @@ mod tests {
         bindings.observe_statement(&parse_quote!(
             let ([first, .., last],): &mut ([u8; 3],) = input;
         ));
-        let result = prepare(
+        let result = reconstruct(
             &parse_quote!(|| (shared, mutable, first, last)),
             &bindings,
             &parse_quote!(__captures),
@@ -1381,7 +1426,7 @@ mod tests {
         bindings.observe_statement(&parse_quote!(let (shared,): &&mut (u32,) = input;));
         bindings.observe_statement(&parse_quote!(let (exclusive,): &mut &mut (u16,) = input;));
         bindings.observe_statement(&parse_quote!(let (reference,): &(&str,) = input;));
-        let result = prepare(
+        let result = reconstruct(
             &parse_quote!(|| (shared, exclusive, reference)),
             &bindings,
             &parse_quote!(__captures),

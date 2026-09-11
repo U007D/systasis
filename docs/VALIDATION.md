@@ -2,6 +2,13 @@
 
 ## Current generated-container checks
 
+Capture-analysis fallback preserves successful typed reconstruction and delegates
+unnameable captures to native Rust closures. Four new source tests cover inferred
+owned bindings, struct and tuple-struct destructuring, and function-local globs.
+The former untyped-capture compiler rejection is now a positive fixture. Unit
+tests separately check analysis failures, fallback from the original AST after
+partial rewrites, and preservation of the owned-capture lending path.
+
 The temporary nightly pin is `nightly-2026-09-06` (28c6cd5). The 13 standalone
 compiler drivers now use Cargo-reported artifacts (6f630c0), including split
 metadata and link artifacts. Their targeted std/no_std suites and ignored

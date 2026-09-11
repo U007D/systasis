@@ -467,7 +467,7 @@ pub(crate) fn expand(
                 queries.visit_expr_closure_mut(closure);
                 factories.insert(
                     index,
-                    crate::captures::prepare(closure, &bindings, &capture_root)?,
+                    crate::captures::prepare(closure, &bindings, &capture_root),
                 );
             }
             if let Some(error) = queries.error {

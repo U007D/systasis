@@ -365,7 +365,7 @@ fn container_diagnostics() {
             "",
             "register_type_with!(String as IValue, move || untyped.clone());",
             "",
-            Some("captured constructor bindings require an explicit type annotation"),
+            None,
         ),
         (
             "capture_is_moved",
