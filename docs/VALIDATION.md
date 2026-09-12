@@ -15,9 +15,12 @@ Macro tests pass 71 with one explicitly ignored corpus; two new AST checks
 distinguish selected-child descriptor generation from tuple forwarding.
 These safe code-generation changes add no dependency or unstable feature.
 Nested externally borrowed payloads remain a separate documented gap.
-Both complete checked-only workspace suites pass after the explicit-lifetime
-fix. Feature-enabled suites passed the preceding six-case revision; final
-feature-enabled revalidation is recorded separately when completed.
+All four checked/feature-enabled std/no_std workspace suites pass after the
+explicit-lifetime fix, as do both feature-enabled all-targets Clippy runs with
+Rust warnings denied. Cargo's separate std-only unused-Spin warning remains.
+The cross-crate compiler test now adds a child borrowing local caller data,
+native parent construction, concrete container/scope parameters, returned guard
+contention and release; it compiles with warnings denied and runs on both backends.
 
 The hidden child-context conversion preserves scope restrictions and backing
 lifetimes. Four generated-scope tests and the two-test child-borrow driver pass

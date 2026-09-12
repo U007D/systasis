@@ -46,3 +46,17 @@ pub mod generic {
         inspect(container);
     }
 }
+
+pub mod borrowed_child {
+    pub struct Value<'env>(pub &'env str);
+    trait IValue {}
+    impl IValue for Value<'_> {}
+
+    #[systasis::container]
+    pub fn run<'env>(value: &'env str, inspect: impl FnOnce(&AppContainer<'env>)) {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(Value(value): Value<'env> as IValue);
+        }.build();
+        inspect(container);
+    }
+}
