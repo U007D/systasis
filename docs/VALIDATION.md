@@ -30,6 +30,10 @@ Two additional native compiler rejections require `Send` or `Sync` on a returned
 local child write guard; both fail with E0277 on both backends. The unchanged
 source passes as a runtime test, and the synchronized counterpart transfers its
 guard between threads. Targeted std Clippy passes with warnings denied.
+Three generic child regressions also pass tests and Clippy on both backends:
+private concrete generic payloads, explicit child-backing output lifetimes, and
+reconstructed/native constructor chains declared in reverse dependency order.
+Both chains retain their child guards and restore mutable access on drop.
 
 The hidden child-context conversion preserves scope restrictions and backing
 lifetimes. Four generated-scope tests and the two-test child-borrow driver pass

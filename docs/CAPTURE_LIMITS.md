@@ -56,6 +56,8 @@ payloads, and native-to-reconstructed constructor calls returning a child guard.
 Returned child write guards retain the child's synchronized or local policy.
 The context stores restricted backing borrows, not references to temporary scope
 descriptors. Direct queries rebuild only their selected child's descriptor.
+[Generic child tests](../tests/native_child_generics.rs) preserve private concrete
+payloads, explicit backing-lifetime outputs and chains of both constructor forms.
 
 This is not yet arbitrary macro-body support. Queries introduced only by a later
 macro expansion still need graph/exclusion integration. Nongeneric functions
