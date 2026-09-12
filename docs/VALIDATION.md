@@ -2,6 +2,14 @@
 
 ## Current generated-container checks
 
+Private borrowed child payloads now remain private when parent factory metadata
+normalizes child scope projections. The regression first failed with E0446,
+then passed with both payload and returned guard-containing result still private.
+Fourteen targeted tests pass per backend (`child_private_payload`,
+`child_container`, `child_generic_bounds`, `native_constructor`); the new test
+also passes std Clippy with warnings denied. No storage, unsafe, dependency or
+public-generic change was needed.
+
 Capture-analysis fallback preserves successful typed reconstruction and delegates
 unnameable captures to native Rust closures. Seven source tests cover inferred
 owned/generic bindings, struct/tuple-struct and tuple-alias rest destructuring,

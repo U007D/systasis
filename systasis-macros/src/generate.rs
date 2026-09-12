@@ -610,14 +610,16 @@ pub(crate) fn expand(
                 }
             })
             .collect::<Vec<_>>();
-        // Stored payload types already occur in the selected storage aliases.
+        // Stored payload and child types already occur in the storage/scope aliases.
         // Retain their spelling here so projection normalization does not make
         // scope metadata appear to expose a type absent from its implementing type.
         let stored_types = registrations
             .iter()
             .filter(|registration| !registration.fresh)
             .map(|registration| &registration.ty);
-        let generic_marker = quote!(fn() -> (#(#marker_types,)* #(#stored_types,)*));
+        let child_marker_types = children.iter().map(|child| &child.ty.elem);
+        let generic_marker =
+            quote!(fn() -> (#(#marker_types,)* #(#stored_types,)* #(#child_marker_types,)*));
         let mut capture_records = Vec::new();
         let mut capture_record_names = BTreeMap::new();
         let (capture_parameters, capture_arguments, capture_where) = generics.split_for_impl();
