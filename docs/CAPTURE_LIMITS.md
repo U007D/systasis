@@ -95,6 +95,12 @@ the container would change execution timing and is not an equivalent solution.
 
 ### Diagnostic for a locally borrowed capture
 
+Borrowed-constructor support and its diagnostics are incomplete. Some generated
+closure storage cannot represent the lifetime of a borrowed input. Rust then
+reports E0597 or E0521, even when that input lives long enough for the intended
+use. This is a systasis implementation limitation, not necessarily an invalid
+borrow in the developer's design. Not every affected case gets a tailored message.
+
 In a nongeneric function, a macro-containing constructor capturing a local
 borrow can currently fail with E0597. For example, `config: &str` borrowed from
 a local `String` and used in `move || format!("{config}")` reaches this storage
@@ -102,10 +108,28 @@ limitation. Rust now points to the registration and an explicit capture check,
 whose source excerpt explains the remedy:
 
 ```text
-systasis capture limit: use an ordinary function for the constructor body; pass borrowed inputs as arguments.
+systasis cannot store this borrowed capture here; register a non-borrowing implementation.
 ```
 
-Keep the input borrowed and put the formatting in an ordinary function:
+The simple, coarse workaround is to register a non-borrowing implementation:
+use owned fields and owned constructor inputs, such as `String` instead of `&str`.
+The capture must own its data too; returning an owned result alone is not enough.
+Adding `move` to a closure capturing a reference does not make its referent owned.
+
+```rust,ignore
+// Inside the existing #[systasis::container] main():
+let config: String = String::from("configuration");
+let Ok(container) = systasis::systasis_container! {
+    register_type_with!(String as IMessage, move || format!("{config}"));
+}.build();
+```
+
+This retains lazy, repeated construction. If the original input must stay with
+the caller, explicitly creating an owned copy may require cloning or allocation;
+systasis does not do that conversion automatically.
+
+For this particular formatting example, a more targeted workaround keeps the
+input borrowed and puts the formatting in an ordinary function:
 
 ```rust,ignore
 fn render(config: &str) -> String {

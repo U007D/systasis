@@ -47,7 +47,7 @@ fn capture_diagnostic(consumer: &Path, target: &Path, patch: &str, std_enabled: 
     )
     .expect("write packaged capture diagnostic fixture");
 
-    for case in ["borrowed", "helper"] {
+    for case in ["borrowed", "owned", "helper"] {
         let mut compile = cargo(consumer);
         compile
             .args([
@@ -89,13 +89,13 @@ fn capture_diagnostic(consumer: &Path, target: &Path, patch: &str, std_enabled: 
             );
             assert!(diagnostics.contains("error[E0597]:"), "{diagnostics}");
             assert!(
-                diagnostics.contains("systasis capture limit: use an ordinary function for the constructor body; pass borrowed inputs as arguments."),
+                diagnostics.contains("systasis cannot store this borrowed capture here; register a non-borrowing implementation."),
                 "packaged source lost the remedy: {diagnostics}"
             );
         } else {
             assert!(
                 output.status.success(),
-                "helper rewrite failed: {diagnostics}"
+                "{case} workaround failed: {diagnostics}"
             );
             checked(&mut Command::new(target.join("debug/capture-diagnostic")));
         }

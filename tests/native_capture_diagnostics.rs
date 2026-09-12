@@ -75,7 +75,7 @@ fn local_native_capture_errors_explain_the_working_rewrite() {
                     .success()
             );
         }
-        let remedy = "systasis capture limit: use an ordinary function for the constructor body; pass borrowed inputs as arguments.";
+        let remedy = "systasis cannot store this borrowed capture here; register a non-borrowing implementation.";
         assert_eq!(
             diagnostics.contains(remedy),
             capture_note,

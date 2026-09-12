@@ -2,6 +2,17 @@
 
 ## Current generated-container checks
 
+The later documentation correction explains the borrowed-input lifetime cause
+and recommends a non-borrowing implementation as a coarse workaround, without
+claiming complete borrowed-constructor support or diagnostic coverage. Both
+backend diagnostic drivers still pass their ten compiler outcomes, including
+the explicit E0521-without-guidance control, and both helper integration tests
+pass per backend. The separately run packaged-consumer check now also compiles
+and runs the owned-input workaround on std/no_std; artifacts are under
+`target/packaged-consumer/5119-1789246197217629000`. Workspace Rustdoc builds.
+Both feature-enabled workspace/all-targets Clippy runs pass with Rust warnings
+denied. No runtime or code-generation behavior changed.
+
 At 775a901, both full feature-enabled std/no_std workspace suites pass with
 363 tests passed, zero failed and four explicitly ignored per configuration
 (including doctest summaries). Both checked-only workspace suites also pass:
