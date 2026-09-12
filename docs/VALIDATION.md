@@ -3,9 +3,9 @@
 ## Current generated-container checks
 
 Native constructors now receive owned tuples of restricted child borrows,
-separating backing lifetimes from temporary descriptor borrows. Seven source tests
+separating backing lifetimes from temporary descriptor borrows. Eight source tests
 pass per backend: private non-static child payloads, distinct sibling payload
-lifetimes, nested owned payloads, synchronized/local write guards, and native
+lifetimes, nested owned/externally borrowed payloads, synchronized/local write guards, and native
 forwarding to a reconstructed constructor. Synchronized guard destruction on
 another thread and explicit outer child-reference lifetimes are included.
 The existing 22 constructor tests and native
@@ -14,7 +14,13 @@ both native and reconstructed bodies, including transitive nested consumption.
 Macro tests pass 71 with one explicitly ignored corpus; two new AST checks
 distinguish selected-child descriptor generation from tuple forwarding.
 These safe code-generation changes add no dependency or unstable feature.
-Nested externally borrowed payloads remain a separate documented gap.
+Nested externally borrowed payloads now pass without adding source lifetime bounds.
+Stored child tuples and borrowed masks defer their associated-type projections
+behind named helper types. The mask operations and scoped forwarding are unchanged.
+Both full feature-enabled backend suites pass after this integration, including
+scope exclusions, cross-crate naming, private payloads and allocation controls.
+Both feature-enabled workspace/all-targets Clippy runs also pass with Rust
+warnings denied.
 All four checked/feature-enabled std/no_std workspace suites pass after the
 explicit-lifetime fix, as do both feature-enabled all-targets Clippy runs with
 Rust warnings denied. Cargo's separate std-only unused-Spin warning remains.
@@ -33,12 +39,15 @@ guard between threads. Targeted std Clippy passes with warnings denied.
 Three generic child regressions also pass tests and Clippy on both backends:
 private concrete generic payloads, explicit child-backing output lifetimes, and
 reconstructed/native constructor chains declared in reverse dependency order.
-Both chains retain their child guards and restore mutable access on drop.
+Both chains retain their child guards and restore mutable access on drop. A fourth
+regression now checks authored type, lifetime and const names against generated
+stored-child parameters; it reproduced E0403 before the reserved-prefix correction
+and passes in both feature-enabled backend suites afterward.
 The hidden `BorrowedBy` mask helper defers an associated-type projection and
 forwards both mask operations unchanged. Four runtime-library tests pass on
 std/no_std, including exact associated-type equality and local/nested/union
-restriction controls. Generated constructors do not use this helper yet; it
-does not establish the pending nested-lifetime fix.
+restriction controls. Generated child masks now use this helper as part of the
+nested-lifetime correction above.
 
 The hidden child-context conversion preserves scope restrictions and backing
 lifetimes. Four generated-scope tests and the two-test child-borrow driver pass

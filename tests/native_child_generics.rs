@@ -98,3 +98,53 @@ mod explicit {
         leaf::run(&label, Private(label.clone()), run);
     }
 }
+
+mod authored_names {
+    mod child {
+        trait IValue {}
+        impl IValue for u32 {}
+
+        #[systasis::container]
+        pub fn run(call: impl FnOnce(&AppContainer)) {
+            let Ok(container) = systasis::systasis_container! {
+                register_value!(7: u32 as IValue);
+            }
+            .build();
+            call(container);
+        }
+    }
+
+    #[systasis::container]
+    fn parent<
+        '__item,
+        __StoredIdentity,
+        __ChildKey,
+        __Rest,
+        __Key,
+        __Operation,
+        __Restrictions,
+        const __LOCAL: bool,
+    >(
+        primary: &'__item child::AppContainer,
+        unrelated: (
+            __StoredIdentity,
+            __ChildKey,
+            __Rest,
+            __Key,
+            __Operation,
+            __Restrictions,
+        ),
+    ) {
+        let Ok(container) = systasis::systasis_container! {
+            register_container!(primary: &'__item child::AppContainer);
+        }
+        .build();
+        assert_eq!(container.primary().resolve_i_value(), 7);
+        drop(unrelated);
+    }
+
+    #[test]
+    fn authored_generics_do_not_collide_with_stored_child_forwarding() {
+        child::run(|primary| parent::<_, _, _, _, _, _, true>(primary, ((), (), (), (), (), ())));
+    }
+}

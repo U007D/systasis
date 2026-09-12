@@ -144,7 +144,7 @@ impl VisitMut for Queries<'_> {
                     let child = &self.children[index].ty.elem;
                     self.borrowed.push((
                         index,
-                        parse_quote!(<#child as ::systasis::scoped::Borrowed<#path, #key>>::Mask),
+                        parse_quote!(::systasis::scoped::mask::BorrowedBy<#child, #path, #key>),
                     ));
                 }
                 let position = Index::from(index);

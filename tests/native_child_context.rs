@@ -300,3 +300,50 @@ mod transitive {
         leaf::run(&value, check);
     }
 }
+
+mod nested_borrowed {
+    use super::*;
+
+    mod middle {
+        use super::*;
+
+        #[systasis::container]
+        pub fn run<'a, 'env>(
+            primary: &'a leaf::AppContainer<'env>,
+            call: impl FnOnce(&AppContainer<'a, 'env>),
+        ) {
+            let Ok(container) = systasis::systasis_container! {
+                register_container!(primary: &'a leaf::AppContainer<'env>);
+            }
+            .build();
+            call(container);
+        }
+    }
+
+    #[systasis::container]
+    fn check<'a, 'env>(branch: &middle::AppContainer<'a, 'env>) {
+        let Ok(container) = systasis::systasis_container! {
+            register_container!(branch: &middle::AppContainer<'a, 'env>);
+            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
+                let value = try_resolve_ref_from!(IValue, branch::primary)?;
+                assert!(!value.0.is_empty());
+                Ok(View(value))
+            });
+        }
+        .build();
+        let view = container.try_resolve_i_view().unwrap();
+        assert_eq!(view.0.0, "nested borrow");
+        assert!(matches!(
+            branch.primary().try_resolve_i_value_ref_mut(),
+            Err(Error::ValueAccessContention)
+        ));
+        drop(view);
+        assert!(branch.primary().try_resolve_i_value_ref_mut().is_ok());
+    }
+
+    #[test]
+    fn nested_private_payload_retains_external_lifetime_without_added_bounds() {
+        let value = String::from("nested borrow");
+        leaf::run(&value, |primary| middle::run(primary, check));
+    }
+}

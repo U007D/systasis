@@ -4,6 +4,119 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, Index, ext::IdentExt};
 
+/// Keep child scope projections behind a nominal type's well-formedness boundary.
+pub(crate) fn stored_children(
+    generics: &syn::Generics,
+    tuple: &TokenStream,
+    marker: &TokenStream,
+    identity: &TokenStream,
+) -> TokenStream {
+    let original_generics = generics;
+    let identity_arguments = generics.params.iter().map(|parameter| match parameter {
+        syn::GenericParam::Type(parameter) => {
+            let name = &parameter.ident;
+            quote!(#name)
+        }
+        syn::GenericParam::Lifetime(parameter) => {
+            let name = &parameter.lifetime;
+            quote!(#name)
+        }
+        syn::GenericParam::Const(parameter) => {
+            let name = &parameter.ident;
+            quote!(#name)
+        }
+    });
+    let target = quote!(__StoredChildren<#(#identity_arguments,)* #identity>);
+    // The identity preserves private payload spelling in the implementing type.
+    // The separate direct marker makes otherwise unrelated generics used.
+    // New parameters use the reserved prefix because authored parameters are
+    // copied into these same scopes (including the associated-type lifetime).
+    let mut generics = generics.clone();
+    generics
+        .params
+        .push(syn::parse_quote!(__systasis_stored_identity));
+    let (parameters, _, predicates) = generics.split_for_impl();
+    let mut emitted = vec![quote!(
+        pub struct __StoredChildren #parameters #predicates {
+            pub(super) inner: #tuple,
+            pub(super) marker: ::core::marker::PhantomData<(#marker, fn() -> __systasis_stored_identity)>,
+        }
+    )];
+    for (name, parameters, associated, gat) in [
+        (
+            "__ChildRegistrationPolicy",
+            quote!(__systasis_child_key, __systasis_rest, __systasis_key, const __systasis_LOCAL: bool),
+            "Policy",
+            false,
+        ),
+        (
+            "__ChildBorrowed",
+            quote!(__systasis_child_key, __systasis_rest, __systasis_key),
+            "Mask",
+            false,
+        ),
+        (
+            "__ChildRegistered",
+            quote!(__systasis_child_key, __systasis_rest, __systasis_key),
+            "Value",
+            true,
+        ),
+        (
+            "__ChildDynRegistered",
+            quote!(__systasis_child_key, __systasis_rest, __systasis_key),
+            "Target",
+            true,
+        ),
+        (
+            "__ChildOutput",
+            quote!(
+                __systasis_child_key,
+                __systasis_rest,
+                __systasis_key,
+                __systasis_operation
+            ),
+            "Value",
+            true,
+        ),
+        (
+            "__ScopeChildren",
+            quote!(__systasis_restrictions),
+            "Output",
+            false,
+        ),
+    ] {
+        let name = format_ident!("{name}");
+        let associated = format_ident!("{associated}");
+        let extra: syn::Generics = syn::parse2(quote!(<#parameters>)).unwrap_or_else(|_| {
+            unreachable!("the fixed child metadata parameter lists are valid Rust generics")
+        });
+        let (_, extra_arguments, _) = extra.split_for_impl();
+        let trait_type = quote!(#name #extra_arguments);
+        let mut implementation = original_generics.clone();
+        implementation.params.extend(extra.params.iter().cloned());
+        implementation
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!(#tuple: #trait_type));
+        let (impl_parameters, _, impl_predicates) = implementation.split_for_impl();
+        let definition = if gat {
+            quote!(type #associated<'__systasis_item> = <#tuple as #trait_type>::#associated<'__systasis_item> where Self: '__systasis_item;)
+        } else {
+            quote!(type #associated = <#tuple as #trait_type>::#associated;)
+        };
+        let method = (name == "__ScopeChildren").then(|| quote!(
+            fn restricted(&self) -> Self::Output { <#tuple as #trait_type>::restricted(&self.inner) }
+        ));
+        emitted.push(quote!(
+            impl #impl_parameters #trait_type for #target #impl_predicates {
+                #definition
+                #method
+            }
+        ));
+    }
+    quote!(#(#emitted)*)
+}
+
 /// A namespace at the end of a child path selects local registrations, not a child.
 pub(crate) fn namespaces(
     parameters: &[Ident],

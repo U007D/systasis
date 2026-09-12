@@ -699,7 +699,40 @@ pub(crate) fn expand(
             })
             .collect::<Vec<_>>();
         let child_tuple = quote!((#(#child_types,)*));
-        selected.push(child_tuple.clone());
+        let nominal_children = !children.is_empty();
+        let child_arguments = generics.params.iter().map(|parameter| match parameter {
+            GenericParam::Type(parameter) => {
+                let name = &parameter.ident;
+                quote!(#name)
+            }
+            GenericParam::Lifetime(parameter) => {
+                let name = &parameter.lifetime;
+                quote!(#name)
+            }
+            GenericParam::Const(parameter) => {
+                let name = &parameter.ident;
+                quote!(#name)
+            }
+        });
+        let child_storage = if !nominal_children {
+            child_tuple.clone()
+        } else {
+            quote!(__systasis_injected::__StoredChildren<#(#child_arguments,)* #generic_marker>)
+        };
+        let child_storage_definitions = nominal_children.then(|| {
+            crate::child_codegen::stored_children(
+                &generics,
+                &child_tuple,
+                &quote!(fn() -> (#(#marker_types,)*)),
+                &generic_marker,
+            )
+        });
+        let stored_children_ref = if !nominal_children {
+            quote!(&self._children)
+        } else {
+            quote!(&self._children.inner)
+        };
+        selected.push(child_storage.clone());
         selected.push(generic_marker.clone());
         let parameters = (0..=registrations.len() + 1)
             .map(|i| format_ident!("__Slot{i}"))
@@ -1064,7 +1097,7 @@ pub(crate) fn expand(
                 }
                 implementations.push(quote!(
                     impl #impl_generics Generated<#(#selected),*> #where_clause {
-                        pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments,)* &self._children) }
+                        pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments,)* #stored_children_ref) }
                     }
                 ));
                 namespace_methods(
@@ -1264,7 +1297,7 @@ pub(crate) fn expand(
         }
         let imports = bindings.imports();
         let capture_projection_helpers = bindings.projection_helpers();
-        field_types.push(child_tuple.clone());
+        field_types.push(child_storage);
         field_types.push(generic_marker);
         let child_parameter = &parameters[registrations.len()];
         let generic_parameter = parameters.last().unwrap_or_else(|| {
@@ -1292,7 +1325,8 @@ pub(crate) fn expand(
             let (child_parameters, _, child_where) = child_generics.split_for_impl();
             child_aliases.push(quote!(#[allow(type_alias_bounds)] pub type #alias #child_parameters #child_where = #ty;));
             child_exports.push(quote!(pub mod #name { pub use super::__systasis_injected::#alias as SubContainer; }));
-            child_accessors.push(quote!(pub fn #name(&self) -> &#ty { &self._children.#position }));
+            child_accessors
+                .push(quote!(pub fn #name(&self) -> &#ty { &self._children.inner.#position }));
             let mask = &child_masks[index];
             child_values.push(quote!(::systasis::scoped::AsScope::<#mask>::scope(#name)));
         }
@@ -1325,6 +1359,7 @@ pub(crate) fn expand(
                 #(#imports)*
                 #capture_projection_helpers
                 #(#capture_records)*
+                #child_storage_definitions
                 use ::systasis::__private::CopyFallback as _;
                 #(#constants)*
                 #(#const_markers)*
@@ -1420,6 +1455,11 @@ pub(crate) fn expand(
             })
         });
         let macro_path = &registry.mac.path;
+        let stored_child_values = if !nominal_children {
+            quote!(#children_ident)
+        } else {
+            quote!(__systasis_injected::__StoredChildren { inner: #children_ident, marker: ::core::marker::PhantomData })
+        };
         let generated: Block = syn::parse2(quote!({
             #macro_path!(@__systasis_marker);
             #(#policy_checks)*
@@ -1430,7 +1470,7 @@ pub(crate) fn expand(
             #(#initialization)*
             let #systasis_result_ident=match #systasis_error_ident {
                 ::core::option::Option::None=>{
-                    let container: #construction_type = AppContainer {#(#values,)*_children: #children_ident, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
+                    let container: #construction_type = AppContainer {#(#values,)*_children: #stored_child_values, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
                     ::core::result::Result::Ok(container)
                 },
                 #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]
