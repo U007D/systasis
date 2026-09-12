@@ -15,23 +15,11 @@ impl<C> FactorySlot<C> {
     }
 }
 
-/// State the existing capture restriction of a nongeneric native opaque alias.
-///
-/// Some constructors that capture references are not supported yet: the generated
-/// closure storage cannot represent their borrowed inputs' lifetimes. This can
-/// cause E0597 or E0521 even when the input lives long enough for the intended use.
-/// It is a systasis implementation limitation, not proof of an invalid user borrow.
-///
-/// A simple, coarse workaround is to register a non-borrowing implementation:
-/// use owned fields and owned constructor captures, e.g. `String` instead of `&str`.
-/// Adding `move` to a closure that captures a reference still moves a reference;
-/// it does not make the referenced data owned. See docs/CAPTURE_LIMITS.md.
-///
-/// Generated code does not call this for aliases with enclosing generic
-/// parameters: those can represent externally borrowed capture types.
-/// Keep the remedy beside the bound; rustc includes this source line in E0597's
-/// explanatory note. E0521 does not show it. Diagnostic coverage is incomplete:
-/// this is a rendered source excerpt, not a custom structured compiler message.
+// Called only for native aliases without enclosing generics. Keep the remedy
+// beside the bound: rustc displays this source excerpt for E0597, but not E0521.
+/// Systasis cannot yet represent some borrowed constructor inputs' lifetimes.
+/// Workaround: register a non-borrowing implementation with owned fields and captures.
+/// Not all affected compiler errors include this guidance.
 #[inline]
 pub fn check_native_constructor_captures<F>(_: &F)
 where

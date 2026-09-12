@@ -88,16 +88,9 @@ pub fn container(
 /// The enclosing attribute processes this declaration and its dependency queries
 /// together. Invoke `.build()` before using the generated resolution methods.
 ///
-/// # Borrowed-constructor limitation
-///
-/// Some constructors capturing references fail with E0597 or E0521 because
-/// systasis cannot yet represent those input lifetimes in its generated closure
-/// storage. Not every such error includes a systasis-specific explanation.
-/// As a simple, coarse workaround, register a non-borrowing implementation:
-/// use owned fields and owned constructor inputs, such as `String` instead of
-/// `&str`. A `move` closure capturing a reference still borrows its referent.
-/// Some borrowed constructors already work; this is an implementation gap,
-/// not a requirement that all registrations own their inputs.
+/// Systasis cannot yet represent some borrowed constructor inputs' lifetimes.
+/// Workaround: register a non-borrowing implementation with owned fields and captures.
+/// Not all affected compiler errors include this guidance.
 #[proc_macro]
 pub fn systasis_container(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     if input.to_string() == "@ __systasis_marker" {
