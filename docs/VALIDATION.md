@@ -21,6 +21,11 @@ Rust warnings denied. Cargo's separate std-only unused-Spin warning remains.
 The cross-crate compiler test now adds a child borrowing local caller data,
 native parent construction, concrete container/scope parameters, returned guard
 contention and release; it compiles with warnings denied and runs on both backends.
+Extracted-package std/no_std consumers also pass at 5746ec1. The allocation
+suite now has sixteen passing cases per backend: two added workloads observe
+no allocator calls while constructing nested native child contexts, repeatedly
+returning guards and destroying all owners, with synchronized and local storage.
+The allocator instrumentation and unsafe code are unchanged.
 
 The hidden child-context conversion preserves scope restrictions and backing
 lifetimes. Four generated-scope tests and the two-test child-borrow driver pass

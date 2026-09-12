@@ -4,7 +4,7 @@ use super::{assert_no_allocations, measure};
 use systasis::app_container::Error;
 
 macro_rules! scenario {
-    ($module:ident, ($($requirements:tt)*)) => {
+    ($module:ident, ($($requirements:tt)*), $guard:path) => {
         mod $module {
             use super::*;
 
@@ -75,6 +75,49 @@ macro_rules! scenario {
                 }
             }
 
+            mod native_outer {
+                use super::*;
+                use $guard as Guard;
+
+                struct View<'a>(Guard<'a, leaf::Packet>);
+                trait IView {}
+                impl IView for View<'_> {}
+
+                #[systasis::container($($requirements)*)]
+                pub fn run<'a>(branch: &middle::AppContainer<'a>) -> Result<(), Error> {
+                    let container = systasis::systasis_container! {
+                        register_container!(branch: &middle::AppContainer<'a>);
+                        register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
+                            let packet = try_resolve_ref_from!(IPacket, branch::primary)?;
+                            // This macro selects native constructor storage.
+                            assert_eq!(packet.0[0], 11);
+                            Ok(View(packet))
+                        });
+                    }.build::<Error>()?;
+                    for _ in 0..2 {
+                        let view = core::hint::black_box(container).try_resolve_i_view()?;
+                        assert_eq!(view.0.0, [11; 4]);
+                        assert!(matches!(branch.primary().try_resolve_i_packet(), Err(Error::ValueAccessContention)));
+                        drop(view);
+                        assert!(branch.primary().try_resolve_i_packet_ref_mut().is_ok());
+                    }
+                    Ok(())
+                }
+            }
+
+            #[test]
+            fn native_nested_child_contexts_and_returned_guards_do_not_allocate() {
+                let (result, counts) = measure(|| {
+                    leaf::run(11, |primary| {
+                        leaf::run(22, |replica| {
+                            middle::run(primary, replica, native_outer::run)
+                        })
+                    })
+                });
+                result.unwrap();
+                assert_no_allocations(counts);
+            }
+
             #[test]
             fn nested_build_resolution_and_destruction_do_not_allocate() {
                 let (result, counts) = measure(|| {
@@ -91,5 +134,5 @@ macro_rules! scenario {
     };
 }
 
-scenario!(synchronized, ());
-scenario!(local, (require(!Sync)));
+scenario!(synchronized, (), systasis::Ref);
+scenario!(local, (require(!Sync)), core::cell::Ref);
