@@ -93,6 +93,48 @@ verify zero calls at build and one call per resolution. This is a workaround,
 not an adopted requirement to add helper functions. Precomputing the result before
 the container would change execution timing and is not an equivalent solution.
 
+### Diagnostic for a locally borrowed capture
+
+In a nongeneric function, a macro-containing constructor capturing a local
+borrow can currently fail with E0597. For example, `config: &str` borrowed from
+a local `String` and used in `move || format!("{config}")` reaches this storage
+limitation. Rust now points to the registration and an explicit capture check,
+whose source excerpt explains the remedy:
+
+```text
+systasis capture limit: use an ordinary function for the constructor body; pass borrowed inputs as arguments.
+```
+
+Keep the input borrowed and put the formatting in an ordinary function:
+
+```rust,ignore
+fn render(config: &str) -> String {
+    format!("{config}")
+}
+
+// Inside the existing #[systasis::container] main():
+let text: String = String::from("configuration");
+let config: &str = &text;
+let Ok(container) = systasis::systasis_container! {
+    register_type_with!(String as IMessage, move || render(config));
+}.build();
+```
+
+Keep resolver queries directly in the constructor; pass their results to the
+function too if needed. Moving queries into an ordinary function would hide them
+from container dependency analysis. The [compiler regression](../tests/native_capture_diagnostics.rs)
+checks the failing local borrow and this compiling rewrite on both backends,
+including retained caller ownership, repeated calls, and unused short borrows.
+An [integration example](../tests/constructor_macro_helper.rs) also verifies the
+borrowed-input rewrite with the normal registration API.
+
+This is guidance for a current implementation limitation, not a new requirement
+that all captures be `'static`. Generic enclosing functions keep their existing
+borrowed-capture support. Rust's E0521 for an elided reference parameter does not
+show this source note, and generic native-storage failures still use ordinary
+compiler diagnostics. The remedy is tested in Cargo/rustc's rendered error
+excerpt, not as a custom structured message or an IDE-specific quick fix.
+
 Do not resolve this gap by silently capturing extra bindings, changing captured
 values into references, adding allocation/type erasure, or adding new annotations.
 Those alternatives would need separate evaluation and user approval.

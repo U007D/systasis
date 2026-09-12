@@ -26,3 +26,25 @@ fn macros_in_called_functions_execute_on_each_resolution() {
     assert_eq!(container.resolve_i_service().0, "configured: example");
     assert_eq!(CALLS.load(core::sync::atomic::Ordering::SeqCst), 2);
 }
+
+mod borrowed_local_input {
+    use super::{IService, Service};
+
+    fn construct(config: &str) -> Service {
+        Service(format!("configured: {config}"))
+    }
+
+    #[systasis::container(require(Send, Sync))]
+    #[test]
+    fn macro_function_can_use_a_borrowed_local_input() {
+        let text: String = String::from("example");
+        let config: &str = &text;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(Service as IService, move || construct(config));
+        }
+        .build();
+        assert_eq!(container.resolve_i_service().0, "configured: example");
+        assert_eq!(container.resolve_i_service().0, "configured: example");
+        assert_eq!(text, "example");
+    }
+}

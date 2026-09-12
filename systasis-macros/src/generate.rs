@@ -3,7 +3,7 @@ use crate::parse::Registrations;
 use proc_macro2::Span;
 use quote::{ToTokens, format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet};
-use syn::{ext::IdentExt, visit_mut::VisitMut, *};
+use syn::{ext::IdentExt, spanned::Spanned, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
 struct CallLifetime(Lifetime);
 struct SourceLifetimes<'a>(&'a [Lifetime]);
@@ -1036,10 +1036,28 @@ pub(crate) fn expand(
                     } else {
                         parse_quote!({ let __systasis_output: #registered = { #body }; __systasis_output })
                     };
+                    // A parameterless opaque alias cannot name a captured
+                    // local lifetime. State that existing restriction at a
+                    // library source location containing its remedy. Keep the
+                    // opaque annotation on the temporary: without it, closures
+                    // returning dependency guards lose their expected HRTB.
+                    let checked_closure = if original_generics.params.is_empty() {
+                        let source_span = registration.constructor.as_ref().map_or_else(
+                            || registration.ty.span(),
+                            |constructor| constructor.inputs_begin.span,
+                        );
+                        quote::quote_spanned!(source_span=> {
+                            let __systasis_native_closure: __systasis_injected::#opaque_name #native_arguments = #native_closure;
+                            ::systasis::__private::check_native_constructor_captures(&__systasis_native_closure);
+                            __systasis_native_closure
+                        })
+                    } else {
+                        quote!(#native_closure)
+                    };
                     native_initializers.insert(
                         i,
                         quote!(__systasis_injected::#native_name {
-                            closure: #native_closure,
+                            closure: #checked_closure,
                         }),
                     );
                     opaque_definitions.push(quote!(__systasis_injected::#opaque_name));
