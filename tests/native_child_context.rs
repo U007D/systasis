@@ -245,6 +245,7 @@ mod local {
         }
         .build();
         let mut editor = container.try_resolve_i_editor().unwrap();
+        // LOCAL_GUARD_AUTO_TRAIT_REJECTION
         assert!(matches!(
             primary.try_resolve_i_value_ref(),
             Err(Error::ValueAccessContention)

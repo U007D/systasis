@@ -130,7 +130,22 @@ fn native_closure_public_api_and_rejection_controls() {
         "#,
             "E0382",
         ),
-    ] {
+    ]
+    .into_iter()
+    .map(|(name, source, expected)| (name, source.to_owned(), expected))
+    .chain(["Send", "Sync"].map(|bound| {
+        let source = include_str!("native_child_context.rs").replace(
+            "// LOCAL_GUARD_AUTO_TRAIT_REJECTION",
+            &format!("fn assert_bound<T: {bound}>(_: &T) {{}} assert_bound(&editor);"),
+        );
+        let name = if bound == "Send" {
+            "local_child_guard_is_not_send"
+        } else {
+            "local_child_guard_is_not_sync"
+        };
+        (name, format!("{source}\nfn main() {{}}\n"), "E0277")
+    }))
+    {
         let path = target.join(format!("{name}.rs"));
         fs::write(&path, source).expect("write native rejection fixture");
         let output = artifacts
