@@ -104,12 +104,29 @@ fn direct_and_transitive_child_consuming_factories_are_excluded() {
         build.arg("--no-default-features");
     }
     let artifacts = support::Artifacts::build(&mut build);
-    for method in ["try_resolve_i_first", "try_resolve_i_second"] {
+    for (native, method) in ["try_resolve_i_first", "try_resolve_i_second"]
+        .into_iter()
+        .flat_map(|method| [false, true].map(|native| (native, method)))
+    {
         let source = include_str!("child_factory_exclusions.rs").replace(
             concat!("// EXCLUDED", "_FACTORY"),
             &format!("let _ = container.branch().{method}();"),
         );
-        let path = target.join(format!("{method}.rs"));
+        let source = if native {
+            source
+                .replace(
+                    "Ok(try_resolve_ref_from!(IValue, branch::primary)?.len())",
+                    "{ let value = try_resolve_ref_from!(IValue, branch::primary)?; assert!(!value.is_empty()); Ok(value.len()) }",
+                )
+                .replace(
+                    "try_resolve!(IFirst)",
+                    "{ let length = try_resolve!(IFirst)?; assert!(length > 0); Ok(length) }",
+                )
+        } else {
+            source
+        };
+        let name = format!("{method}_native_{native}");
+        let path = target.join(format!("{name}.rs"));
         fs::write(&path, source).unwrap();
         let output = artifacts
             .rustc()
@@ -125,11 +142,11 @@ fn direct_and_transitive_child_consuming_factories_are_excluded() {
             .output()
             .unwrap();
         let diagnostics = String::from_utf8_lossy(&output.stderr);
-        fs::write(target.join(format!("{method}.jsonl")), &output.stderr).unwrap();
-        assert!(!output.status.success(), "{method} unexpectedly compiled");
+        fs::write(target.join(format!("{name}.jsonl")), &output.stderr).unwrap();
+        assert!(!output.status.success(), "{name} unexpectedly compiled");
         assert!(
             diagnostics.contains("\"code\":\"E0599\""),
-            "{method}: {diagnostics}"
+            "{name}: {diagnostics}"
         );
     }
 }

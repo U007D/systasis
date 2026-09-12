@@ -2,13 +2,30 @@
 
 ## Current generated-container checks
 
+Native constructors now receive owned tuples of restricted child borrows,
+separating backing lifetimes from temporary descriptor borrows. Seven source tests
+pass per backend: private non-static child payloads, distinct sibling payload
+lifetimes, nested owned payloads, synchronized/local write guards, and native
+forwarding to a reconstructed constructor. Synchronized guard destruction on
+another thread and explicit outer child-reference lifetimes are included.
+The existing 22 constructor tests and native
+compiler driver also pass on both backends. Scope exclusion controls run with
+both native and reconstructed bodies, including transitive nested consumption.
+Macro tests pass 71 with one explicitly ignored corpus; two new AST checks
+distinguish selected-child descriptor generation from tuple forwarding.
+These safe code-generation changes add no dependency or unstable feature.
+Nested externally borrowed payloads remain a separate documented gap.
+Both complete checked-only workspace suites pass after the explicit-lifetime
+fix. Feature-enabled suites passed the preceding six-case revision; final
+feature-enabled revalidation is recorded separately when completed.
+
 The hidden child-context conversion preserves scope restrictions and backing
 lifetimes. Four generated-scope tests and the two-test child-borrow driver pass
 on std/no_std. Compiler controls reject clearing restrictions, accessing private
 backing storage, restoring consumption, and extending either context or returned
 guard to `'static`. Read/write guards outlive temporary descriptors and contexts,
 retaining contention until dropped. Targeted std Clippy passes; this safe helper
-adds no unsafe code or dependency and does not yet change constructor wiring.
+adds no unsafe code or dependency. Constructor integration is recorded above.
 
 Private borrowed child payloads now remain private when parent factory metadata
 normalizes child scope projections. The regression first failed with E0446,

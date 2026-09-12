@@ -49,11 +49,20 @@ subcontainers. [Compiler tests](../tests/native_compiler.rs) check cross-crate
 naming, private result types, scoped forwarding and ownership/auto-trait errors.
 Application code does not need feature annotations; see [NIGHTLY.md](NIGHTLY.md).
 
+[Child-context tests](../tests/native_child_context.rs) also cover elided outer
+child-reference lifetimes, private child payloads borrowing external data,
+independent payload lifetimes across two children, nested children with owned
+payloads, and native-to-reconstructed constructor calls returning a child guard.
+Returned child write guards retain the child's synchronized or local policy.
+The context stores restricted backing borrows, not references to temporary scope
+descriptors. Direct queries rebuild only their selected child's descriptor.
+
 This is not yet arbitrary macro-body support. Queries introduced only by a later
 macro expansion still need graph/exclusion integration. Nongeneric functions
 capturing locally borrowed inputs, enclosing argument-position `impl Trait`
-parameters, and synthesized dependency lifetimes still have native-storage
-limitations. Returning a borrow into an owned native capture also remains
+parameters, nested children whose payloads borrow external data, and other
+synthesized dependency lifetimes still have native-storage limitations.
+Returning a borrow into an owned native capture also remains
 unsupported; existing non-macro constructors retain their previous returned-borrow
 implementation. These are implementation gaps, not new accepted restrictions.
 

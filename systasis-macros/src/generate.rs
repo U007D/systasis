@@ -7,7 +7,7 @@ use syn::{ext::IdentExt, visit_mut::VisitMut, *};
 struct Lifetimes(Vec<Lifetime>);
 struct CallLifetime(Lifetime);
 struct SourceLifetimes<'a>(&'a [Lifetime]);
-struct NativeContext<'a>(&'a Ident);
+struct NativeContext<'a>(&'a Ident, usize);
 
 impl VisitMut for SourceLifetimes<'_> {
     fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
@@ -23,6 +23,33 @@ impl VisitMut for NativeContext<'_> {
     // Nested items have their own receiver and cannot capture this invocation's
     // context. In particular, keep `self` in caller-authored impl methods intact.
     fn visit_item_mut(&mut self, _: &mut Item) {}
+
+    fn visit_expr_mut(&mut self, expression: &mut Expr) {
+        // Direct queries need only their selected child's descriptor. Rebuild
+        // the complete tuple only when forwarding it to another constructor.
+        if let Expr::Field(field) = expression
+            && let Member::Unnamed(position) = &field.member
+            && matches!(&*field.base, Expr::Field(children)
+                if matches!(&children.member, Member::Named(name) if name == "_children")
+                && matches!(&*children.base, Expr::Path(path) if path.path.is_ident("self")))
+        {
+            let context = self.0;
+            *expression = parse_quote!(#context._children.#position.descriptor());
+            return;
+        }
+        let child = matches!(expression, Expr::Field(field)
+            if matches!(&field.member, Member::Named(name) if name == "_children")
+            && matches!(&*field.base, Expr::Path(path) if path.path.is_ident("self")));
+        syn::visit_mut::visit_expr_mut(self, expression);
+        if child {
+            let context = self.0;
+            let descriptors = (0..self.1).map(|index| {
+                let position = Index::from(index);
+                quote!(#context._children.#position.descriptor())
+            });
+            *expression = parse_quote!(&(#(#descriptors,)*));
+        }
+    }
 
     fn visit_expr_path_mut(&mut self, expression: &mut ExprPath) {
         if expression.path.is_ident("self") {
@@ -827,12 +854,19 @@ pub(crate) fn expand(
                 };
                 let closure = &factory.closure;
                 let call_lifetime = Lifetime::new("'__systasis_call", Span::mixed_site());
+                // A descriptor tuple may be temporary while its backing slots
+                // remain borrowed by the returned value.
+                let children_lifetime =
+                    Lifetime::new("'__systasis_children_call", Span::mixed_site());
                 let mut helper_output = output.clone();
                 CallLifetime(call_lifetime.clone()).visit_type_mut(&mut helper_output);
                 let mut helper_generics = generics.clone();
                 helper_generics
                     .params
                     .insert(0, parse_quote!(#call_lifetime));
+                helper_generics
+                    .params
+                    .insert(0, parse_quote!(#children_lifetime));
                 let arguments = crate::wiring::arguments(i, &transitive);
                 // The context exists only for this invocation. Bound its
                 // borrowed fields, not unrelated original generic parameters.
@@ -852,6 +886,13 @@ pub(crate) fn expand(
                     .make_where_clause()
                     .predicates
                     .push(parse_quote!(#child_tuple: #call_lifetime));
+                for child in &children {
+                    let ty = &child.ty;
+                    helper_generics
+                        .make_where_clause()
+                        .predicates
+                        .push(parse_quote!(#ty: #call_lifetime));
+                }
                 for &index in &arguments {
                     let ty = &selected[index];
                     helper_generics
@@ -894,7 +935,7 @@ pub(crate) fn expand(
                 } else {
                     quote!(fn() -> (#(#marker_types,)*))
                 };
-                let context_type = quote!(#context<#call_lifetime, #(#context_slot_arguments,)* #child_tuple, #context_marker>);
+                let context_type = quote!(#context<#children_lifetime, #call_lifetime, #(#context_slot_arguments,)* #child_tuple, #context_marker>);
                 let call_arguments = arguments.iter().map(|&index| {
                     let field = &fields[index];
                     quote!(&self.#field)
@@ -916,10 +957,35 @@ pub(crate) fn expand(
                     let opaque_name = format_ident!("__NativeClosure{i}");
                     let (native_parameters, native_arguments, native_where) =
                         original_generics.split_for_impl();
+                    // Avoid a scope GAT projection in the higher-ranked Fn
+                    // argument: it can impose 'static on invariant child data.
+                    // Name backing types directly, preserving each child's mask.
+                    let native_child_types =
+                        children.iter().zip(&child_masks).map(|(child, mask)| {
+                            let lifetime = child.ty.lifetime.as_ref().unwrap_or_else(|| {
+                                unreachable!("Lifetimes::visit_type_reference_mut assigned every child's outer borrow before constructor generation")
+                            });
+                            let lifetime = if lifetimes
+                                .0
+                                .iter()
+                                .any(|lifted| lifted.ident == lifetime.ident)
+                            {
+                                // Elided outer borrows may shorten per call;
+                                // authored/invariant payload lifetimes must not.
+                                &call_lifetime
+                            } else {
+                                lifetime
+                            };
+                            let ty = &child.ty.elem;
+                            quote!(::systasis::scoped::BorrowedContext<#lifetime, #ty, #mask>)
+                        });
+                    let native_children = quote!((#(#native_child_types,)*));
+                    let native_slots = context_arguments.iter().map(|&index| &selected[index]);
+                    let native_context_type = quote!(#context<#call_lifetime, #(#native_slots,)* #native_children, #context_marker>);
                     let context_ident = Ident::new("__systasis_context", Span::mixed_site());
                     let source_slots = context_arguments.iter().map(|&index| &selected[index]);
                     let mut source_context: Type = parse2(
-                        quote!(__systasis_injected::#context<'_, #(#source_slots,)* #child_tuple, _>),
+                        quote!(__systasis_injected::#context<'_, #(#source_slots,)* #native_children, _>),
                     )?;
                     SourceLifetimes(&lifetimes.0).visit_type_mut(&mut source_context);
                     // The HRTB is established by the opaque alias. An explicit
@@ -929,7 +995,8 @@ pub(crate) fn expand(
                     native_closure
                         .inputs
                         .push(Pat::Type(parse_quote!(#context_ident: #source_context)));
-                    NativeContext(&context_ident).visit_expr_mut(&mut native_closure.body);
+                    NativeContext(&context_ident, children.len())
+                        .visit_expr_mut(&mut native_closure.body);
                     let body = &native_closure.body;
                     native_closure.body = if registration.fallible {
                         parse_quote!({ ::systasis::__private::check_fallible::<#registered, #output>({ #body }) })
@@ -950,20 +1017,27 @@ pub(crate) fn expand(
                             let field = &slots[index];
                             quote!(pub(super) #field: &#call_lifetime #parameter)
                         });
+                    let native_child_values = (0..children.len()).map(|index| {
+                        let position = Index::from(index);
+                        quote!(::systasis::scoped::BorrowContext::borrow_context(&#children_ident.#position))
+                    });
+                    // The phantom borrow supplies Children: 'call even when
+                    // an authored child borrow has its own longer lifetime.
+                    // No borrow of the temporary context is returned.
                     constructor_functions.push(quote!(
                         pub(super) struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
                             #(#native_context_fields,)*
-                            pub(super) _children: &#call_lifetime __ContextChildren,
-                            pub(super) _marker: ::core::marker::PhantomData<__ContextMarker>,
+                            pub(super) _children: __ContextChildren,
+                            pub(super) _marker: ::core::marker::PhantomData<(&#call_lifetime __ContextChildren, __ContextMarker)>,
                         }
-                        pub(super) type #opaque_name #native_parameters #native_where = impl for<#call_lifetime> Fn(#context_type) -> #helper_output;
+                        pub(super) type #opaque_name #native_parameters #native_where = impl for<#call_lifetime> Fn(#native_context_type) -> #helper_output;
                         // The named wrapper prevents a private constructor
                         // result from leaking through the public container alias.
                         pub struct #native_name #native_parameters #native_where {
                             pub(super) closure: #opaque_name #native_arguments,
                         }
-                        pub(super) fn #helper #context_parameters (#(#helper_parameters,)* #children_ident: &#call_lifetime #child_tuple) -> #helper_output #context_where {
-                            let context: #context_type = #context { #(#context_fields,)* _children: #children_ident, _marker: ::core::marker::PhantomData };
+                        pub(super) fn #helper #context_parameters (#(#helper_parameters,)* #children_ident: &#children_lifetime #child_tuple) -> #helper_output #context_where {
+                            let context: #native_context_type = #context { #(#context_fields,)* _children: (#(#native_child_values,)*), _marker: ::core::marker::PhantomData };
                             (#slot.captures().closure)(context)
                         }
                     ));
@@ -971,9 +1045,9 @@ pub(crate) fn expand(
                     constructor_functions.push(quote!(
                     // Keyword-based field access cannot be shadowed by imports
                     // within the caller's constructor body.
-                    struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
+                    struct #context<#children_lifetime, #call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
                         #(#context_slot_fields,)*
-                        _children: &#call_lifetime __ContextChildren,
+                        _children: &#children_lifetime __ContextChildren,
                         _marker: ::core::marker::PhantomData<__ContextMarker>,
                     }
                     impl #context_parameters #context_type #context_where {
@@ -982,7 +1056,7 @@ pub(crate) fn expand(
                             #result
                         }
                     }
-                    pub(super) fn #helper #context_parameters (#(#helper_parameters,)* #children_ident: &#call_lifetime #child_tuple) -> #helper_output #context_where {
+                    pub(super) fn #helper #context_parameters (#(#helper_parameters,)* #children_ident: &#children_lifetime #child_tuple) -> #helper_output #context_where {
                         let context: #context_type = #context { #(#context_fields,)* _children: #children_ident, _marker: ::core::marker::PhantomData };
                         context.invoke()
                     }
@@ -1395,6 +1469,33 @@ pub(crate) fn expand(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn direct_native_child_query_rebuilds_only_its_selected_descriptor() {
+        let context = format_ident!("__systasis_context");
+        let mut expression: Expr = parse_quote!(&self._children.1);
+        NativeContext(&context, 3).visit_expr_mut(&mut expression);
+        let expected: Expr = parse_quote!(&__systasis_context._children.1.descriptor());
+        assert_eq!(
+            quote!(#expression).to_string(),
+            quote!(#expected).to_string()
+        );
+    }
+
+    #[test]
+    fn native_transitive_call_rebuilds_the_child_tuple() {
+        let context = format_ident!("__systasis_context");
+        let mut expression: Expr = parse_quote!(construct(self._children));
+        NativeContext(&context, 2).visit_expr_mut(&mut expression);
+        let expected: Expr = parse_quote!(construct(&(
+            __systasis_context._children.0.descriptor(),
+            __systasis_context._children.1.descriptor(),
+        )));
+        assert_eq!(
+            quote!(#expression).to_string(),
+            quote!(#expected).to_string()
+        );
+    }
 
     #[test]
     fn constructor_context_does_not_add_bounds_on_unused_original_generics() {

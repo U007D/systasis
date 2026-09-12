@@ -75,7 +75,7 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
         build.arg("--no-default-features");
     }
     let artifacts = support::Artifacts::build(&mut build);
-    for (name, access, rejection) in [
+    for (native, (name, access, rejection)) in [
         (
             "take",
             "container.primary().try_resolve_i_value()",
@@ -131,7 +131,11 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
             "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); let guard: systasis::Ref<'static, String> = context.descriptor().try_resolve_i_value_ref().unwrap(); guard }",
             Some("lifetime may not live long enough"),
         ),
-    ] {
+    ]
+    .into_iter()
+    .flat_map(|case| [false, true].map(|native| (native, case)))
+    {
+        let name = format!("{name}_native_{native}");
         let source = format!(
             r#"
 mod child {{
@@ -159,6 +163,14 @@ fn parent(primary: &child::AppContainer, replica: &child::AppContainer) {{
 fn main() {{}}
 "#
         );
+        let source = if native {
+            source.replace(
+                "Ok(try_resolve_ref_from!(IValue, primary)?.len())",
+                "{ let value = try_resolve_ref_from!(IValue, primary)?; assert!(value.is_empty()); Ok(value.len()) }",
+            )
+        } else {
+            source
+        };
         let path = target.join(format!("{name}.rs"));
         fs::write(&path, source).unwrap();
         let output = artifacts
