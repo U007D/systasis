@@ -11,6 +11,33 @@ pub struct Mask<Key, Tail>(PhantomData<fn() -> (Key, Tail)>);
 pub struct Union<A, B>(PhantomData<fn() -> (A, B)>);
 /// Restrictions belonging to one child rather than the current scope.
 pub struct Nested<Key, M>(PhantomData<fn() -> (Key, M)>);
+
+/// Indirectly name the dependencies borrowed by a registration.
+///
+/// Keeping the container type here defers its associated mask projection until
+/// a restriction operation is requested. Both operations forward unchanged.
+#[doc(hidden)]
+pub struct BorrowedBy<C, Path, Key> {
+    container: PhantomData<fn() -> C>,
+    registration: PhantomData<fn() -> (Path, Key)>,
+}
+
+impl<C, Path, Key, Query> Blocked<Query> for BorrowedBy<C, Path, Key>
+where
+    C: super::Borrowed<Path, Key>,
+    C::Mask: Blocked<Query>,
+{
+    type Out = <C::Mask as Blocked<Query>>::Out;
+}
+
+impl<C, Path, Key, Query> ForChild<Query> for BorrowedBy<C, Path, Key>
+where
+    C: super::Borrowed<Path, Key>,
+    C::Mask: ForChild<Query>,
+{
+    type Out = <C::Mask as ForChild<Query>>::Out;
+}
+
 /// Whether a local key is restricted.
 pub trait Blocked<Key> {
     /// `Yes` when restricted; otherwise `No`.
@@ -97,5 +124,28 @@ mod tests {
         allowed::<Left, Pad>();
         blocked::<Right, Zero>();
         allowed::<Missing, One>();
+    }
+
+    #[test]
+    fn indirect_borrowed_masks_preserve_local_and_nested_restrictions() {
+        use crate::scoped::{Borrowed, Here, Identity};
+        struct Container;
+        type Restrictions =
+            Mask<Pad, Union<Nested<Zero, Mask<One, Empty>>, Nested<One, Mask<Zero, Empty>>>>;
+        impl Borrowed<Here, Pad> for Container {
+            type Mask = Restrictions;
+        }
+        type Indirect = BorrowedBy<Container, Here, Pad>;
+        fn same<A: Identity<Type = B>, B>() {}
+        same::<<Indirect as Blocked<Pad>>::Out, <Restrictions as Blocked<Pad>>::Out>();
+        same::<<Indirect as ForChild<Zero>>::Out, <Restrictions as ForChild<Zero>>::Out>();
+        same::<<Indirect as ForChild<One>>::Out, <Restrictions as ForChild<One>>::Out>();
+        same::<<Indirect as ForChild<Pad>>::Out, <Restrictions as ForChild<Pad>>::Out>();
+        blocked::<Indirect, Pad>();
+        allowed::<Indirect, Zero>();
+        blocked::<<Indirect as ForChild<Zero>>::Out, One>();
+        blocked::<<Indirect as ForChild<One>>::Out, Zero>();
+        allowed::<<Indirect as ForChild<Pad>>::Out, One>();
+        blocked::<Union<Indirect, Mask<Zero, Empty>>, Zero>();
     }
 }

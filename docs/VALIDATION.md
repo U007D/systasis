@@ -34,6 +34,11 @@ Three generic child regressions also pass tests and Clippy on both backends:
 private concrete generic payloads, explicit child-backing output lifetimes, and
 reconstructed/native constructor chains declared in reverse dependency order.
 Both chains retain their child guards and restore mutable access on drop.
+The hidden `BorrowedBy` mask helper defers an associated-type projection and
+forwards both mask operations unchanged. Four runtime-library tests pass on
+std/no_std, including exact associated-type equality and local/nested/union
+restriction controls. Generated constructors do not use this helper yet; it
+does not establish the pending nested-lifetime fix.
 
 The hidden child-context conversion preserves scope restrictions and backing
 lifetimes. Four generated-scope tests and the two-test child-borrow driver pass
