@@ -60,3 +60,15 @@ pub mod borrowed_child {
         inspect(container);
     }
 }
+
+pub mod borrowed_branch {
+    use super::borrowed_child::AppContainer as Child;
+
+    #[systasis::container]
+    pub fn run<'a, 'env>(primary: &'a Child<'env>, inspect: impl FnOnce(&AppContainer<'a, 'env>)) {
+        let Ok(container) = systasis::systasis_container! {
+            register_container!(primary: &'a Child<'env>);
+        }.build();
+        inspect(container);
+    }
+}

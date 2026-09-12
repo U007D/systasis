@@ -66,6 +66,41 @@ mod borrowing_parent {
     }
 }
 
+mod nested_borrowing_parent {
+    use native_provider::{borrowed_branch::AppContainer as Branch, borrowed_child::Value};
+    use systasis::app_container::Error;
+
+    struct View<'a, 'env>(systasis::Ref<'a, Value<'env>>);
+    trait IView {}
+    impl IView for View<'_, '_> {}
+
+    fn receive<'call, 'a, 'env>(container: &'call AppContainer<'_, '_, 'a, 'env>) -> View<'call, 'env> {
+        container.try_resolve_i_view().unwrap()
+    }
+
+    fn scoped_receive<'b, 'a, 'env>(scope: &branch::SubContainer<'b, 'a, 'env>) -> systasis::Ref<'b, Value<'env>> {
+        scope.primary().try_resolve_i_value_ref().unwrap()
+    }
+
+    #[systasis::container(require(Send, Sync))]
+    pub fn inspect<'a, 'env>(branch: &Branch<'a, 'env>) {
+        let Ok(container) = systasis::systasis_container! {
+            register_container!(branch: &Branch<'a, 'env>);
+            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
+                let value = try_resolve_ref_from!(IValue, branch::primary)?;
+                assert!(!value.0.is_empty());
+                Ok(View(value))
+            });
+        }.build();
+        let view = receive(container);
+        assert_eq!(view.0.0, "nested borrowed child");
+        assert_eq!(scoped_receive(container.branch()).0, "nested borrowed child");
+        assert!(matches!(branch.primary().try_resolve_i_value(), Err(Error::ValueAccessContention)));
+        drop(view);
+        assert_eq!(branch.primary().try_resolve_i_value().unwrap().0, "nested borrowed child");
+    }
+}
+
 fn main() {
     native_provider::public_result::run(String::from("public"), public);
     native_provider::public_result::run(String::from("public"), parent::inspect);
@@ -74,4 +109,8 @@ fn main() {
     native_provider::generic::run(&label, String::from("owned"), generic);
     let child_value: String = String::from("borrowed child");
     native_provider::borrowed_child::run(&child_value, borrowing_parent::inspect);
+    let nested_child_value: String = String::from("nested borrowed child");
+    native_provider::borrowed_child::run(&nested_child_value, |primary| {
+        native_provider::borrowed_branch::run(primary, nested_borrowing_parent::inspect);
+    });
 }
