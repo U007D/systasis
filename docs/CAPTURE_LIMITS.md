@@ -126,7 +126,10 @@ from container dependency analysis. The [compiler regression](../tests/native_ca
 checks the failing local borrow and this compiling rewrite on both backends,
 including retained caller ownership, repeated calls, and unused short borrows.
 An [integration example](../tests/constructor_macro_helper.rs) also verifies the
-borrowed-input rewrite with the normal registration API.
+borrowed-input rewrite with the normal registration API and local macro
+definitions. A plain `macro_rules!` definition alone no longer forces native
+capture storage for an ordinary function call. Actual macro invocations and
+potentially transforming attributes still receive conservative handling.
 
 This is guidance for a current implementation limitation, not a new requirement
 that all captures be `'static`. Generic enclosing functions keep their existing

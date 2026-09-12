@@ -37,6 +37,18 @@ mod borrowed_local_input {
     #[systasis::container(require(Send, Sync))]
     #[test]
     fn macro_function_can_use_a_borrowed_local_input() {
+        macro_rules! construct {
+            () => {
+                7_usize
+            };
+        }
+        #[cfg(any())]
+        macro_rules! discarded {
+            () => {
+                nonexistent_binding
+            };
+        }
+        let marker: usize = construct!();
         let text: String = String::from("example");
         let config: &str = &text;
         let Ok(container) = systasis::systasis_container! {
@@ -46,5 +58,6 @@ mod borrowed_local_input {
         assert_eq!(container.resolve_i_service().0, "configured: example");
         assert_eq!(container.resolve_i_service().0, "configured: example");
         assert_eq!(text, "example");
+        assert_eq!(marker, 7);
     }
 }

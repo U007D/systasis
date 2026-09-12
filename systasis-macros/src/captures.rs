@@ -114,7 +114,9 @@ impl Bindings {
                         bindings.uncertain = Some(item.to_token_stream());
                     }
                 }
-                if matches!(item, Item::Macro(_)) {
+                if let Item::Macro(declaration) = item
+                    && !plain_macro_definition(declaration)
+                {
                     bindings.uncertain = Some(item.to_token_stream());
                 }
             }
@@ -422,6 +424,20 @@ impl Bindings {
             self.observe_annotated_pattern(pattern, element, mode);
         }
     }
+}
+
+/// A definition adds only a macro name. Its body can introduce ordinary
+/// bindings when invoked, but not merely by being declared. Restrict the
+/// accepted attributes to built-ins that cannot replace the definition;
+/// custom attributes and cfg_attr may expand to arbitrary items.
+fn plain_macro_definition(item: &syn::ItemMacro) -> bool {
+    item.ident.is_some()
+        && item.mac.path.is_ident("macro_rules")
+        && item.attrs.iter().all(|attribute| {
+            ["cfg", "allow", "warn", "deny", "forbid", "expect", "doc"]
+                .iter()
+                .any(|name| attribute.path().is_ident(name))
+        })
 }
 
 fn slice_rest(pattern: &Pat) -> bool {
@@ -863,6 +879,74 @@ mod tests {
             &parse_quote!(__captures),
         )
         .unwrap_or_else(|error| panic!("unexpected capture error: {error}"))
+    }
+
+    #[test]
+    fn plain_macro_definitions_do_not_hide_ordinary_capture_bindings() {
+        for attributes in [quote!(), quote!(#[cfg(any())] #[allow(unused_macros)])] {
+            let function: ItemFn = syn::parse2(quote! {
+                fn main(config: &str) {
+                    #attributes
+                    macro_rules! render { () => { unknown_binding }; }
+                }
+            })
+            .unwrap();
+            let bindings = Bindings::from_function(&function);
+            let direct = prepare(
+                &parse_quote!(move || render(config)),
+                &bindings,
+                &parse_quote!(__captures),
+            );
+            assert!(!direct.native);
+            assert_eq!(direct.captures.len(), 1);
+            // The macro's own expansion stays opaque; only a declaration alone
+            // is known not to introduce any surrounding value/type binding.
+            assert!(
+                prepare(
+                    &parse_quote!(move || render!()),
+                    &bindings,
+                    &parse_quote!(__captures)
+                )
+                .native
+            );
+        }
+    }
+
+    #[test]
+    fn macro_invocations_and_transforming_attributes_remain_uncertain() {
+        for statement in [
+            quote!(make_bindings! {}),
+            quote!(make_bindings!();),
+            quote!(
+                #[rewrite]
+                macro_rules! render {
+                    () => {};
+                }
+            ),
+            quote!(
+                #[cfg_attr(any(), rewrite)]
+                macro_rules! render {
+                    () => {};
+                }
+            ),
+        ] {
+            let function: ItemFn = syn::parse2(quote! {
+                fn main(config: &str) { #statement }
+            })
+            .unwrap();
+            let mut bindings = Bindings::from_function(&function);
+            for statement in &function.block.stmts {
+                bindings.observe_statement(statement);
+            }
+            assert!(
+                prepare(
+                    &parse_quote!(move || render(config)),
+                    &bindings,
+                    &parse_quote!(__captures)
+                )
+                .native
+            );
+        }
     }
 
     #[test]
