@@ -4,7 +4,7 @@
 use systasis::{
     app_container::Error,
     scoped::{
-        AsScope,
+        AsScope, BorrowContext,
         mask::{Empty, Mask},
     },
 };
@@ -69,5 +69,42 @@ mod factory {
         let scope = AsScope::<Empty>::scope(container);
         assert_eq!(scope.resolve_i_value().0, "factory");
         assert_eq!(scope.resolve_i_value().0, "factory");
+    }
+}
+
+mod borrowed_context {
+    use super::*;
+
+    #[systasis::container]
+    #[test]
+    fn guards_outlive_both_context_and_temporary_descriptor() -> Result<(), Error> {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(String::from("context"): String as IValue);
+        }
+        .build();
+        let read = {
+            let scope = AsScope::<Empty>::scope(container);
+            let context = scope.borrow_context();
+            context.descriptor().try_resolve_i_value_ref()?
+        };
+        assert_eq!(&*read, "context");
+        assert!(matches!(
+            container.try_resolve_i_value(),
+            Err(Error::ValueAccessContention)
+        ));
+        drop(read);
+        let mut write = {
+            let scope = AsScope::<Empty>::scope(container);
+            let context = scope.borrow_context();
+            context.descriptor().try_resolve_i_value_ref_mut()?
+        };
+        write.push('!');
+        assert!(matches!(
+            container.try_resolve_i_value_ref(),
+            Err(Error::ValueAccessContention)
+        ));
+        drop(write);
+        assert_eq!(container.try_resolve_i_value()?, "context!");
+        Ok(())
     }
 }

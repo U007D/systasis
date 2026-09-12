@@ -157,6 +157,42 @@ pub trait ReScope<Restrictions> {
     fn rescope(&self) -> Self::Scope;
 }
 
+/// A constructor child borrow retaining its access restrictions.
+///
+/// Unlike a generated scope projection, this type names its backing container
+/// directly. It neither exposes that backing reference nor extends its lifetime.
+#[doc(hidden)]
+pub struct BorrowedContext<'a, C: ?Sized, Restrictions> {
+    backing: &'a C,
+    restrictions: PhantomData<fn() -> Restrictions>,
+}
+
+impl<'a, C: ?Sized, Restrictions> BorrowedContext<'a, C, Restrictions> {
+    /// Restrict an unrestricted reference already held by the caller.
+    pub fn new(backing: &'a C) -> Self {
+        Self {
+            backing,
+            restrictions: PhantomData,
+        }
+    }
+    /// Return a descriptor retaining this context's restrictions.
+    pub fn descriptor(&self) -> <C as AsScope<Restrictions>>::Scope<'a>
+    where
+        C: AsScope<Restrictions>,
+    {
+        self.backing.scope()
+    }
+}
+
+/// Convert a descriptor without exposing its backing or weakening exclusions.
+/// The generated implementation preserves the exact restriction type; it may
+/// shorten the backing borrow but cannot lengthen it.
+#[doc(hidden)]
+pub trait BorrowContext<'a, C: ?Sized, Restrictions> {
+    /// Keep the descriptor's restrictions and backing lifetime.
+    fn borrow_context(&self) -> BorrowedContext<'a, C, Restrictions>;
+}
+
 /// Resolution through a restricted scope, borrowing the backing container.
 ///
 /// The explicit lifetime permits a returned guard to outlive the descriptor

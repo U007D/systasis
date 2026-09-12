@@ -156,6 +156,13 @@ pub(crate) fn descriptor(
             restrictions: ::core::marker::PhantomData<fn() -> __Restrictions>,
             children: __Children,
         }
+        impl<'__backing: '__call, '__call, __Container: ?Sized, __Restrictions, __Children>
+            ::systasis::scoped::BorrowContext<'__call, __Container, __Restrictions>
+            for __SystasisScope<'__backing, __Container, __Restrictions, __Children> {
+            fn borrow_context(&self) -> ::systasis::scoped::BorrowedContext<'__call, __Container, __Restrictions> {
+                ::systasis::scoped::BorrowedContext::new(self.backing)
+            }
+        }
         impl<#(#parameters,)* __Restrictions> ::systasis::scoped::AsScope<__Restrictions> for Generated<#(#parameters),*>
         where #child_parameter: __ScopeChildren<__Restrictions> {
             type Scope<'__backing> = __SystasisScope<'__backing, Self, __Restrictions, <#child_parameter as __ScopeChildren<__Restrictions>>::Output> where Self: '__backing;

@@ -2,6 +2,14 @@
 
 ## Current generated-container checks
 
+The hidden child-context conversion preserves scope restrictions and backing
+lifetimes. Four generated-scope tests and the two-test child-borrow driver pass
+on std/no_std. Compiler controls reject clearing restrictions, accessing private
+backing storage, restoring consumption, and extending either context or returned
+guard to `'static`. Read/write guards outlive temporary descriptors and contexts,
+retaining contention until dropped. Targeted std Clippy passes; this safe helper
+adds no unsafe code or dependency and does not yet change constructor wiring.
+
 Private borrowed child payloads now remain private when parent factory metadata
 normalizes child scope projections. The regression first failed with E0446,
 then passed with both payload and returned guard-containing result still private.

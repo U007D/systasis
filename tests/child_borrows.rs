@@ -75,27 +75,61 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
         build.arg("--no-default-features");
     }
     let artifacts = support::Artifacts::build(&mut build);
-    for (name, access, rejected) in [
-        ("take", "container.primary().try_resolve_i_value()", true),
+    for (name, access, rejection) in [
+        (
+            "take",
+            "container.primary().try_resolve_i_value()",
+            Some("\"code\":\"E0599\""),
+        ),
         (
             "indirect_take",
             "container.primary().try_resolve_i_size()",
-            true,
+            Some("\"code\":\"E0599\""),
         ),
         (
             "shared",
             "container.primary().try_resolve_i_value_ref()",
-            false,
+            None,
         ),
         (
             "mutable",
             "container.primary().try_resolve_i_value_ref_mut()",
-            false,
+            None,
         ),
         (
             "sibling_take",
             "container.replica().try_resolve_i_value()",
-            false,
+            None,
+        ),
+        (
+            "context_cannot_restore_take",
+            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); context.descriptor().try_resolve_i_value() }",
+            Some("\"code\":\"E0599\""),
+        ),
+        (
+            "context_shared",
+            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); context.descriptor().try_resolve_i_value_ref() }",
+            None,
+        ),
+        (
+            "context_cannot_clear_mask",
+            "systasis::scoped::BorrowContext::<'_, child::AppContainer, systasis::scoped::mask::Empty>::borrow_context(container.primary())",
+            Some("\"code\":\"E0277\""),
+        ),
+        (
+            "context_backing_is_private",
+            "systasis::scoped::BorrowContext::borrow_context(container.primary()).backing",
+            Some("\"code\":\"E0616\""),
+        ),
+        (
+            "context_cannot_extend_backing_lifetime",
+            "{ let context: systasis::scoped::BorrowedContext<'static, child::AppContainer, _> = systasis::scoped::BorrowContext::borrow_context(container.primary()); context }",
+            Some("lifetime may not live long enough"),
+        ),
+        (
+            "context_guard_cannot_extend_backing_lifetime",
+            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); let guard: systasis::Ref<'static, String> = context.descriptor().try_resolve_i_value_ref().unwrap(); guard }",
+            Some("lifetime may not live long enough"),
         ),
     ] {
         let source = format!(
@@ -136,12 +170,9 @@ fn main() {{}}
             .output()
             .unwrap();
         let diagnostics = String::from_utf8_lossy(&output.stderr);
-        if rejected {
+        if let Some(rejection) = rejection {
             assert!(!output.status.success(), "{name} unexpectedly compiled");
-            assert!(
-                diagnostics.contains("\"code\":\"E0599\""),
-                "{name}: {diagnostics}"
-            );
+            assert!(diagnostics.contains(rejection), "{name}: {diagnostics}");
         } else {
             assert!(output.status.success(), "{name}: {diagnostics}");
         }
