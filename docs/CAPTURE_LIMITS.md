@@ -137,6 +137,9 @@ borrowed-capture support. Rust's E0521 for an elided reference parameter does no
 show this source note, and generic native-storage failures still use ordinary
 compiler diagnostics. The remedy is tested in Cargo/rustc's rendered error
 excerpt, not as a custom structured message or an IDE-specific quick fix.
+The [packaged-consumer test](../tests/packaged_consumer.rs) also verifies that
+the source remedy survives packaging and that the rewrite compiles and runs
+against extracted std/no_std crates.
 
 Do not resolve this gap by silently capturing extra bindings, changing captured
 values into references, adding allocation/type erasure, or adding new annotations.

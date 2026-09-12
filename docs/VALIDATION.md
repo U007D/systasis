@@ -2,6 +2,30 @@
 
 ## Current generated-container checks
 
+At 775a901, both full feature-enabled std/no_std workspace suites pass with
+363 tests passed, zero failed and four explicitly ignored per configuration
+(including doctest summaries). Both checked-only workspace suites also pass:
+357 passed, zero failed and four explicitly ignored per backend. Both
+feature-enabled workspace/all-targets Clippy runs pass with Rust warnings denied.
+
+The native-capture diagnostic driver checks ten compiler outcomes per backend:
+two local-borrow E0597 errors include the source-excerpt remedy; elided-parameter
+E0521 and output-mismatch E0308 controls do not. Six compiling/running cases
+preserve owned/static captures, unused short borrows, caller macro semantics,
+generic external lifetimes and the ordinary-function rewrite using the original
+borrowed input. These are compiler-driven checks, not capture-token guesses.
+The helper integration also passes beside plain local macro definitions,
+including a same-name macro and function. Macro-analysis controls retain
+conservative handling of invocations and potentially transforming attributes.
+The diagnostic is not a structured compiler note or an IDE quick fix; its exact
+scope is documented in [CAPTURE_LIMITS.md](CAPTURE_LIMITS.md).
+The separately executed ignored packaged-consumer test passes on both backends:
+it checks the remedy against extracted crate sources, then compiles and runs
+the rewrite with the original borrowed input. Archives and consumer diagnostics
+are retained under `target/packaged-consumer/83162-1789244898176069000`.
+These safe changes add no unsafe code, dependency or compiler feature. Miri was
+not rerun because none of its agreed triggers applies.
+
 After 96f67bc/2f66f7a, all four checked/feature-enabled std/no_std workspace
 suites pass. Extracted-package consumers pass on both backends, including the
 nested borrowed-child cross-crate regression. Both feature-enabled all-targets

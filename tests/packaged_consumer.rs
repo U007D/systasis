@@ -38,6 +38,70 @@ fn toml_string(path: &Path) -> String {
     format!("{:?}", path.to_str().expect("UTF-8 workspace path"))
 }
 
+fn capture_diagnostic(consumer: &Path, target: &Path, patch: &str, std_enabled: bool) {
+    let binary_sources = consumer.join("src/bin");
+    fs::create_dir_all(&binary_sources).expect("create diagnostic consumer source directory");
+    fs::write(
+        binary_sources.join("capture-diagnostic.rs"),
+        include_str!("fixtures/native_capture_diagnostic.rs"),
+    )
+    .expect("write packaged capture diagnostic fixture");
+
+    for case in ["borrowed", "helper"] {
+        let mut compile = cargo(consumer);
+        compile
+            .args([
+                "rustc",
+                "--offline",
+                "--color=never",
+                "--config",
+                patch,
+                "--target-dir",
+            ])
+            .arg(target)
+            .args(["--bin", "capture-diagnostic"]);
+        if std_enabled {
+            compile.args(["--features", "std"]);
+        }
+        compile.args(["--", "--cfg", case, "-Dwarnings"]);
+        for flag in [
+            "borrowed",
+            "helper",
+            "ignored",
+            "inferred",
+            "owned",
+            "static_reference",
+            "wrong_output",
+            "parameter",
+            "named",
+            "generic",
+        ] {
+            compile.args(["--check-cfg", &format!("cfg({flag})")]);
+        }
+        let output = compile.output().expect("compile packaged capture fixture");
+        fs::write(consumer.join(format!("{case}.stderr")), &output.stderr)
+            .expect("retain packaged capture diagnostic");
+        let diagnostics = String::from_utf8_lossy(&output.stderr);
+        if case == "borrowed" {
+            assert!(
+                !output.status.success(),
+                "borrowed capture unexpectedly compiled"
+            );
+            assert!(diagnostics.contains("error[E0597]:"), "{diagnostics}");
+            assert!(
+                diagnostics.contains("systasis capture limit: use an ordinary function for the constructor body; pass borrowed inputs as arguments."),
+                "packaged source lost the remedy: {diagnostics}"
+            );
+        } else {
+            assert!(
+                output.status.success(),
+                "helper rewrite failed: {diagnostics}"
+            );
+            checked(&mut Command::new(target.join("debug/capture-diagnostic")));
+        }
+    }
+}
+
 fn archive(stage: &Path, artifacts: &Path, package: &str, patch: Option<&str>) -> PathBuf {
     let mut command = cargo(stage);
     command
@@ -245,6 +309,12 @@ pub fn run() -> u32 {
             run.args(["--features", "std"]);
         }
         checked(&mut run);
+        capture_diagnostic(
+            &consumer,
+            &scratch.join("consumer-target"),
+            &patch,
+            std_enabled,
+        );
     }
     for (path, expected) in protected.into_iter().zip(before) {
         assert_eq!(
