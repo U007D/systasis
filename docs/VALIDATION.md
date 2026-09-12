@@ -2,6 +2,16 @@
 
 ## Current generated-container checks
 
+After 96f67bc/2f66f7a, all four checked/feature-enabled std/no_std workspace
+suites pass. Extracted-package consumers pass on both backends, including the
+nested borrowed-child cross-crate regression. Both feature-enabled all-targets
+Clippy runs pass after the generator change.
+
+The native owned generic-array remainder regression separately passes tests and
+Clippy on std/no_std. It checks exact array type, retained Send/Sync bounds,
+uncaptured head ownership and exactly-once element destruction. It deliberately
+contains a macro; it is not evidence for the plain-body or borrowed-tail cases.
+
 Native constructors now receive owned tuples of restricted child borrows,
 separating backing lifetimes from temporary descriptor borrows. Eight source tests
 pass per backend: private non-static child payloads, distinct sibling payload
