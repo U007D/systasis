@@ -1,5 +1,10 @@
 # Implementation validation
 
+User-macro support inside registrations was deferred on 2026-09-15. Existing
+macro-specific results below are retained as evidence for future work, not release
+completion criteria. Systasis's own resolver and registered-type query macros,
+including their dependency and ownership checks, remain in scope.
+
 ## Current generated-container checks
 
 The later documentation correction explains the borrowed-input lifetime cause

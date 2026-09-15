@@ -6,6 +6,10 @@ types and traits; dependency queries select registrations in the container.
 The crate is under development: see the repository README and
 `docs/CAPTURE_LIMITS.md` for remaining implementation limits.
 
+User macros inside registrations are deferred for the initial release. This
+does not defer systasis's own resolution or registered-type query macros.
+Existing working user-macro cases do not imply general support.
+
 For now, `__systasis_*` names are reserved for stable code generation. Do not
 introduce them through caller declarations, imports (including globs), or macro
 expansions into generated-code scopes. A violation may compile and resolve the

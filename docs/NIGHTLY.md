@@ -4,6 +4,11 @@ The project pins `nightly-2026-09-06`. Nightly was accepted temporarily to
 complete the crate while preserving its concrete `AppContainer` and named
 subcontainer APIs. Investigate stable replacements after integration.
 
+User macros inside registrations were deferred from the initial release on
+2026-09-15. Native closure storage also supports macro-free capture cases, so
+that deferral alone does not establish that nightly can be removed. No compiler
+driver or rustc-dev component is required to use the production crate.
+
 As checked on 2026-09-10, TAIT has no announced stabilization release. Its
 [tracking issue](https://github.com/rust-lang/rust/issues/63063) lists stabilization
 of the next-generation trait solver as a prerequisite. The Rust team's

@@ -3,6 +3,10 @@
 A Rust dependency-injection library under development. Basic container generation
 is implemented; the complete requirements are not yet ready for application use.
 
+For the initial release, user macros inside registrations are deferred.
+Systasis's own dependency-resolution and registered-type query macros remain
+in scope. Existing partial user-macro support is not a general release guarantee.
+
 Implemented so far: checked std/no_std storage, shared/mutable guards, explicit
 stored-value cloning, resolution errors, and the full `Fallible` conversions.
 The storage support types are hidden implementation APIs, not a replacement
@@ -28,7 +32,7 @@ tuple aliases, explicit and implicit reference bindings, and elided reference
 lifetimes in typed function parameters.
 Explicit imports are preserved when they do not conflict with
 capture names or depend on unhoisted function-local items. Closure-local globs
-are supported where outer-capture lookup is unambiguous. Opaque macros, enclosing-function globs,
+are supported where outer-capture lookup is unambiguous. Enclosing-function globs,
 struct destructuring, unknown-arity tuple-alias rest patterns, and some
 cfg-controlled capture cases remain
 implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).

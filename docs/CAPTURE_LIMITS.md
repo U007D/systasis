@@ -1,5 +1,11 @@
 # Constructor capture implementation limits
 
+Release scope, 2026-09-15: user macros inside registrations are deferred until
+after a working basic container. Systasis's own resolution and registered-type
+query macros remain required. The macro results below are partial evidence for
+a future feature, not a release guarantee. Ordinary macro-free capture failures
+remain implementation gaps; native fallback also serves some macro-free cases.
+
 The generator retains reconstructed typed captures where source analysis succeeds
 and otherwise uses Rust-native closure storage, including macro-containing bodies. Explicit
 annotations on captured bindings remain part of the documented syntax. They may
@@ -32,6 +38,10 @@ instead of `AppContainer`. These are implementation names, not types callers
 must write in signatures; exact diagnostic text is compiler-dependent.
 
 ## Macros inside the constructor
+
+This feature is deferred for the initial release. The following records current
+implementation evidence and limitations, not a promise of arbitrary support or
+of a compile error for every unsupported macro invocation.
 
 Macro-containing constructors now remain native `move` closures in their original
 source scope. Rust determines their captures after expanding the body. Macro
@@ -67,7 +77,8 @@ parameters and other synthesized dependency lifetimes still have native-storage
 limitations.
 Returning a borrow into an owned native capture also remains
 unsupported; existing non-macro constructors retain their previous returned-borrow
-implementation. These are implementation gaps, not new accepted restrictions.
+implementation. User-macro cases are now deferred; analogous macro-free capture
+failures remain implementation gaps, not new accepted restrictions.
 
 The compiler's eager macro expansion is not generally available to user macros.
 The experimental `TokenStream::expand_expr` API is nightly-only and currently
