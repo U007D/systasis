@@ -197,14 +197,18 @@ no extra generic parameter or wrapper is required in caller code. See
 Sequence projections also support generic array elements, concrete owned/borrowed
 array-alias remainders, and shared/mutable slice-alias remainders.
 They retain the exact array or slice type rather than coercing arrays to slices.
-Generic-argument array remainder aliases remain partially unresolved. A
-macro-containing constructor can capture an owned remainder with its exact
-array type, authored generic bounds and normal destruction; see the
-[native array-alias regression](../tests/native_sequence_aliases.rs). The
-equivalent non-macro body can still select an unsuitable slice projection,
-and generic borrowed remainders retain native-lifetime limitations. This is
-not a requirement to add a macro to constructor bodies. See also the
-[sequence-alias regressions](../tests/capture_sequence_aliases.rs).
+An owned generic array-alias remainder such as `Input<T> = [T; 3]` now selects
+native storage without requiring a macro inside the constructor. Tests preserve
+the exact remaining array type, repeated calls, Send/Sync and once-only drops;
+see the [plain-constructor regression](../tests/capture_generic_array_remainder.rs).
+The selection uses Rust's pattern rules: a pattern with fixed elements in a
+plain `let` or function parameter cannot match every possible slice length, so
+it must be an array. Potentially sliced patterns retain the existing projection,
+preserving borrowed-slice captures and lending from other owned captures.
+Generic array remainders with `let-else` or no fixed elements, borrowed arrays,
+and arrays of references retain unverified or failing cases. Lending from a native
+closure's owned remainder is also unresolved.
+See also the [sequence-alias regressions](../tests/capture_sequence_aliases.rs).
 Reconstruction cannot determine struct-field types or tuple aliases with
 unknown-arity rest patterns. Native fallback handles the tested struct,
 tuple-struct and tuple-alias rest captures without naming those field types in

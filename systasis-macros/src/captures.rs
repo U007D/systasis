@@ -87,7 +87,7 @@ impl Bindings {
             .collect::<BTreeSet<_>>();
         for argument in &function.sig.inputs {
             if let FnArg::Typed(argument) = argument {
-                bindings.observe_pattern(&argument.pat, Some(&argument.ty));
+                bindings.observe_pattern(&argument.pat, Some(&argument.ty), false);
             }
         }
         // Items have block-wide scope; subsequent local bindings can still
@@ -226,15 +226,23 @@ impl Bindings {
     /// Call in source order, only for statements preceding the container.
     pub(crate) fn observe_statement(&mut self, statement: &Stmt) {
         match statement {
-            Stmt::Local(local) => self.observe_pattern(&local.pat, None),
+            Stmt::Local(local) => self.observe_pattern(
+                &local.pat,
+                None,
+                local
+                    .init
+                    .as_ref()
+                    .is_some_and(|init| init.diverge.is_some()),
+            ),
             Stmt::Macro(_) => self.uncertain = Some(statement.to_token_stream()),
             _ => {}
         }
     }
 
-    fn observe_pattern(&mut self, pattern: &Pat, annotation: Option<&Type>) {
+    // Only let-else permits refutable patterns among the bindings observed here.
+    fn observe_pattern(&mut self, pattern: &Pat, annotation: Option<&Type>, refutable: bool) {
         if let Pat::Type(typed) = pattern {
-            self.observe_pattern(&typed.pat, Some(&typed.ty));
+            self.observe_pattern(&typed.pat, Some(&typed.ty), refutable);
             return;
         }
         let mut names = BTreeSet::new();
@@ -245,7 +253,7 @@ impl Bindings {
             self.types.insert(name, None);
         }
         if let Some(annotation) = annotation {
-            self.observe_annotated_pattern(pattern, annotation, BindingMode::Move);
+            self.observe_annotated_pattern(pattern, annotation, BindingMode::Move, refutable);
         }
     }
 
@@ -253,12 +261,22 @@ impl Bindings {
     /// Structural projections cover selected alias shapes; struct fields still
     /// need unavailable type information.
     /// https://doc.rust-lang.org/reference/patterns.html#binding-modes
-    fn observe_annotated_pattern(&mut self, pattern: &Pat, annotation: &Type, mode: BindingMode) {
+    fn observe_annotated_pattern(
+        &mut self,
+        pattern: &Pat,
+        annotation: &Type,
+        mode: BindingMode,
+        refutable: bool,
+    ) {
         match (pattern, annotation) {
-            (_, Type::Paren(ty)) => self.observe_annotated_pattern(pattern, &ty.elem, mode),
-            (_, Type::Group(ty)) => self.observe_annotated_pattern(pattern, &ty.elem, mode),
+            (_, Type::Paren(ty)) => {
+                self.observe_annotated_pattern(pattern, &ty.elem, mode, refutable)
+            }
+            (_, Type::Group(ty)) => {
+                self.observe_annotated_pattern(pattern, &ty.elem, mode, refutable)
+            }
             (Pat::Paren(pattern), _) => {
-                self.observe_annotated_pattern(&pattern.pat, annotation, mode);
+                self.observe_annotated_pattern(&pattern.pat, annotation, mode, refutable);
             }
             (Pat::Ident(binding), _) if binding.subpat.is_none() => {
                 // Keep explicit modifiers' pre-2024 meaning too. The original
@@ -274,13 +292,19 @@ impl Bindings {
                     .insert(name(&binding.ident), Some(mode.bound_type(annotation)));
             }
             (Pat::Reference(pattern), Type::Reference(ty)) => {
-                self.observe_annotated_pattern(&pattern.pat, &ty.elem, BindingMode::Move);
+                self.observe_annotated_pattern(
+                    &pattern.pat,
+                    &ty.elem,
+                    BindingMode::Move,
+                    refutable,
+                );
             }
             (Pat::Tuple(_) | Pat::Slice(_), Type::Reference(ty)) => {
                 self.observe_annotated_pattern(
                     pattern,
                     &ty.elem,
                     mode.dereferenced(ty.mutability.is_some()),
+                    refutable,
                 );
             }
             (Pat::Tuple(pattern), Type::Tuple(ty)) => {
@@ -301,7 +325,7 @@ impl Bindings {
                     } else {
                         index
                     };
-                    self.observe_annotated_pattern(element, &ty.elems[type_index], mode);
+                    self.observe_annotated_pattern(element, &ty.elems[type_index], mode, refutable);
                 }
             }
             (Pat::Slice(pattern), Type::Array(ty)) => {
@@ -346,7 +370,13 @@ impl Bindings {
                         })
                 };
                 for element in &pattern.elems {
-                    self.observe_slice_element(element, &ty.elem, rest_type.as_ref(), mode);
+                    self.observe_slice_element(
+                        element,
+                        &ty.elem,
+                        rest_type.as_ref(),
+                        mode,
+                        refutable,
+                    );
                 }
             }
             (Pat::Slice(pattern), Type::Slice(ty)) => {
@@ -354,7 +384,13 @@ impl Bindings {
                     return;
                 }
                 for element in &pattern.elems {
-                    self.observe_slice_element(element, &ty.elem, Some(annotation), mode);
+                    self.observe_slice_element(
+                        element,
+                        &ty.elem,
+                        Some(annotation),
+                        mode,
+                        refutable,
+                    );
                 }
             }
             (Pat::Slice(pattern), Type::Path(path)) => {
@@ -367,17 +403,31 @@ impl Bindings {
                         !self.generic_names.contains(&name(&segment.ident))
                             && matches!(segment.arguments, syn::PathArguments::None)
                     });
-                // Concrete aliases permit an associated-const tail length;
-                // borrow mode changes only the output wrapper, not that length.
-                // Generic slice aliases use exact slice projections;
-                // generic array remainders have no implementation here.
+                // Concrete aliases permit the associated-const remainder length.
+                // A pattern with fixed elements cannot match every slice length;
+                // when Rust requires an irrefutable pattern, it must be an array.
+                // Leave its generic remainder untyped for native capture storage
+                // rather than generating an inapplicable slice projection.
+                // https://doc.rust-lang.org/reference/patterns.html#patterns.slice.refutable-slice
                 let rest = if concrete {
-                    syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureArrayTail<{<#annotation as __systasis_injected::__SystasisCaptureLength<#explicit>>::REMAINING}>>::Output)
+                    Some(
+                        syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureArrayTail<{<#annotation as __systasis_injected::__SystasisCaptureLength<#explicit>>::REMAINING}>>::Output),
+                    )
+                } else if explicit > 0 && !refutable {
+                    None
                 } else {
-                    syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureSliceTail>::Output)
+                    Some(
+                        syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureSliceTail>::Output),
+                    )
                 };
                 for pat in &pattern.elems {
-                    self.observe_slice_element(pat, &element, Some(&rest), BindingMode::Move);
+                    self.observe_slice_element(
+                        pat,
+                        &element,
+                        rest.as_ref(),
+                        BindingMode::Move,
+                        refutable,
+                    );
                 }
             }
             (Pat::Tuple(pattern), Type::Path(_))
@@ -396,12 +446,12 @@ impl Bindings {
                     let projection = format_ident!("__SystasisCaptureTuple{arity}_{index}");
                     let ty =
                         syn::parse_quote!(<#source as __systasis_injected::#projection>::Output);
-                    self.observe_annotated_pattern(element, &ty, BindingMode::Move);
+                    self.observe_annotated_pattern(element, &ty, BindingMode::Move, refutable);
                 }
             }
             (Pat::Reference(pattern), Type::Path(_)) => {
                 let ty = syn::parse_quote!(<#annotation as ::core::ops::Deref>::Target);
-                self.observe_annotated_pattern(&pattern.pat, &ty, BindingMode::Move);
+                self.observe_annotated_pattern(&pattern.pat, &ty, BindingMode::Move, refutable);
             }
             _ => {}
         }
@@ -413,15 +463,16 @@ impl Bindings {
         element: &Type,
         rest: Option<&Type>,
         mode: BindingMode,
+        refutable: bool,
     ) {
         if slice_rest(pattern) {
             if let (Pat::Ident(binding), Some(rest)) = (pattern, rest) {
                 let mut binding = binding.clone();
                 binding.subpat = None;
-                self.observe_annotated_pattern(&Pat::Ident(binding), rest, mode);
+                self.observe_annotated_pattern(&Pat::Ident(binding), rest, mode, refutable);
             }
         } else {
-            self.observe_annotated_pattern(pattern, element, mode);
+            self.observe_annotated_pattern(pattern, element, mode, refutable);
         }
     }
 }
@@ -1313,6 +1364,63 @@ mod tests {
         let types = capture_types(&plan);
         assert!(types[0].contains("__SystasisCaptureElement"));
         assert!(types[1].contains("__SystasisCaptureArrayTail"));
+    }
+
+    #[test]
+    fn uncertain_generic_remainder_uses_native_storage_only_when_captured() {
+        let mut bindings = Bindings::from_function(&parse_quote!(
+            fn context<T>() {}
+        ));
+        bindings.observe_statement(&parse_quote!(let [head, tail @ ..]: Input<T> = input;));
+        let root = parse_quote!(__captures);
+        assert!(prepare(&parse_quote!(|| tail.len()), &bindings, &root).native);
+        let head = prepare(
+            &parse_quote!(|| core::mem::size_of_val(&head)),
+            &bindings,
+            &root,
+        );
+        assert!(!head.native);
+        assert!(capture_types(&head)[0].contains("__SystasisCaptureElement"));
+    }
+
+    #[test]
+    fn potentially_sliced_patterns_keep_existing_reconstruction() {
+        let patterns: [Stmt; 6] = [
+            parse_quote!(let [_, tail @ ..]: Input<'a, T> = input else { return; };),
+            parse_quote!(let [_, tail @ ..]: Identity<&'a [T]> = input else { return; };),
+            parse_quote!(let [_, tail @ ..]: &Input<T> = input else { return; };),
+            parse_quote!(let [_, tail @ ..]: &mut Input<T> = input else { return; };),
+            parse_quote!(let [_, ref tail @ ..]: Input<T> = input else { return; };),
+            parse_quote!(let [tail @ ..]: Input<T> = input;),
+        ];
+        for pattern in patterns {
+            let mut bindings = Bindings::from_function(&parse_quote!(
+                fn context<'a, T>() {}
+            ));
+            bindings.observe_statement(&pattern);
+            let plan = prepare(
+                &parse_quote!(|| tail.len()),
+                &bindings,
+                &parse_quote!(__captures),
+            );
+            assert!(!plan.native);
+            assert!(capture_types(&plan)[0].contains("__SystasisCaptureSliceTail"));
+        }
+    }
+
+    #[test]
+    fn generic_array_parameter_remainder_also_uses_native_storage() {
+        let bindings = Bindings::from_function(&parse_quote!(
+            fn context<T>([_, tail @ ..]: Input<T>) {}
+        ));
+        assert!(
+            prepare(
+                &parse_quote!(|| tail.len()),
+                &bindings,
+                &parse_quote!(__captures)
+            )
+            .native
+        );
     }
 
     #[test]

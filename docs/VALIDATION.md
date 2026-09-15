@@ -7,6 +7,19 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-15: generic owned array-alias remainders in irrefutable patterns use
+native capture storage without a user macro. Four integration regressions check
+exact remainder type, repeated calls, independent head ownership, once-only
+destruction, Send/Sync, and preserved owned-capture lending beside borrowed slice
+aliases (including a hidden static borrow). Three capture-planning tests check
+fallback selection, let-else/whole-slice preservation and parameter patterns.
+Both full feature-enabled std/no_std workspace suites pass: 370 tests passed,
+zero failed and four explicitly ignored per backend. Both feature-enabled
+workspace/all-targets Clippy runs pass with Rust warnings denied; Cargo still
+warns that Spin is unused in the std manifest configuration. Formatting passes.
+No runtime unsafe code or dependency changed. Remaining capture limits are
+documented in CAPTURE_LIMITS.md; this is not complete generic-remainder support.
+
 The later documentation correction explains the borrowed-input lifetime cause
 and recommends a non-borrowing implementation as a coarse workaround, without
 claiming complete borrowed-constructor support or diagnostic coverage. Both
