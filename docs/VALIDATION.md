@@ -7,6 +7,16 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+The opt-in scaling driver now keeps each child borrow independent of its child's
+backing lifetimes. Its previous `&'a AppContainer<'a>` fixture failed at depth two
+because the projected child storage is invariant; an ordinary invariant Rust
+control fails with the same coupled lifetime and succeeds with separate lifetimes.
+The corrected driver checks/links/runs all nine workloads, three samples each,
+on both backends, including nesting depths 1/2/3 and named scope parameters.
+Both release runtime-baseline runs also pass their ten workloads. Measurements
+ran alongside other validation; they are not controlled performance comparisons.
+No generator/runtime change was needed.
+
 Four new failure-effect tests pass on std/no_std. A failed outer build does not
 restore a consumed child value; a failed fresh constructor leaves its dependency
 consumed. Values moved into an error live until that error is dropped. A child

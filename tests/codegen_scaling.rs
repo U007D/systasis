@@ -112,24 +112,31 @@ mod layer0 {
     );
     for layer in 1..=depth {
         let previous = layer - 1;
+        let lifetimes = (0..layer)
+            .map(|index| format!("'a{index}"))
+            .collect::<Vec<_>>();
+        let child_lifetimes = lifetimes[..previous].join(", ");
+        let parameters = lifetimes.join(", ");
+        let borrow = &lifetimes[previous];
+        let inferred = vec!["'_"; layer].join(", ");
         let child_type = if layer == 1 {
             format!("super::layer{previous}::AppContainer")
         } else {
-            format!("super::layer{previous}::AppContainer<'a>")
+            format!("super::layer{previous}::AppContainer<{child_lifetimes}>")
         };
         let chain = "child().".repeat(layer);
-        // A descriptor owns no child; deeper layers carry ordinary borrowed
-        // child lifetimes. Passing it to a named function exercises its alias.
-        let scope_lifetimes = "'_";
+        // Each layer borrows an independently owned child. Do not equate that
+        // short borrow with the child's longer backing lifetimes: child storage
+        // can be invariant, so &'a AppContainer<'a> overconstrains nested callers.
         let nested_chain = "child().".repeat(layer - 1);
         writeln!(source, r#"
 mod layer{layer} {{
-    fn named(container: &AppContainer<'_>) {{ assert_eq!(container.{chain}resolve_i_value(), 17); }}
-    fn named_scope(scope: &child::SubContainer<{scope_lifetimes}>) {{ assert_eq!(scope.{nested_chain}resolve_i_value(), 17); }}
+    fn named(container: &AppContainer<{inferred}>) {{ assert_eq!(container.{chain}resolve_i_value(), 17); }}
+    fn named_scope(scope: &child::SubContainer<{inferred}>) {{ assert_eq!(scope.{nested_chain}resolve_i_value(), 17); }}
     #[systasis::container]
-    pub fn run<'a>(child: &'a {child_type}, visit: impl FnOnce(&AppContainer<'a>)) {{
+    pub fn run<{parameters}>(child: &{borrow} {child_type}, visit: impl FnOnce(&AppContainer<{parameters}>)) {{
         let Ok(container) = systasis::systasis_container! {{
-            register_container!(child: &'a {child_type});
+            register_container!(child: &{borrow} {child_type});
         }}.build();
         named(container); named_scope(container.child()); visit(container);
     }}
