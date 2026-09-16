@@ -217,9 +217,12 @@ explicit `ref whole` / `ref mut whole` bindings to local generic arrays also
 retain their borrow types without extra caller lifetime bounds. See the
 [whole-sequence tests](../tests/capture_whole_sequence.rs).
 Generic shorter remainders with `let-else` and borrowed-array patterns retain
-unverified or failing cases. Borrowing a whole generic array nested inside a
-tuple alias still encounters a generated-lifetime error; the direct array fix
-does not cover that nested projection.
+unverified or failing cases. Capturing a whole generic array reference extracted
+from a tuple alias temporarily requires an explicit reference-binding annotation,
+such as `let values: &[T; 2] = values;`. See the complete
+[registration example](USAGE.md#capturing-an-array-reference-from-a-tuple-alias)
+and [regressions](../tests/capture_nested_borrow.rs). Automatic handling of this
+nested case is deferred; the direct array fix does not cover that projection.
 Lending from a native closure's owned remainder is also unresolved.
 See also the [sequence-alias regressions](../tests/capture_sequence_aliases.rs).
 Reconstruction cannot determine struct-field types or tuple aliases with

@@ -43,6 +43,8 @@ and arithmetic, borrowed slices, and the concrete sequence-alias cases listed in
 Capturing a remainder from a generic array alias containing references currently
 requires an explicit type on that remainder; see the complete
 [registration example](docs/USAGE.md#capturing-an-array-remainder-containing-references).
+An array reference extracted from a generic tuple alias likewise needs its own
+binding annotation; see the [tuple-alias example](docs/USAGE.md#capturing-an-array-reference-from-a-tuple-alias).
 
 Generic enclosing functions preserve authored type, const and lifetime parameters
 in `AppContainer`, with registration-site Copy policy. See

@@ -7,6 +7,15 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+The accepted temporary annotation for an array reference extracted from a generic
+tuple alias now has a runnable usage example and two integration regressions.
+Five doctests and both new tests pass on std/no_std. They preserve exact capture
+types, repeated calls, nameable containers, external element lifetimes and
+unconstrained ownership/auto traits for an uncaptured tuple field. Both targeted
+Clippy checks pass with warnings denied. This documents the accepted workaround;
+automatic inference for that nested case remains deferred. Generator and runtime
+code are unchanged.
+
 2026-09-15: whole-sequence alias captures retain their original array or slice
 type. Eleven integration tests include generic elements, nested reference layers,
 empty arrays/slices, explicit shared/mutable local borrows, returned external

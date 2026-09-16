@@ -149,6 +149,41 @@ fn main() {
 The captured references still borrow the caller's values. This temporary
 requirement needs no additional compiler feature.
 
+### Capturing an array reference from a tuple alias
+
+For now, explicitly annotate an array reference extracted from a generic tuple
+alias before capturing it in `register_type_with!`. The annotation supplies the
+capture's storage type; without it, generated code can fail with a lifetime error.
+
+Here, `run` builds the container; the registered constructor captures `values`,
+which borrows the array in `input`. No separate value registration is needed.
+
+```rust
+type Input<T> = ([T; 2], bool);
+
+trait ILength {}
+impl ILength for usize {}
+
+#[systasis::container]
+fn run<T>(input: Input<T>) -> usize {
+    let ([ref values @ ..], _): Input<T> = input;
+    let values: &[T; 2] = values; // Required annotation for this capture.
+
+    let Ok(container) = systasis::systasis_container! {
+        register_type_with!(usize as ILength, move || values.len());
+    }.build();
+
+    container.resolve_i_length()
+}
+
+fn main() {
+    let input: Input<u8> = ([10, 20], false);
+    assert_eq!(run(input), 2);
+}
+```
+
+This temporary requirement adds no lifetime bound or compiler feature.
+
 ## Owned dependency injection
 
 Services and constructors remain ordinary Rust. `registered_type!(Interface)`
