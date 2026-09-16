@@ -32,10 +32,11 @@ tuple aliases, explicit and implicit reference bindings, and elided reference
 lifetimes in typed function parameters.
 Explicit imports are preserved when they do not conflict with
 capture names or depend on unhoisted function-local items. Closure-local globs
-are supported where outer-capture lookup is unambiguous. Enclosing-function globs,
-struct destructuring, unknown-arity tuple-alias rest patterns, and some
-cfg-controlled capture cases remain
-implementation gaps, not new API rules. See [capture limits](docs/CAPTURE_LIMITS.md).
+are supported where outer-capture lookup is unambiguous. Native closure storage
+also handles tested enclosing-function globs, struct destructuring and tuple-alias
+rest patterns. Borrowed-capture lifetimes and some cfg-controlled forms still
+have implementation gaps; these are not blanket restrictions on those syntax
+categories. See [capture limits](docs/CAPTURE_LIMITS.md).
 Array/slice rest captures support literal lengths, simple concrete const paths
 and arithmetic, borrowed slices, and the concrete sequence-alias cases listed in
 [capture limits](docs/CAPTURE_LIMITS.md).

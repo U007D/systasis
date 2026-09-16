@@ -47,7 +47,7 @@ fn count(container: &AppContainer) -> u32 {
 
 #[systasis::container]
 fn main() -> Result<(), Error> {
-    // Captured locals require an explicit binding type.
+    // Annotate captured state on its binding.
     let label: String = String::from("request");
     let Ok(container) = systasis_container! {
         register_value!(7_u32: u32 as ICount);
@@ -110,6 +110,99 @@ fn main() -> Result<(), ParseIntError> {
 
 An annotated `Option<T>` constructor likewise returns `Option<T>`. Constructor
 errors are not wrapped in the container's stored-value access error.
+
+### Which resolvers are available?
+
+For a registration under `IValue`, `T` below is its concrete implementation type
+and `Error` is `systasis::app_container::Error`. A dash means no such method is
+generated. The guard types shown are for synchronized storage; `require(!Sync)`
+uses the corresponding `core::cell` guards.
+
+| Registration | By value | Shared borrow | Mutable borrow |
+| --- | --- | --- | --- |
+| Stored Copy | `resolve_i_value() -> T` | `resolve_i_value_ref() -> &T` | — |
+| Stored consumable | `try_resolve_i_value() -> Result<T, Error>` | `try_resolve_i_value_ref() -> Result<Ref<'_, T>, Error>` | `try_resolve_i_value_ref_mut() -> Result<RefMut<'_, T>, Error>` |
+| Fresh Default or infallible custom | `resolve_i_value() -> T` | — | — |
+| Custom `try` returning `Result<T, E>` | `try_resolve_i_value() -> Result<T, E>` | — | — |
+| Custom `try` returning `Option<T>` | `try_resolve_i_value() -> Option<T>` | — | — |
+
+A constructor may return a reference or guard as its `T`; it still has only its
+by-value resolver. If constructor wiring borrows a stored consumable registration,
+that registration's owned accessor is omitted; its other applicable accessors
+remain, subject to runtime contention checks.
+
+For stored values, `as dyn IValue` adds `resolve_i_value_dyn_ref() -> &dyn IValue`
+for Copy storage or `try_resolve_i_value_dyn_ref() -> Result<Ref<'_, dyn IValue + '_>, Error>`
+for synchronized consumable storage. Static access remains available. The trait
+must be dyn-compatible; there is no dyn-mutable accessor or dyn accessor for a
+fresh constructor.
+
+### Copy policy in generic code
+
+Concrete stored types select Copy storage automatically when they implement
+`Copy`. To select Copy storage for a registered type involving enclosing generic
+parameters, write an explicit Copy bound on that whole type: `T: Copy` or
+`Wrapper<T>: Copy`.
+An indirectly established Copy fact without that explicit bound is diagnosed.
+Recognition of equivalent renamed Copy bounds remains an implementation limit.
+
+An unconstrained generic registration stays consumable, even when called with
+`u32`. Its resolver API does not change between instantiations:
+
+```rust
+use systasis::app_container::Error;
+
+trait IValue {}
+impl<T> IValue for T {}
+
+#[systasis::container]
+fn run<T>(value: T) -> Result<T, Error> {
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(value: T as IValue);
+    }.build();
+    container.try_resolve_i_value()
+}
+
+fn main() -> Result<(), Error> {
+    assert_eq!(run(7_u32)?, 7);
+    assert_eq!(run(String::from("owned"))?, "owned");
+    Ok(())
+}
+```
+
+### Cloning a stored value
+
+Stored `Clone` values support explicit cloning without consuming the original.
+Copy storage has `resolve_i_value_clone() -> T`; consumable storage has
+`try_resolve_i_value_clone() -> Result<T, Error>`. Both call `Clone::clone`,
+including for Copy types. Fresh constructors have no clone accessor.
+
+```rust
+use systasis::app_container::Error;
+
+trait ILabel {}
+impl ILabel for String {}
+
+#[systasis::container]
+fn main() -> Result<(), Error> {
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(String::from("stored"): String as ILabel);
+    }.build();
+
+    let cloned: String = container.try_resolve_i_label_clone()?;
+    let original: String = container.try_resolve_i_label()?;
+    assert_eq!(cloned, original);
+    assert!(matches!(
+        container.try_resolve_i_label_clone(),
+        Err(Error::ValueAlreadyConsumed)
+    ));
+    Ok(())
+}
+```
+
+Cloning a consumable value can also return `ValueAccessContention` while it is
+mutably borrowed. Cloning through a dependency query does not itself remove the
+original's owned resolver.
 
 ### Capturing an array remainder containing references
 

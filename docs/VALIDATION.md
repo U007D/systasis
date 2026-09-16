@@ -7,6 +7,12 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+The resolver guide now documents exact value/borrow return types, generic Copy
+selection and stored-value cloning. Its two additional examples pass on std/no_std,
+bringing the guide to nine executable doctests per backend. Workspace Rustdoc
+builds with warnings denied. The availability table was checked against the
+generator and existing behavior tests; this adds no API or runtime change.
+
 The public guide now includes executable local-namespace and subcontainer
 examples. Seven doctests pass on std/no_std, covering `_from` queries,
 `_in_name`/`_in_default` methods, borrowed composition and a named child scope
