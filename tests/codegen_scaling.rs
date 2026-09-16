@@ -1,5 +1,5 @@
-//! Opt-in stable compiler scaling samples; no timing thresholds.
-//! Run: `cargo +stable test --test codegen_scaling --offline -- --ignored --nocapture`
+//! Opt-in compiler scaling samples; no timing thresholds.
+//! Run: `cargo test --test codegen_scaling --offline -- --ignored --nocapture`
 //! Repeat with `--no-default-features` for the spin runtime backend.
 #![cfg(not(miri))]
 #![forbid(unsafe_code)]
@@ -159,8 +159,8 @@ mod layer{layer} {{
 }
 
 #[test]
-#[ignore = "independent stable compiler samples, including codegen/link and execution"]
-fn stable_stored_constructor_and_nested_container_scaling() {
+#[ignore = "independent compiler samples, including codegen/link and execution"]
+fn stored_constructor_and_nested_container_scaling() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let backend = if cfg!(feature = "std") {
         "std"

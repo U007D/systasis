@@ -1,5 +1,5 @@
 //! Reproducible host baseline, not a universal overhead or timing guarantee.
-//! Run: `cargo +stable test --release --test performance --offline -- --ignored --nocapture`
+//! Run: `cargo test --release --test performance --offline -- --ignored --nocapture`
 //! Repeat with `--no-default-features` to select spin for synchronized storage.
 #![cfg(not(miri))]
 #![forbid(unsafe_code)]

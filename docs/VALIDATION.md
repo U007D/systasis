@@ -349,7 +349,7 @@ deallocation of preexisting caller state. It does not assert zero allocator even
 Host no_std tests still use std for the test harness and counting allocator;
 they are not an allocator installation on embedded hardware.
 
-Reproduce on stable with `cargo +stable test --offline --locked --test allocations`,
+Reproduce with the repository's pinned toolchain using `cargo test --offline --locked --test allocations`,
 then add `--release`, `--no-default-features`, or both. Miri uses
 `cargo +nightly miri test --offline --locked --test allocations`, repeated with
 `--no-default-features`. Debug/release positive controls detect if a changed
@@ -388,7 +388,7 @@ repeatability plus parseable generated Rust. Its default mutation test checks
 parseable generated output. The opt-in corpus checks 2,560 mutations with the
 same fixed generator/seed; it also passes. This is bounded parser/generator
 testing, not proof that all generated programs typecheck or that all tokens are
-covered. Run the larger corpus with `cargo +stable test -p systasis-macros
+covered. Run the larger corpus with `cargo test -p systasis-macros
 --offline --locked parse_properties::extended_mutation_corpus -- --ignored`.
 
 `tests/performance.rs` (0b4dddd) provides ten opt-in host comparisons against
@@ -400,7 +400,7 @@ payload-drop counts. Output records toolchain, host, features and min/median/max
 ns per iteration. Both runtime backends pass the release checks on the recorded
 aarch64 macOS host. There is no speed threshold or hard real-time claim;
 broader workloads remain separate verification work.
-Run `cargo +stable test --release --test performance --offline --locked --
+Run `cargo test --release --test performance --offline --locked --
 --ignored --nocapture`, then add `--no-default-features` before `--` for spin.
 
 `tests/codegen_scaling.rs` (25bb42e) separately measures stable compiler invocations
@@ -413,7 +413,7 @@ The post-context-change runs executed concurrently with other validation work;
 their timings are not controlled before/after performance comparisons.
 Output records source/executable sizes and separate metadata
 check and build/link durations, not expanded-token size or a universal scaling
-law. No timing threshold is enforced. Run `cargo +stable test --test codegen_scaling
+law. No timing threshold is enforced. Run `cargo test --test codegen_scaling
 --offline --locked -- --ignored --nocapture`, adding `--no-default-features` for spin.
 
 Portable atomics (3a55999) use optional portable-atomic 1.15.0 with its
@@ -566,37 +566,51 @@ Rust-driver tests, covering intended errors and diagnostic-matcher checks.
 
 ## Reproduction
 
+Run from the repository root to select `nightly-2026-09-06` through
+`rust-toolchain.toml`. The macro package currently requires nightly; historical
+stable results above describe earlier revisions, not the current compiler requirement.
+
 ```sh
-cargo +stable test --workspace --offline --locked
-cargo +stable test --workspace --no-default-features --offline --locked
-cargo +stable clippy --workspace --all-targets --offline --locked -- -D warnings
-cargo +stable clippy --workspace --all-targets --no-default-features --offline --locked -- -D warnings
-cargo +stable fmt --all -- --check
+cargo test --workspace --offline --locked
+cargo test --workspace --no-default-features --offline --locked
+cargo test --workspace --features resolve_unchecked,experimental-hardware --offline --locked
+cargo test --workspace --no-default-features --features resolve_unchecked,experimental-hardware --offline --locked
+cargo clippy --workspace --all-targets --features resolve_unchecked,experimental-hardware --offline --locked -- -D warnings
+cargo clippy --workspace --all-targets --no-default-features --features resolve_unchecked,experimental-hardware --offline --locked -- -D warnings
+cargo fmt --all -- --check
+cargo check --no-default-features --target thumbv8m.main-none-eabihf --offline --locked
+cargo check --no-default-features --target riscv32imac-unknown-none-elf --offline --locked
+```
+
+Run Miri when changing systasis-owned unsafe code, adding a dependency, or
+investigating a specific dependency concern. Use a compatible installed Miri
+toolchain for these commands; `+nightly` below is a local alias, not a reproducible
+pin. Safe-only documentation and generator changes do not trigger a Miri rerun.
+
+```sh
 cargo +nightly miri test -p systasis --lib --offline --locked
 cargo +nightly miri test -p systasis --test storage --offline --locked
 cargo +nightly miri test -p systasis --test storage --no-default-features --offline --locked
 cargo +nightly miri test -p systasis --test reservation --offline --locked
 cargo +nightly miri test -p systasis --test reservation --no-default-features --offline --locked
-cargo +stable check --no-default-features --target thumbv8m.main-none-eabihf --offline --locked
-cargo +stable check --no-default-features --target riscv32imac-unknown-none-elf --offline --locked
 ```
 
-Offline commands require cached dependencies. Select a compatible installed
-Miri toolchain; the local `+nightly` alias identifies the version recorded above,
-not a pinned globally reproducible toolchain name.
+Offline commands require cached dependencies; cross-target commands require
+the corresponding installed target libraries.
 Repeat the storage and reservation Miri commands with
 `MIRIFLAGS=-Zmiri-tree-borrows` for the recorded second aliasing model.
 An ancestor Cargo configuration in the development environment wraps rustc
-with Clippy. Runs here set `CARGO_BUILD_RUSTC_WRAPPER=`; Clippy additionally uses
-`RUSTC_WRAPPER=`. No global configuration was changed.
+with Clippy. Runs here clear `RUSTC_WRAPPER`, `RUSTC_WORKSPACE_WRAPPER`,
+`CARGO_BUILD_RUSTC_WRAPPER`, and `CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER` for each
+command. No global configuration was changed.
 
 ## Current boundaries
 
-Local package validation (378d2f2) found and fixed missing license texts in the
-proc-macro archive. `cargo +stable package --offline -p systasis-macros` now
-includes both texts and verifies the extracted package. Runtime packaging and
-an extracted no_std build pass with a command-line crates.io patch pointing at
-that extracted macro package. This is local artifact validation, not evidence
+Local package validation at 378d2f2 found and fixed missing license texts in the
+proc-macro archive. At that revision, `cargo +stable package --offline -p systasis-macros`
+included both texts and verified the extracted package. Runtime packaging and
+an extracted no_std build passed with a command-line crates.io patch pointing at
+that extracted macro package. This was local artifact validation, not evidence
 that the unpublished dependency can be downloaded from a registry. No package
 was published; no persistent patch or lockfile change was retained.
 
@@ -606,7 +620,7 @@ compiles/runs downstream std and no_std-library consumers. It checks nameable
 AppContainer/child scope types, child aliases and checked contention/consumption.
 The unpublished macro dependency is patched to the extracted macro package only
 for these commands. Source manifests and Cargo.lock are verified unchanged.
-Run `cargo +stable test --test packaged_consumer --offline --locked -- --ignored
+Run `cargo test --test packaged_consumer --offline --locked -- --ignored
 --nocapture`; the explicitly selected test always exercises both backends.
 It is excluded from ordinary test runs because it stages/package-builds sources
 and creates isolated downstream builds (about four seconds on the tested host).
