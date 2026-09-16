@@ -7,6 +7,11 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+The trait-group guide example executes combined dynamic type queries during
+build, then uses both dynamic and concrete access to the same stored value.
+All ten doctests pass on std/no_std, including consumption after the example's
+temporary build and caller borrows have ended.
+
 The resolver guide now documents exact value/borrow return types, generic Copy
 selection and stored-value cloning. Its two additional examples pass on std/no_std,
 bringing the guide to nine executable doctests per backend. Workspace Rustdoc

@@ -333,6 +333,63 @@ one namespace wins. Build processes dependency layers, preserving declaration
 order within each layer. Missing dependencies and cycles are compile errors.
 Queries never fall back to types, traits or aliases outside the selected container.
 
+## Trait groups and dynamic access
+
+`as IRead + ILength` registers one value under the complete trait group, not
+separate values under each trait. Queries must name the whole group; their trait
+order does not matter. Generated method names alphabetize the trait names.
+
+`as dyn IRead + ILength` additionally provides a shared dynamic accessor for
+the group, while keeping concrete storage and static accessors:
+
+```rust
+use systasis::app_container::Error;
+
+trait IRead {
+    fn text(&self) -> &str;
+}
+trait ILength {
+    fn length(&self) -> usize;
+}
+impl IRead for String {
+    fn text(&self) -> &str { self.as_str() }
+}
+impl ILength for String {
+    fn length(&self) -> usize { self.len() }
+}
+trait IObserved {}
+impl IObserved for usize {}
+
+#[systasis::container]
+fn main() -> Result<(), Error> {
+    let container = systasis::systasis_container! {
+        register_value!({
+            let view = try_resolve_dyn_ref!(ILength + IRead)?;
+            let target: &resolve_type!(dyn IRead + ILength) = &*view;
+            target.length()
+        }: usize as IObserved);
+        register_value!(String::from("group"): String as dyn IRead + ILength);
+    }.build::<Error>()?;
+
+    assert_eq!(container.resolve_i_observed(), 5);
+    let dynamic = container.try_resolve_i_length_i_read_dyn_ref()?;
+    assert_eq!(dynamic.text(), "group");
+    let concrete = container.try_resolve_i_length_i_read_ref()?;
+    assert_eq!(&*concrete, "group");
+    drop(concrete);
+    drop(dynamic);
+    assert_eq!(container.try_resolve_i_length_i_read()?, "group");
+    Ok(())
+}
+```
+
+Systasis generates a combined trait for the dynamic target; inside registrations,
+`resolve_type!(dyn IRead + ILength)` names it. These combined targets are specific
+to their container definition. Without `dyn`, `resolve_type!(IRead + ILength)`
+and `registered_type!(IRead + ILength)` name the concrete implementation instead.
+All opted-in traits must be dyn-compatible, including any required associated
+type bindings. A group and separately registered individual traits are independent.
+
 ## Local namespaces
 
 Use `in name` to register another implementation under the same interface in a
