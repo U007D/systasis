@@ -190,6 +190,23 @@ impl Bindings {
             where T: __SystasisCaptureArrayTail<R, <Mode as __CaptureThroughMut<'a>>::Mode> {
                 type Output = <T as __SystasisCaptureArrayTail<R, <Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
             }
+            // With no fixed elements, a rest binding retains the original
+            // array length or slice type. No generic const subtraction is needed.
+            pub trait __SystasisCaptureWholeSequence<Mode = __CaptureOwned> { type Output; }
+            impl<T, const N: usize, Mode: __CaptureWrap<[T; N]>> __SystasisCaptureWholeSequence<Mode> for [T; N] {
+                type Output = <Mode as __CaptureWrap<[T; N]>>::Output;
+            }
+            impl<T, Mode: __CaptureSliceWrap<T>> __SystasisCaptureWholeSequence<Mode> for [T] {
+                type Output = <Mode as __CaptureSliceWrap<T>>::Output;
+            }
+            impl<'a, T: ?Sized, Mode> __SystasisCaptureWholeSequence<Mode> for &'a T
+            where T: __SystasisCaptureWholeSequence<__CaptureShared<'a>> {
+                type Output = <T as __SystasisCaptureWholeSequence<__CaptureShared<'a>>>::Output;
+            }
+            impl<'a, T: ?Sized, Mode: __CaptureThroughMut<'a>> __SystasisCaptureWholeSequence<Mode> for &'a mut T
+            where T: __SystasisCaptureWholeSequence<<Mode as __CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __SystasisCaptureWholeSequence<<Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+            }
             pub trait __CaptureSliceWrap<T> { type Output; }
             impl<'a, T: 'a> __CaptureSliceWrap<T> for __CaptureShared<'a> { type Output = &'a [T]; }
             impl<'a, T: 'a> __CaptureSliceWrap<T> for __CaptureMutable<'a> { type Output = &'a mut [T]; }
@@ -409,7 +426,11 @@ impl Bindings {
                 // Leave its generic remainder untyped for native capture storage
                 // rather than generating an inapplicable slice projection.
                 // https://doc.rust-lang.org/reference/patterns.html#patterns.slice.refutable-slice
-                let rest = if concrete {
+                let rest = if explicit == 0 {
+                    Some(
+                        syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureWholeSequence>::Output),
+                    )
+                } else if concrete {
                     Some(
                         syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureArrayTail<{<#annotation as __systasis_injected::__SystasisCaptureLength<#explicit>>::REMAINING}>>::Output),
                     )
@@ -1385,13 +1406,12 @@ mod tests {
 
     #[test]
     fn potentially_sliced_patterns_keep_existing_reconstruction() {
-        let patterns: [Stmt; 6] = [
+        let patterns: [Stmt; 5] = [
             parse_quote!(let [_, tail @ ..]: Input<'a, T> = input else { return; };),
             parse_quote!(let [_, tail @ ..]: Identity<&'a [T]> = input else { return; };),
             parse_quote!(let [_, tail @ ..]: &Input<T> = input else { return; };),
             parse_quote!(let [_, tail @ ..]: &mut Input<T> = input else { return; };),
             parse_quote!(let [_, ref tail @ ..]: Input<T> = input else { return; };),
-            parse_quote!(let [tail @ ..]: Input<T> = input;),
         ];
         for pattern in patterns {
             let mut bindings = Bindings::from_function(&parse_quote!(
@@ -1405,6 +1425,30 @@ mod tests {
             );
             assert!(!plan.native);
             assert!(capture_types(&plan)[0].contains("__SystasisCaptureSliceTail"));
+        }
+    }
+
+    #[test]
+    fn whole_sequence_aliases_preserve_their_type_without_length_arithmetic() {
+        for pattern in [
+            parse_quote!(let [whole @ ..]: Input<T> = input;),
+            parse_quote!(let [whole @ ..]: &Input<T> = input;),
+            parse_quote!(let [whole @ ..]: &mut Input<T> = input;),
+            parse_quote!(let [whole @ ..]: Input<'a, T> = input;),
+            parse_quote!(let [whole @ ..]: PrivateArray = input;),
+            parse_quote!(let [whole @ ..]: Input<T> = input else { return; };),
+        ] {
+            let mut bindings = Bindings::from_function(&parse_quote!(
+                fn context<'a, T>() {}
+            ));
+            bindings.observe_statement(&pattern);
+            let plan = prepare(
+                &parse_quote!(|| &whole),
+                &bindings,
+                &parse_quote!(__captures),
+            );
+            assert!(!plan.native);
+            assert!(capture_types(&plan)[0].contains("__SystasisCaptureWholeSequence"));
         }
     }
 

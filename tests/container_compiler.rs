@@ -268,6 +268,41 @@ fn container_diagnostics() {
             Some("E0277"),
         ),
         (
+            "whole_array_capture_reference_cannot_escape",
+            "",
+            "",
+            r#"mod generic {
+                type Input<T> = [T; 2];
+                trait ISequence {} impl<T> ISequence for &[T; 2] {}
+                #[systasis::container]
+                fn run<T: 'static>(input: Input<T>) -> &'static [T; 2] {
+                    let [whole @ ..]: Input<T> = input;
+                    let Ok(container) = systasis::systasis_container! {
+                        register_type_with!(&'_ [T; 2] as ISequence, move || &whole);
+                    }.build();
+                    container.resolve_i_sequence()
+                }
+            }"#,
+            Some("E0515"),
+        ),
+        (
+            "whole_array_capture_requires_sync_payload",
+            "",
+            "",
+            r#"mod generic {
+                type Input<T> = [T; 2];
+                trait ILength {} impl ILength for usize {}
+                #[systasis::container(require(Sync))]
+                fn run<T>(input: Input<T>) {
+                    let [whole @ ..]: Input<T> = input;
+                    let Ok(container) = systasis::systasis_container! {
+                        register_type_with!(usize as ILength, move || whole.len());
+                    }.build();
+                }
+            }"#,
+            Some("E0277"),
+        ),
+        (
             "known_copy_requires_explicit_policy",
             "",
             "",

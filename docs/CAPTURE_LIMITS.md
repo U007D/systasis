@@ -210,8 +210,13 @@ release requires an explicit remainder annotation before constructor registratio
 See the complete [capture example](USAGE.md#capturing-an-array-remainder-containing-references)
 and [regressions](../tests/capture_borrowed_array.rs). This supplies the capture's
 storage type without an additional compiler feature. Automatic handling remains
-deferred for this case. Generic array remainders with `let-else` or no fixed
-elements and borrowed-array patterns retain unverified or failing cases.
+deferred for this case. A whole-sequence binding (`[whole @ ..]`) preserves the
+original fixed-length array or slice type, including generic element types and
+aliases hiding reference layers. It needs no remainder-length calculation;
+see the [whole-sequence tests](../tests/capture_whole_sequence.rs).
+Generic shorter remainders with `let-else` and borrowed-array patterns retain
+unverified or failing cases. Explicit `ref` bindings to local generic data also
+retain a separate generated-lifetime limitation under investigation.
 Lending from a native closure's owned remainder is also unresolved.
 See also the [sequence-alias regressions](../tests/capture_sequence_aliases.rs).
 Reconstruction cannot determine struct-field types or tuple aliases with
