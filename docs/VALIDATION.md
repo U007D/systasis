@@ -7,6 +7,22 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+At 4239ab8, all four full host configurations pass: checked std/no_std each
+393 tests; `resolve_unchecked,experimental-hardware` std/no_std each 400 tests;
+zero failures and four explicitly ignored per configuration. These totals include
+the eleven guide doctests and four failure-effect tests. Both feature-enabled
+workspace/all-targets Clippy runs and both workspace Rustdoc builds pass with
+Rust warnings denied. Cargo separately reports the existing unused-Spin manifest
+warning in the std configuration. Embedded compile/link checks pass, without
+executing physical hardware.
+
+The separately selected packaged-consumer check passes on extracted std/no_std
+archives, including both license texts and capture-diagnostic examples; no crate
+was published. The extended deterministic parser corpus passes 2,560 mutations.
+Scaling and release runtime checks are described below. Full-matrix, Clippy,
+Rustdoc, scaling and runtime logs: `/private/tmp/systasis-release-validation.USP1t1`.
+This update changes documentation and safe tests only; no Miri trigger applies.
+
 The opt-in scaling driver now keeps each child borrow independent of its child's
 backing lifetimes. Its previous `&'a AppContainer<'a>` fixture failed at depth two
 because the projected child storage is invariant; an ordinary invariant Rust
