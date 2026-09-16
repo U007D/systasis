@@ -111,6 +111,44 @@ fn main() -> Result<(), ParseIntError> {
 An annotated `Option<T>` constructor likewise returns `Option<T>`. Constructor
 errors are not wrapped in the container's stored-value access error.
 
+### Capturing an array remainder containing references
+
+For now, when destructuring a generic array alias containing references, explicitly
+annotate the remainder's exact type before capturing it in `register_type_with!`.
+Rust can infer the type locally, but systasis needs this annotation to generate
+its storage.
+
+Here, `run` builds the container; `move || tail.len()` is the registered
+constructor. The closure captures `tail` directly; no separate registration of
+`tail` is needed.
+
+```rust
+type Input<'a, T> = [&'a T; 3];
+
+trait ILength {}
+impl ILength for usize {}
+
+#[systasis::container]
+fn run<'a, T>(input: Input<'a, T>) -> usize {
+    let [_, tail @ ..]: Input<'a, T> = input;
+    let tail: [&'a T; 2] = tail; // Required annotation for this capture.
+
+    let Ok(container) = systasis::systasis_container! {
+        register_type_with!(usize as ILength, move || tail.len());
+    }.build();
+
+    container.resolve_i_length()
+}
+
+fn main() {
+    let values: [u8; 3] = [10, 20, 30];
+    assert_eq!(run([&values[0], &values[1], &values[2]]), 2);
+}
+```
+
+The captured references still borrow the caller's values. This temporary
+requirement needs no additional compiler feature.
+
 ## Owned dependency injection
 
 Services and constructors remain ordinary Rust. `registered_type!(Interface)`

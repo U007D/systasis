@@ -205,9 +205,14 @@ The selection uses Rust's pattern rules: a pattern with fixed elements in a
 plain `let` or function parameter cannot match every possible slice length, so
 it must be an array. Potentially sliced patterns retain the existing projection,
 preserving borrowed-slice captures and lending from other owned captures.
-Generic array remainders with `let-else` or no fixed elements, borrowed arrays,
-and arrays of references retain unverified or failing cases. Lending from a native
-closure's owned remainder is also unresolved.
+For a remainder containing references from a generic array alias, the initial
+release requires an explicit remainder annotation before constructor registration.
+See the complete [capture example](USAGE.md#capturing-an-array-remainder-containing-references)
+and [regressions](../tests/capture_borrowed_array.rs). This supplies the capture's
+storage type without an additional compiler feature. Automatic handling remains
+deferred for this case. Generic array remainders with `let-else` or no fixed
+elements and borrowed-array patterns retain unverified or failing cases.
+Lending from a native closure's owned remainder is also unresolved.
 See also the [sequence-alias regressions](../tests/capture_sequence_aliases.rs).
 Reconstruction cannot determine struct-field types or tuple aliases with
 unknown-arity rest patterns. Native fallback handles the tested struct,

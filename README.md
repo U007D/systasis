@@ -40,6 +40,10 @@ Array/slice rest captures support literal lengths, simple concrete const paths
 and arithmetic, borrowed slices, and the concrete sequence-alias cases listed in
 [capture limits](docs/CAPTURE_LIMITS.md).
 
+Capturing a remainder from a generic array alias containing references currently
+requires an explicit type on that remainder; see the complete
+[registration example](docs/USAGE.md#capturing-an-array-remainder-containing-references).
+
 Generic enclosing functions preserve authored type, const and lifetime parameters
 in `AppContainer`, with registration-site Copy policy. See
 [generic tests](tests/generic_container.rs) and [cross-crate checks](tests/generic_cross_crate.rs).
