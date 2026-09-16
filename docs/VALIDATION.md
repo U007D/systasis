@@ -7,6 +7,13 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+Four new failure-effect tests pass on std/no_std. A failed outer build does not
+restore a consumed child value; a failed fresh constructor leaves its dependency
+consumed. Values moved into an error live until that error is dropped. A child
+guard moved into a build error survives the failed outer container, keeps taking
+and mutation contended, and releases access when the error is dropped.
+Both targeted Clippy runs pass with warnings denied; only tests were added.
+
 The build-failure example passes on std/no_std and keeps the caller's borrowed
 input usable after an initializer returns Err. The guide now has eleven executable
 doctests per backend and states the pinned nightly requirement and local no_std
