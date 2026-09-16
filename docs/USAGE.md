@@ -6,6 +6,18 @@ types and traits; dependency queries select registrations in the container.
 The crate is under development: see the repository README and
 `docs/CAPTURE_LIMITS.md` for remaining implementation limits.
 
+The current procedural-macro crate requires nightly Rust. Use the tested
+`nightly-2026-09-06` toolchain; application crates need no extra feature
+attributes for generated containers. The repository's `docs/NIGHTLY.md` records
+the unstable features and their purposes. A consuming project's
+`rust-toolchain.toml` can select the tested compiler:
+
+```toml
+[toolchain]
+channel = "nightly-2026-09-06"
+profile = "minimal"
+```
+
 User macros inside registrations are deferred for the initial release. This
 does not defer systasis's own resolution or registered-type query macros.
 Existing working user-macro cases do not imply general support.
@@ -85,6 +97,40 @@ early destruction while resolved values or guards still borrow its contents.
 Infallible builds infer the never error type, allowing `let Ok(container) = ...`.
 Use `.build::<E>()` when a fallible initializer needs an explicit error type.
 A fallible constructor alone does not make build fallible: it has not run yet.
+
+An initializer can propagate its own error during building. Here parsing fails
+before a container is published; the explicit build error type requires no
+enclosing `Result` return type:
+
+```rust
+use std::num::ParseIntError;
+
+trait IPort {}
+impl IPort for u16 {}
+
+#[systasis::container]
+fn main() {
+    let configured_port: String = String::from("not a port");
+    let built = systasis::systasis_container! {
+        register_value!(configured_port.parse::<u16>()?: u16 as IPort);
+    }.build::<ParseIntError>();
+
+    assert!(built.is_err());
+    assert_eq!(configured_port, "not a port"); // The initializer only borrowed it.
+}
+```
+
+On failure, initialized values and owned captures are dropped before the error
+is returned, except resources deliberately transferred into the error. Temporary
+build-only borrows end, and no partial container is exposed. Systasis does not
+undo caller side effects or restore values already consumed from an independent
+child container. Similarly, a failed resolution does not roll back earlier
+successful dependency consumption.
+
+Error types can be selected with `.build::<E>()` or inferred from caller context;
+`.build::<_>()` also requests inference. Infallible builds default to the never
+error type. A fallible initializer may need an explicit `E`; errors are not
+automatically combined into a generated enum.
 
 An explicit `try` constructor preserves its annotated return type:
 
@@ -516,6 +562,17 @@ is deferred; it is not established by the owned-injection example above.
 
 ## Features
 
+For the no_std runtime, disable systasis's default features. With a local checkout
+at `../systasis`, the application's `Cargo.toml` dependency is:
+
+```toml
+[dependencies]
+systasis = { path = "../systasis", default-features = false }
+```
+
+Adjust the path to the checkout location. Procedural macros still build for the
+host, and the nightly requirement above still applies.
+
 - `std` is enabled by default. Disable default features for the no_std runtime;
   no allocator is required by systasis itself.
 - `portable-atomic` enables Spin's portable atomics and critical-section
@@ -526,3 +583,10 @@ is deferred; it is not established by the owned-injection example above.
 - `resolve_unchecked` enables unsafe nonblocking accessors. These retain borrow
   protection and ownership exclusions; callers must guarantee availability and
   successful acquisition at the call. Checked accessors remain unchanged.
+
+With `resolve_unchecked`, consumable registrations gain
+`resolve_i_value_unchecked()`, `resolve_i_value_ref_unchecked()` and
+`resolve_i_value_ref_mut_unchecked()`, returning `T`, a read guard and a write
+guard respectively, without `Result`. Calling them requires an explicit unsafe
+context. No unchecked accessor is added for Copy storage or fresh constructors;
+there is no unchecked clone accessor.

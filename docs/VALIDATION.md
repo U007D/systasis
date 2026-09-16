@@ -7,6 +7,12 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+The build-failure example passes on std/no_std and keeps the caller's borrowed
+input usable after an initializer returns Err. The guide now has eleven executable
+doctests per backend and states the pinned nightly requirement and local no_std
+dependency configuration. Cleanup/no-rollback and unchecked method availability
+text describe the existing contract; no implementation changed.
+
 The trait-group guide example executes combined dynamic type queries during
 build, then uses both dynamic and concrete access to the same stored value.
 All ten doctests pass on std/no_std, including consumption after the example's
