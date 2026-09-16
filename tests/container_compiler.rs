@@ -303,6 +303,62 @@ fn container_diagnostics() {
             Some("E0277"),
         ),
         (
+            "explicit_whole_array_borrow_cannot_escape_local",
+            "",
+            "",
+            r#"mod generic {
+                type Input<T> = [T; 2];
+                trait ISequence {} impl<T> ISequence for &[T; 2] {}
+                #[systasis::container]
+                fn run<T: 'static>(input: Input<T>) -> &'static [T; 2] {
+                    let [ref whole @ ..]: Input<T> = input;
+                    let Ok(container) = systasis::systasis_container! {
+                        register_type_with!(&'_ [T; 2] as ISequence, move || whole);
+                    }.build();
+                    container.resolve_i_sequence()
+                }
+            }"#,
+            Some("E0515"),
+        ),
+        (
+            "explicit_whole_array_borrow_prevents_source_mutation",
+            "",
+            "",
+            r#"mod generic {
+                type Input<T> = [T; 2];
+                trait ILength {} impl ILength for usize {}
+                #[systasis::container]
+                fn run<T>(mut input: Input<T>, replacement: T) {
+                    let [ref whole @ ..]: Input<T> = input;
+                    let Ok(container) = systasis::systasis_container! {
+                        register_type_with!(usize as ILength, move || whole.len());
+                    }.build();
+                    input[0] = replacement;
+                    container.resolve_i_length();
+                }
+            }"#,
+            Some("E0506"),
+        ),
+        (
+            "explicit_whole_array_exclusive_borrow_prevents_source_move",
+            "",
+            "",
+            r#"mod generic {
+                type Input<T> = [T; 2];
+                trait ILength {} impl ILength for usize {}
+                #[systasis::container]
+                fn run<T>(mut input: Input<T>) {
+                    let [ref mut whole @ ..]: Input<T> = input;
+                    let Ok(container) = systasis::systasis_container! {
+                        register_type_with!(usize as ILength, move || whole.len());
+                    }.build();
+                    drop(input);
+                    container.resolve_i_length();
+                }
+            }"#,
+            Some("E0505"),
+        ),
+        (
             "known_copy_requires_explicit_policy",
             "",
             "",

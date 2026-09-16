@@ -7,6 +7,20 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-15: whole-sequence alias captures retain their original array or slice
+type. Eleven integration tests include generic elements, nested reference layers,
+empty arrays/slices, explicit shared/mutable local borrows, returned external
+references, named containers, repeated lending, destruction and Send/Sync policy.
+The explicit-borrow correction projects from the borrowed source type rather
+than borrowing an associated-type output, preserving implied lifetime bounds.
+Three additional compiler controls reject local-reference escape, mutation of
+a shared-borrowed source and movement of an exclusively borrowed source.
+The four full std/no_std checked/feature-enabled configurations pass (380 tests
+per checked configuration; 387 with resolve_unchecked,experimental-hardware;
+zero failures and four explicitly ignored each). Both feature-enabled
+workspace/all-targets Clippy runs pass with Rust warnings denied. No unsafe,
+dependency or compiler feature changed; Miri's agreed triggers do not apply.
+
 2026-09-15: generic owned array-alias remainders in irrefutable patterns use
 native capture storage without a user macro. Four integration regressions check
 exact remainder type, repeated calls, independent head ownership, once-only

@@ -205,3 +205,122 @@ mod whole_slice {
         run(&[String::from("external")]);
     }
 }
+
+mod explicit_shared {
+    type Input<T> = [T; 2];
+    trait ILength {}
+    impl ILength for usize {}
+
+    fn receive<T: Sync>(container: &AppContainer<'_, T>) -> usize {
+        container.resolve_i_length()
+    }
+
+    #[systasis::container(require(Send, Sync))]
+    fn run<T: Sync>(input: Input<T>) {
+        let [ref whole @ ..]: Input<T> = input;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as ILength, move || {
+                let exact: &[T; 2] = whole;
+                exact.len()
+            });
+        }
+        .build();
+        assert_eq!(receive(container), 2);
+        assert_eq!(receive(container), 2);
+        assert!(core::ptr::eq(whole, &input));
+    }
+
+    #[test]
+    fn explicit_shared_binding_borrows_local_generic_array() {
+        let first = String::from("first");
+        let second = String::from("second");
+        run([&first, &second]);
+        run([first, second]);
+    }
+}
+
+mod explicit_borrowed_elements {
+    type Input<'a, T> = [&'a T; 2];
+    trait IElement {}
+    impl<T> IElement for &T {}
+
+    #[systasis::container]
+    fn run<'a, T>(input: Input<'a, T>) -> &'a T {
+        let [ref whole @ ..]: Input<'a, T> = input;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(&'a T as IElement, move || {
+                let exact: &[&'a T; 2] = whole;
+                exact[0]
+            });
+        }
+        .build();
+        let first = container.resolve_i_element();
+        assert!(core::ptr::eq(first, container.resolve_i_element()));
+        first
+    }
+
+    #[test]
+    fn explicit_shared_binding_keeps_external_element_lifetime() {
+        let values = [String::from("first"), String::from("second")];
+        assert!(core::ptr::eq(run([&values[0], &values[1]]), &values[0]));
+    }
+}
+
+mod explicit_mutable {
+    use core::cell::Cell;
+    type Input<T> = [T; 2];
+    trait ILength {}
+    impl ILength for usize {}
+
+    trait Increment {
+        fn increment(&self);
+    }
+    impl Increment for Cell<u8> {
+        fn increment(&self) {
+            self.set(self.get() + 1);
+        }
+    }
+
+    #[systasis::container(require(Send))]
+    fn run<T: Increment + Send>(mut input: Input<T>) {
+        let [ref mut whole @ ..]: Input<T> = input;
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as ILength, move || {
+                whole[0].increment();
+                let exact: &[T; 2] = whole;
+                exact.len()
+            });
+        }
+        .build();
+        assert_eq!(container.resolve_i_length(), 2);
+        assert_eq!(container.resolve_i_length(), 2);
+    }
+
+    #[test]
+    fn explicit_exclusive_binding_remains_send_without_sync() {
+        run([Cell::new(1_u8), Cell::new(2)]);
+    }
+}
+
+mod explicit_parameter {
+    type Input<T> = [T; 0];
+    trait ILength {}
+    impl ILength for usize {}
+
+    #[systasis::container]
+    fn run<T>([ref whole @ ..]: Input<T>) {
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(usize as ILength, move || {
+                let exact: &[T; 0] = whole;
+                exact.len()
+            });
+        }
+        .build();
+        assert_eq!(container.resolve_i_length(), 0);
+    }
+
+    #[test]
+    fn explicit_parameter_binding_borrows_empty_generic_array() {
+        run::<String>([]);
+    }
+}

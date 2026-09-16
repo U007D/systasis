@@ -442,6 +442,25 @@ impl Bindings {
                     )
                 };
                 for pat in &pattern.elems {
+                    if explicit == 0
+                        && let Pat::Ident(binding) = pat
+                        && binding.by_ref.is_some()
+                    {
+                        // Borrow the whole source before projecting its shape.
+                        // `&'a <Input<T> as Whole>::Output` loses implied
+                        // outlives facts when rustc normalizes the projection.
+                        let borrow = if binding.mutability.is_some() {
+                            BindingMode::RefMut
+                        } else {
+                            BindingMode::Ref
+                        };
+                        let borrowed = borrow.bound_type(&source);
+                        self.types.insert(
+                            name(&binding.ident),
+                            Some(syn::parse_quote!(<#borrowed as __systasis_injected::__SystasisCaptureWholeSequence>::Output)),
+                        );
+                        continue;
+                    }
                     self.observe_slice_element(
                         pat,
                         &element,
@@ -1449,6 +1468,34 @@ mod tests {
             );
             assert!(!plan.native);
             assert!(capture_types(&plan)[0].contains("__SystasisCaptureWholeSequence"));
+        }
+    }
+
+    #[test]
+    fn explicit_whole_sequence_borrows_precede_projection() {
+        for (pattern, expected) in [
+            (
+                parse_quote!(let [ref whole @ ..]: Input<T> = input;),
+                parse_quote!(<&'_ Input<T> as __systasis_injected::__SystasisCaptureWholeSequence>::Output),
+            ),
+            (
+                parse_quote!(let [ref mut whole @ ..]: Input<T> = input;),
+                parse_quote!(<&'_ mut Input<T> as __systasis_injected::__SystasisCaptureWholeSequence>::Output),
+            ),
+        ] {
+            let mut bindings = Bindings::from_function(&parse_quote!(
+                fn context<T>() {}
+            ));
+            bindings.observe_statement(&pattern);
+            let plan = prepare(
+                &parse_quote!(|| whole.len()),
+                &bindings,
+                &parse_quote!(__captures),
+            );
+            assert!(!plan.native);
+            assert!(plan.requires_record);
+            let expected: Type = expected;
+            assert_eq!(capture_types(&plan), [expected.to_token_stream().to_string()]);
         }
     }
 
