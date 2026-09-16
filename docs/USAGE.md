@@ -240,6 +240,104 @@ one namespace wins. Build processes dependency layers, preserving declaration
 order within each layer. Missing dependencies and cycles are compile errors.
 Queries never fall back to types, traits or aliases outside the selected container.
 
+## Local namespaces
+
+Use `in name` to register another implementation under the same interface in a
+local namespace. Inside registrations, `_from` queries select that namespace;
+public methods append `_in_name`. Omitting the namespace selects `default`.
+
+```rust
+trait ICount {}
+impl ICount for u32 {}
+trait ITotal {}
+impl ITotal for u32 {}
+
+#[systasis::container]
+fn main() {
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(7_u32: u32 as ICount);
+        register_value!(11_u32: u32 as ICount in test);
+        register_type_with!(u32 as ITotal, || {
+            resolve!(ICount) + resolve_from!(ICount, test)
+        });
+    }.build();
+
+    assert_eq!(container.resolve_i_count(), 7);
+    assert_eq!(container.resolve_i_count_in_default(), 7);
+    assert_eq!(container.resolve_i_count_in_test(), 11);
+    assert_eq!(container.resolve_i_total(), 18);
+}
+```
+
+The namespaces have independent registrations and overrides. A missing named
+registration does not fall back to the default namespace. The corresponding
+type query is `resolve_type_from!(ICount, test)`.
+
+## Subcontainers and scoped injection
+
+`register_container!(primary: &ChildContainer)` borrows an existing container
+under the path `primary`; it does not import that container's registrations into
+the parent's default namespace. `ChildContainer` may be a Rust type alias.
+Children need names: `register_container!(default: ...)` is rejected.
+
+Each container definition generates its own `AppContainer`. Separate modules
+keep those type names distinct. In this example, `main` builds the database
+container and `application::run` builds a container that uses it.
+
+```rust
+use systasis::app_container::Error;
+
+trait IDatabase {}
+impl IDatabase for String {}
+
+mod application {
+    use super::Error;
+
+    trait ILength {}
+    impl ILength for usize {}
+
+    // This component receives only the database scope.
+    fn database_length(database: &primary::SubContainer<'_>) -> Result<usize, Error> {
+        Ok(database.try_resolve_i_database_ref()?.len())
+    }
+
+    #[systasis::container]
+    pub fn run(primary: &super::AppContainer) -> Result<(), Error> {
+        let Ok(container) = systasis::systasis_container! {
+            register_container!(primary: &super::AppContainer);
+            register_type_with!(usize as ILength, try || -> Result<usize, Error> {
+                Ok(try_resolve_ref_from!(IDatabase, primary)?.len())
+            });
+        }.build();
+
+        assert_eq!(database_length(container.primary())?, 11);
+        assert_eq!(container.try_resolve_i_length()?, 11);
+        Ok(())
+    }
+}
+
+#[systasis::container]
+fn main() -> Result<(), Error> {
+    let Ok(database) = systasis::systasis_container! {
+        register_value!(String::from("application"): String as IDatabase);
+    }.build();
+    application::run(database)
+}
+```
+
+`container.primary()` returns `&primary::SubContainer<'_>`, a generated type
+that exposes the child's permitted resolvers, not its unrestricted backing
+container. Here the constructor borrows `IDatabase`, so the scope has no owned
+`try_resolve_i_database()` method. Shared and mutable borrowed access remain
+available, with contention checked while a guard is held. No `IDatabase` trait
+import is needed inside `application` for its registration-name query.
+
+Nested scopes preserve these restrictions. Inside a registration, use
+`try_resolve_ref_from!(IDatabase, branch::primary)`; outside, use
+`container.branch().primary().try_resolve_i_database_ref()`. Two instances of
+one child type can be composed under different names. The child owners must
+remain alive while their composed scopes are used.
+
 ## Borrowing and thread-safety choices
 
 With synchronized storage, `try_resolve_i_logger_ref()` returns a [`Ref`] and

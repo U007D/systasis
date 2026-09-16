@@ -7,6 +7,12 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+The public guide now includes executable local-namespace and subcontainer
+examples. Seven doctests pass on std/no_std, covering `_from` queries,
+`_in_name`/`_in_default` methods, borrowed composition and a named child scope
+passed to an ordinary function. These document existing behavior; generation
+and runtime code are unchanged.
+
 The accepted temporary annotation for an array reference extracted from a generic
 tuple alias now has a runnable usage example and two integration regressions.
 Five doctests and both new tests pass on std/no_std. They preserve exact capture
