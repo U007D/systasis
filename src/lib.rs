@@ -4,6 +4,8 @@
 
 pub mod app_container;
 
+mod builder;
+
 /// Type-level support for generated child descriptors; not a stable manual API.
 #[doc(hidden)]
 pub mod scoped;
@@ -20,6 +22,7 @@ pub use systasis_macros::{container, systasis_container};
 /// Runtime support for generated code; not a stable hand-written API.
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::builder::Builder;
     pub use crate::factory::{FactorySlot, check_native_constructor_captures};
     pub use crate::fresh::FreshSlot;
     pub use crate::storage::{

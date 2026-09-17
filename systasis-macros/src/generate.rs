@@ -144,8 +144,8 @@ fn namespace_methods(
     Ok(())
 }
 // Follow only the receiver/postfix chain, not unrelated arguments or blocks.
-// The owner's statements must remain in the enclosing scope; only the build
-// expression is replaced with its published Result.
+// Inspect an immediate build's error type and arguments without changing the
+// user's postfix expression. Delayed builds receive ordinary Rust checking.
 fn build_expression(expression: &mut Expr) -> Option<&mut Expr> {
     let is_build = matches!(expression, Expr::MethodCall(call)
         if call.method == "build" && matches!(&*call.receiver, Expr::Macro(registry)
@@ -158,6 +158,24 @@ fn build_expression(expression: &mut Expr) -> Option<&mut Expr> {
         Expr::Paren(value) => build_expression(&mut value.expr),
         Expr::Group(value) => build_expression(&mut value.expr),
         Expr::MethodCall(value) => build_expression(&mut value.receiver),
+        _ => None,
+    }
+}
+
+// The declaration can stand alone or be followed by `.build()` and its result
+// handling. Do not search unrelated arguments or nested scopes: the hidden
+// owning anchor must live in the declaration's enclosing scope.
+fn registration_expression(expression: &mut Expr) -> Option<&mut Expr> {
+    if matches!(expression, Expr::Macro(registry)
+        if registry.mac.path.segments.last().is_some_and(|segment| segment.ident == "systasis_container"))
+    {
+        return Some(expression);
+    }
+    match expression {
+        Expr::Try(value) => registration_expression(&mut value.expr),
+        Expr::Paren(value) => registration_expression(&mut value.expr),
+        Expr::Group(value) => registration_expression(&mut value.expr),
+        Expr::MethodCall(value) => registration_expression(&mut value.receiver),
         _ => None,
     }
 }
@@ -217,10 +235,9 @@ pub(crate) fn expand(
     let turbofish = (!type_arguments.is_empty()).then(|| quote!(::<#(#type_arguments),*>));
     let mut opaque_definitions = Vec::new();
     let systasis_error_ident = Ident::new("__systasis_error", Span::mixed_site());
-    let systasis_value_ident = Ident::new("__systasis_value", Span::mixed_site());
     let systasis_result_ident = Ident::new("__systasis_result", Span::mixed_site());
     let systasis_owner_ident = Ident::new("__systasis_owner", Span::mixed_site());
-    let systasis_published_ident = Ident::new("__systasis_published", Span::mixed_site());
+    let systasis_builder_ident = Ident::new("__systasis_builder", Span::mixed_site());
     let slot_type = if local_policy {
         quote!(::systasis::__private::LocalTakeSlot)
     } else {
@@ -257,43 +274,35 @@ pub(crate) fn expand(
             continue;
         };
         let mut published_expression = *initializer.expr.clone();
-        let Some(expression) = build_expression(&mut published_expression) else {
+        let build = build_expression(&mut published_expression).map(|expression| {
+            let Expr::MethodCall(build) = expression else {
+                unreachable!("build_expression only selects a build method call");
+            };
+            build.clone()
+        });
+        let Some(expression) = registration_expression(&mut published_expression) else {
             statements.push(statement.clone());
             continue;
         };
-        let Expr::MethodCall(build) = expression.clone() else {
-            unreachable!("build_expression only selects a build method call");
+        let Expr::Macro(registry) = expression.clone() else {
+            unreachable!("registration_expression only selects a registration macro");
         };
-        *expression = parse_quote!(#systasis_published_ident);
-        let Expr::Macro(registry) = &*build.receiver else {
-            statements.push(statement.clone());
-            continue;
-        };
-        if build.method != "build"
-            || !registry
-                .mac
-                .path
-                .segments
-                .last()
-                .is_some_and(|segment| segment.ident == "systasis_container")
-        {
-            statements.push(statement.clone());
-            continue;
-        }
+        *expression = parse_quote!(#systasis_builder_ident);
         if emitted.is_some() {
             return Err(Error::new_spanned(
-                &build,
+                &registry,
                 "only one container definition per function is currently supported",
             ));
         }
-        if !build.args.is_empty()
-            || build
-                .turbofish
-                .as_ref()
-                .is_some_and(|args| args.args.len() != 1)
+        if let Some(build) = &build
+            && (!build.args.is_empty()
+                || build
+                    .turbofish
+                    .as_ref()
+                    .is_some_and(|args| args.args.len() != 1))
         {
             return Err(Error::new_spanned(
-                &build,
+                build,
                 "build accepts no arguments and at most one error type",
             ));
         }
@@ -357,8 +366,8 @@ pub(crate) fn expand(
             }
         }
         let error_ty = build
-            .turbofish
             .as_ref()
+            .and_then(|build| build.turbofish.as_ref())
             .and_then(|a| a.args.first())
             .cloned()
             .unwrap_or(parse_quote!(_));
@@ -448,7 +457,7 @@ pub(crate) fn expand(
                 .map(|&i| registrations[i].namespace.key(&registrations[i].interface))
                 .collect::<Vec<_>>();
             Error::new_spanned(
-                registry,
+                &registry,
                 format!("registration dependency cycle: {}", names.join(" -> ")),
             )
         })?;
@@ -1469,7 +1478,7 @@ pub(crate) fn expand(
         let checks = requirements.iter().map(|bound| {
             quote!({
                 fn __systasis_assert<T: ::core::marker::#bound>(_: &T) {}
-                if let ::core::result::Result::Ok(container) = &#systasis_published_ident { __systasis_assert(*container); }
+                if let ::core::result::Result::Ok(container) = &#systasis_result_ident { __systasis_assert(container); }
             })
         });
         let macro_path = &registry.mac.path;
@@ -1484,25 +1493,24 @@ pub(crate) fn expand(
             #(#validation_calls)*
             #(#capture_initialization)*
             let #children_ident = (#(#child_values,)*);
-            let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
-            #(#initialization)*
-            let #systasis_result_ident=match #systasis_error_ident {
-                ::core::option::Option::None=>{
-                    let container: #construction_type = AppContainer {#(#values,)*_children: #stored_child_values, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
-                    ::core::result::Result::Ok(container)
+            let #systasis_owner_ident=::core::pin::pin!(::core::cell::OnceCell::new());
+            let #systasis_builder_ident=::systasis::__private::Builder::new(
+                #systasis_owner_ident.as_ref().get_ref(),
+                || {
+                    let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
+                    #(#initialization)*
+                    let #systasis_result_ident=match #systasis_error_ident {
+                        ::core::option::Option::None=>{
+                            let container: #construction_type = AppContainer {#(#values,)*_children: #stored_child_values, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
+                            ::core::result::Result::Ok(container)
+                        },
+                        #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]
+                        ::core::option::Option::Some(error)=>{#(::systasis::__private::discard(#reverse);)* ::core::result::Result::Err(error)},
+                    };
+                    #(#checks)*
+                    #systasis_result_ident
                 },
-                #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]
-                ::core::option::Option::Some(error)=>{#(::systasis::__private::discard(#reverse);)* ::core::result::Result::Err(error)},
-            };
-            let (#systasis_value_ident,#systasis_error_ident)=::systasis::__private::split(#systasis_result_ident);
-            let #systasis_owner_ident=::core::pin::pin!(#systasis_value_ident);
-            let #systasis_published_ident=match (#systasis_owner_ident.as_ref().get_ref(),#systasis_error_ident) {
-                (::core::option::Option::Some(container),::core::option::Option::None)=>::core::result::Result::Ok(container),
-                #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]
-                (::core::option::Option::None,::core::option::Option::Some(error))=>::core::result::Result::Err(error),
-                _=>::core::unreachable!("split result has exactly one occupied branch"),
-            };
-            #(#checks)*
+            );
             let #pattern = #published_expression #otherwise;
         }))?;
         statements.extend(generated.stmts);

@@ -86,7 +86,8 @@ pub fn container(
 /// behind a named scope rather than importing its registrations into the parent.
 ///
 /// The enclosing attribute processes this declaration and its dependency queries
-/// together. Invoke `.build()` before using the generated resolution methods.
+/// together. The builder can be moved or dropped without running initializers;
+/// consuming `.build()` exposes the generated resolution methods.
 ///
 /// Systasis cannot yet represent some borrowed constructor inputs' lifetimes.
 /// Workaround: register a non-borrowing implementation with owned fields and captures.
@@ -98,7 +99,7 @@ pub fn systasis_container(input: proc_macro::TokenStream) -> proc_macro::TokenSt
     }
     syn::Error::new(
         proc_macro2::Span::call_site(),
-        "place systasis_container! inside a #[systasis::container] function and call .build()",
+        "bind systasis_container! to a local inside a #[systasis::container] function",
     )
     .into_compile_error()
     .into()
