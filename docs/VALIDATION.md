@@ -7,6 +7,57 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+At b21a6fd/e43bd81, checked std/no_std each pass 414 tests; feature-enabled
+std/no_std each pass 421 (`resolve_unchecked,experimental-hardware`). Every
+configuration has zero failures and four intentionally ignored tests. The totals
+include twelve executable guide examples. Both feature-enabled all-targets
+Clippy runs and both workspace Rustdoc builds pass with Rust warnings denied;
+formatting and diff checks pass. Cargo still reports its existing unused-Spin
+manifest warning on std.
+
+Separately selected checks pass: extracted-package consumers on both backends
+(now including a moved builder composing a child), 2,560 parser mutations,
+nine code-generation workloads with three samples per backend, and ten release
+runtime comparisons per backend. Allocation regression tests remain green.
+Embedded native-CAS compile/link and missing-platform-fallback diagnostics pass;
+no physical hardware was executed. Logs are `/private/tmp/systasis-builder-*.log`.
+Performance checks validate their workloads, not a timing regression threshold.
+
+The 2026-09-16 core-feature audit found and completed the missing unbuilt-builder
+lifecycle. `tests/builder.rs` covers deferred execution, moved builders,
+abandonment, input ownership/borrowing, overrides and immediate failure cleanup.
+`tests/builder_compiler.rs` checks two successful programs and seven intended
+compiler rejections per backend, including pre-build resolution, repeated build,
+post-build registration, owner escape and conflicting input borrows. Twelve
+runtime-helper tests cover the underlying safe consuming initializer.
+
+The initial-release operations have implementations and representative tests:
+
+| Contract group | Implemented operation | Representative evidence |
+| --- | --- | --- |
+| R01 | Concrete named container and consuming builder | `builder`, `builder_compiler`, `generic_cross_crate` |
+| R02 | Stored Copy/consumable values and generic bound policy | `container_access`, `generic_container`, `policy` |
+| R03 | Default/custom constructors, owned captures and returned borrows | `fresh_container`, `custom_constructor`, `capture_patterns` |
+| R04 | Nonblocking ownership/shared/mutable access and guard lifetimes | `storage`, `compiler`, `unsynchronized` |
+| R05 | Named/nested child scopes and aliases | `child_aliases`, `nested_children`, `child_borrows` |
+| R06 | Final overrides, dependency layers and build lifecycle | `owned_container`, `builder`; macro `graph` unit tests |
+| R07 | Natural/requested auto traits, local tracking and async guards | `container_compiler`, `generic_container`, `async_guards` |
+| R08 | Explicit stored-value cloning | `container_access`, `storage` |
+| R09 | Opt-in single/group dyn access and type queries | `dyn_container`, `dyn_groups`, `dyn_type_query` |
+| R10 | Exact fallible constructor returns and Fallible conversions | `custom_constructor`, `fallible` |
+| R11 | Build error selection/inference and failure effects | `build_inference`, `failure_effects`, `builder` |
+| R12 | Feature-gated synchronized unchecked access | `unchecked`, `child_unchecked`, `compiler` |
+| R13 | Namespaces, groups and container-only lookup | `namespaces`, `trait_groups`, `resolver_scope` |
+| R14 | no_std, allocation-free workloads and portable atomics | `allocations`, `embedded_targets` |
+| R15 | Compiler, package, safety and performance verification | `packaged_consumer`, `performance`, `codegen_scaling`; `SAFETY.md` |
+
+Test names in the table refer to files under `tests/` unless noted. This inventory
+is feature coverage, not a claim that every Rust input form works. Capture and
+type-bound recognition gaps remain documented; further array-alias hardening,
+user macros, stored internal borrows and physical-board execution are deferred.
+No new dependency, unsafe operation or compiler feature was introduced by the
+builder; the agreed Miri rerun triggers do not apply to this change.
+
 At 4239ab8, all four full host configurations pass: checked std/no_std each
 393 tests; `resolve_unchecked,experimental-hardware` std/no_std each 400 tests;
 zero failures and four explicitly ignored per configuration. These totals include
@@ -680,6 +731,6 @@ The no_std library is executed by a std host binary, not on embedded hardware.
   fails to link without the application's critical-section acquire/release
   symbols. This is an intended diagnostic check, not a successful fallback link.
   No test installs a pretend platform implementation or validates physical hardware.
-- Remaining capture cases, documentation completeness and broader performance
-  validation remain. Container generation, composition, scheduling and unchecked access have the
-  tested coverage recorded at the top of this document.
+- Known capture/type-bound recognition gaps and broader performance coverage
+  remain. The core-operation inventory and current verification are recorded at
+  the top of this document; they do not establish every input form or workload.

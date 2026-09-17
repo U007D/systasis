@@ -1,7 +1,8 @@
 # systasis
 
-A Rust dependency-injection library under development. Basic container generation
-is implemented; the complete requirements are not yet ready for application use.
+An experimental Rust dependency-injection library. The initial-release operations
+are implemented and tested; capture and type-bound recognition limitations remain.
+See the [feature inventory and validation evidence](docs/VALIDATION.md).
 
 For the initial release, user macros inside registrations are deferred.
 Systasis's own dependency-resolution and registered-type query macros remain
@@ -16,6 +17,8 @@ The generated path supports stored values, fresh Default and custom constructors
 dependency injection, concrete registered-type lookup, overrides, dependency
 layers, checked access, cloning, multi-trait groups, local namespaces, explicit dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
+Builders can be held, moved, built once, or dropped without running initializers.
+Building returns `Result<&AppContainer, E>` backed by a hidden scope-owned value.
 The [usage guide](docs/USAGE.md) is also the crate-level API documentation;
 its examples compile and run as doctests.
 The requirements' complete [quick example](examples/quick_start.rs) is also
@@ -86,10 +89,11 @@ cloning, nested scopes, failed-build cleanup and owner destruction. They measure
 specified workloads, not arbitrary caller constructors or Clone implementations.
 See [the test driver](tests/allocations.rs) and [evidence](docs/VALIDATION.md).
 
-Still pending: remaining capture cases, documentation/example completeness,
-and hardware validation. Container-stored services retaining internal borrows are
-deferred. Renamed Cargo dependency support is out of the current scope; no import
-placement restriction or new dependency has been adopted for it.
+Known input-form gaps are recorded above and in the capture limits. Further
+array-alias edge-case work, user macros, container-stored internal borrows and
+physical-board validation are deferred. Renamed Cargo dependency support is out
+of the current scope; no import placement restriction or new dependency has been
+adopted for it. Stable-toolchain work follows the temporary nightly implementation.
 
 The root package is `systasis`; `systasis-macros/` is its procedural-macro
 workspace member. The implementation follows the accepted design documents
