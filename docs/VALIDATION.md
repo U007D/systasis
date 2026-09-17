@@ -7,6 +7,15 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+The post-integration toolchain check leaves production on pinned nightly. The
+isolated gate-removal comparison verifies sixteen expected outcomes on installed
+stable/nightly and std/no_std: typed owned/lending captures pass; inferred owned
+and typed destructuring captures need TAIT. See [NIGHTLY.md](NIGHTLY.md) for the
+distinction between the modified research copy and supported production. All
+twelve standalone builder tests pass on stable. The current owned, scopes and
+quick_start application examples also run on pinned nightly with both backends.
+This follow-up changes documentation only, not runtime/generator behavior.
+
 At b21a6fd/e43bd81, checked std/no_std each pass 414 tests; feature-enabled
 std/no_std each pass 421 (`resolve_unchecked,experimental-hardware`). Every
 configuration has zero failures and four intentionally ignored tests. The totals

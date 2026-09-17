@@ -9,11 +9,11 @@ User macros inside registrations were deferred from the initial release on
 that deferral alone does not establish that nightly can be removed. No compiler
 driver or rustc-dev component is required to use the production crate.
 
-As checked on 2026-09-10, TAIT has no announced stabilization release. Its
-[tracking issue](https://github.com/rust-lang/rust/issues/63063) lists stabilization
-of the next-generation trait solver as a prerequisite. The Rust team's
-[2026-08-21 update](https://blog.rust-lang.org/2026/08/21/enabling-next-solver-on-nightly/)
-targets that solver for the coming months; it does not announce a TAIT date.
+As checked on 2026-09-16, the Rust documentation still treats
+[type-alias impl Trait (TAIT)](https://doc.rust-lang.org/unstable-book/language-features/type-alias-impl-trait.html)
+as unstable. Its [tracking issue](https://github.com/rust-lang/rust/issues/63063)
+remains open and lists next-generation trait-solver stabilization as a prerequisite.
+This package assumes no stabilization date and does not claim a stable MSRV.
 
 ## Feature inventory
 
@@ -27,7 +27,30 @@ operations. Existing guard implementations need no unstable mapped-guard APIs.
 Build-error inference does not emit `!`; explicit `.build::<!>()` uses the
 selected compiler's support for that spelling.
 
+`allow_internal_unstable` enables only TAIT in generated code; configuration
+selection has no independent unstable mechanism. The temporary builder closure
+is inferred locally and consumed at build time, so it does not need TAIT.
+The stored constructor closure is different: its type becomes part of the
+module-scope, concrete `AppContainer`, including when its captures are inferred.
+Rust [closure types](https://doc.rust-lang.org/reference/types/closure.html)
+are anonymous; the generated opaque alias currently supplies that field's name.
+
 ## Verification and removal
+
+The 2026-09-16 comparison used installed stable 1.98.1 and the pinned nightly.
+In an isolated source copy with only the nightly permission attributes removed,
+typed owned captures and lending from owned captures compile and run on std/no_std.
+Inferred owned captures and typed struct-destructuring captures still fail with
+TAIT E0658. All four cases pass on the original nightly implementation; sixteen
+expected outcomes were checked. This includes ordinary macro-free code, not just
+the deferred user-macro feature. The twelve standalone builder tests also pass
+on stable, including build-error inference.
+
+Those stable successes describe a modified research copy, not a supported stable
+package: the unmodified macro crate fails stable compilation at its feature gate.
+Production remains pinned to nightly; no capture support or concrete container
+signature was removed. Reproduction source and logs are preserved in the parent
+workspace's `research/stable-boundary/` directory.
 
 Retain native capture ownership, lazy/repeatable calls, returned guards, natural
 auto traits, failed-build cleanup, and cross-crate container/subcontainer naming
