@@ -1,5 +1,10 @@
 # Constructor capture implementation limits
 
+Priority update, 2026-09-16: further type-aliased-array edge-case work is deferred
+until the core feature set is complete. The failures and existing annotations
+below remain documented limits, not missing core-operation implementations or
+approval of additional caller requirements.
+
 Release scope, 2026-09-15: user macros inside registrations are deferred until
 after a working basic container. Systasis's own resolution and registered-type
 query macros remain required. The macro results below are partial evidence for
