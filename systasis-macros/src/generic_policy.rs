@@ -52,8 +52,8 @@ pub(crate) fn depends_on_generics(ty: &Type, generics: &Generics) -> bool {
 /// Recognizes an explicit Copy bound on the entire registered type.
 ///
 /// This is syntactic recognition, not trait solving: an argument's Copy bound
-/// does not count as a bound on its wrapper. Renamed traits and differently
-/// spelled equivalent types are not normalized here.
+/// does not count as a bound on its wrapper. Type grouping is ignored, but
+/// resolving renamed traits or type aliases requires information beyond syntax.
 pub(crate) fn has_explicit_copy_bound(ty: &Type, generics: &Generics) -> bool {
     fn is_copy(bound: &TypeParamBound) -> bool {
         let TypeParamBound::Trait(bound) = bound else {
@@ -76,7 +76,7 @@ pub(crate) fn has_explicit_copy_bound(ty: &Type, generics: &Generics) -> bool {
             )
     }
 
-    let registered = ty.to_token_stream().to_string();
+    let registered = ungrouped_type_spelling(ty);
     generics
         .type_params()
         .any(|parameter| parameter.ident == registered && parameter.bounds.iter().any(is_copy))
@@ -85,10 +85,33 @@ pub(crate) fn has_explicit_copy_bound(ty: &Type, generics: &Generics) -> bool {
                 let syn::WherePredicate::Type(predicate) = predicate else {
                     return false;
                 };
-                predicate.bounded_ty.to_token_stream().to_string() == registered
+                ungrouped_type_spelling(&predicate.bounded_ty) == registered
                     && predicate.bounds.iter().any(is_copy)
             })
         })
+}
+
+/// Parentheses and macro interpolation groups do not change a type's identity.
+/// Keep actual tuple/wrapper structure intact: `(T,)` is not a bound on `T`.
+fn ungrouped_type_spelling(ty: &Type) -> String {
+    struct Ungroup;
+
+    impl VisitMut for Ungroup {
+        fn visit_type_mut(&mut self, ty: &mut Type) {
+            loop {
+                match ty {
+                    Type::Paren(paren) => *ty = *paren.elem.clone(),
+                    Type::Group(group) => *ty = *group.elem.clone(),
+                    _ => break,
+                }
+            }
+            visit_mut::visit_type_mut(self, ty);
+        }
+    }
+
+    let mut normalized = ty.clone();
+    Ungroup.visit_type_mut(&mut normalized);
+    normalized.to_token_stream().to_string()
 }
 
 #[cfg(test)]
@@ -167,6 +190,31 @@ mod tests {
                 has_explicit_copy_bound(&parse_quote!(T), &signature(source)),
                 "{source}"
             );
+        }
+    }
+
+    #[test]
+    fn ignores_type_parentheses_and_invisible_groups() {
+        let inline = signature("fn configure<T: Copy>() {}");
+        assert!(has_explicit_copy_bound(&parse_quote!((T)), &inline));
+        let explicit = signature("fn configure<T>() where (Wrapper<(T)>): Copy {}");
+        assert!(has_explicit_copy_bound(
+            &parse_quote!(Wrapper<T>),
+            &explicit,
+        ));
+        let grouped = Type::Group(syn::TypeGroup {
+            attrs: Vec::new(),
+            group_token: Default::default(),
+            elem: Box::new(parse_quote!((T))),
+        });
+        assert!(has_explicit_copy_bound(&grouped, &inline));
+    }
+
+    #[test]
+    fn does_not_confuse_parentheses_with_a_tuple_or_a_wrapper_bound() {
+        let generics = signature("fn configure<T: Copy>() {}");
+        for ty in [parse_quote!((T,)), parse_quote!(Wrapper<(T)>)] {
+            assert!(!has_explicit_copy_bound(&ty, &generics));
         }
     }
 

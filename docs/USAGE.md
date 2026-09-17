@@ -214,7 +214,9 @@ Concrete stored types select Copy storage automatically when they implement
 parameters, write an explicit Copy bound on that whole type: `T: Copy` or
 `Wrapper<T>: Copy`.
 An indirectly established Copy fact without that explicit bound is diagnosed.
-Recognition of equivalent renamed Copy bounds remains an implementation limit.
+Parentheses do not change which whole type a bound applies to. Renamed Copy
+imports and equivalent types spelled through different aliases still have
+recognition gaps; these are implementation limits, not different Copy policies.
 
 An unconstrained generic registration stays consumable, even when called with
 `u32`. Its resolver API does not change between instantiations:

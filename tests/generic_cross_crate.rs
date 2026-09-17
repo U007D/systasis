@@ -48,6 +48,18 @@ fn exported_alias_preserves_generic_type_const_and_lifetime_parameters() {
         r#"
 #![no_std]
 #![forbid(unsafe_code)]
+#![allow(unused_parens)]
+pub trait IValue {}
+impl<T> IValue for T {}
+pub mod grouped {
+    #[systasis::container]
+    pub fn run<T: Copy>(value: T, use_container: impl FnOnce(&AppContainer<T>)) {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(value: (T) as crate::IValue);
+        }.build();
+        use_container(container);
+    }
+}
 pub trait IArray {}
 impl<T, const N: usize> IArray for [T; N] {}
 pub mod arrays {
@@ -99,6 +111,11 @@ pub mod borrowed {
         &caller,
         r#"
 #![forbid(unsafe_code)]
+fn inspect_grouped<T: Copy>(container: &generic_provider::grouped::AppContainer<T>) {
+    let _: T = container.resolve_i_value();
+    let _: &T = container.resolve_i_value_ref();
+    let _: T = container.resolve_i_value();
+}
 fn inspect_array<T, const N: usize>(container: &generic_provider::arrays::AppContainer<T, N>)
 where [T; N]: Copy {
     let _: [T; N] = container.resolve_i_array();
@@ -143,6 +160,7 @@ mod composed_borrow {
     }
 }
 fn main() {
+    generic_provider::grouped::run(7u32, inspect_grouped);
     fn inspect_private_factory(_: &generic_provider::private_factory::AppContainer) {}
     generic_provider::private_factory::run(inspect_private_factory);
     generic_provider::arrays::run([1u32, 2, 3], inspect_array);

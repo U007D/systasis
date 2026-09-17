@@ -7,6 +7,17 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-17: explicit generic Copy bounds now ignore parentheses and invisible
+type groups, without confusing tuples/wrappers with their arguments. New public
+API tests cover repeated reads, ordinary references, named generic containers,
+auto traits and cross-crate calls; negative fixtures preserve the explicit
+whole-type rule and absence of ownership-taking methods. The selected workspace
+library, generic-policy, child-policy and compiler suites pass 106 tests per
+backend (one ignored), and all-targets Clippy passes on std/no_std with Rust
+warnings denied. This is targeted validation, not a new full release-matrix run.
+Renamed Copy imports and differently spelled type aliases remain unresolved.
+No dependency, unsafe operation or compiler feature changed; no Miri trigger.
+
 The post-integration toolchain check leaves production on pinned nightly. The
 isolated gate-removal comparison verifies sixteen expected outcomes on installed
 stable/nightly and std/no_std: typed owned/lending captures pass; inferred owned
