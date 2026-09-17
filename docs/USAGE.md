@@ -98,6 +98,30 @@ Infallible builds infer the never error type, allowing `let Ok(container) = ...`
 Use `.build::<E>()` when a fallible initializer needs an explicit error type.
 A fallible constructor alone does not make build fallible: it has not run yet.
 
+You can hold or move the builder before building. It has no resolution methods;
+`build()` consumes it, so it cannot build twice. Dropping it without building
+skips stored initializers, drops owned inputs and releases borrowed inputs.
+
+```rust
+use std::cell::Cell;
+
+trait ICount {}
+impl ICount for u32 {}
+
+#[systasis::container]
+fn main() {
+    let calls: Cell<u32> = Cell::new(0);
+    let builder = systasis::systasis_container! {
+        register_value!({ calls.set(calls.get() + 1); 7_u32 }: u32 as ICount);
+    };
+    assert_eq!(calls.get(), 0);
+    let moved_builder = builder;
+    let Ok(container) = moved_builder.build();
+    assert_eq!(calls.get(), 1);
+    assert_eq!(container.resolve_i_count(), 7);
+}
+```
+
 An initializer can propagate its own error during building. Here parsing fails
 before a container is published; the explicit build error type requires no
 enclosing `Result` return type:

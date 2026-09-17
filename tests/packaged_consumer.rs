@@ -246,7 +246,7 @@ pub mod outer {
     fn named_container(container: &AppContainer<'_>) -> u32 { named_scope(container.primary()) }
     #[systasis::container]
     pub fn run(primary: &Alias) -> u32 {
-        let Ok(container) = systasis::systasis_container! {
+        let builder = systasis::systasis_container! {
             register_container!(primary: &Alias);
             register_value!(Stored(resolve_from!(IValue, primary) + 1): Stored as IStored);
             register_type_with!(u32 as ICheck, || {
@@ -254,7 +254,9 @@ pub mod outer {
                 let _authored = __systasis_children;
                 resolve_from!(IFresh, primary)
             });
-        }.build();
+        };
+        let moved_builder = builder;
+        let Ok(container) = moved_builder.build();
         assert_eq!(container.resolve_i_check(), 42);
         assert_eq!(named_container(container), 41);
         assert!(core::ptr::eq(container.primary(), container.primary()));

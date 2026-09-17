@@ -1,5 +1,20 @@
 # Checked storage safety
 
+## Generated ownership and the builder
+
+The declaration creates a hidden pinned `OnceCell<AppContainer>` in its enclosing
+scope. One consuming builder holds a shared reference to that owner and a safe
+`FnOnce` initializer. Building runs initialization, stores the successful container
+once, and returns a shared reference; it never exposes the owner for replacement.
+The owner is not part of `AppContainer`, so it does not alter that type's auto
+traits. Abandoning the builder drops its captures without running initialization.
+Failure drops partial state before returning, except values owned by the error.
+
+The builder's two `unreachable!` diagnostics express internal invariants: generated
+code creates exactly one writer for a fresh owner and consumes it; a successful
+write followed by shared access cannot observe an empty cell. No unsafe code,
+allocation or self-referential storage is introduced by this mechanism.
+
 ## Test-only allocator instrumentation
 
 `tests/allocation_cases/counter.rs` contains the separately approved counting
