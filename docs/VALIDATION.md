@@ -7,28 +7,28 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
-Release verification at 98893fc, on installed rustc 1.97.0-nightly
+Release verification at a7bd95b, on installed rustc 1.97.0-nightly
 (4b0c9d76a, 2026-05-10), ran every workspace test target without exclusions:
 
 | Configuration | Passed | Failed | Intentionally ignored |
 | --- | ---: | ---: | ---: |
-| std, checked | 433 | 1 | 4 |
-| no_std, checked | 433 | 1 | 4 |
-| std, resolve_unchecked + experimental-hardware | 440 | 1 | 4 |
-| no_std, resolve_unchecked + experimental-hardware | 440 | 1 | 4 |
+| std, checked | 435 | 0 | 4 |
+| no_std, checked | 435 | 0 | 4 |
+| std, resolve_unchecked + experimental-hardware | 442 | 0 | 4 |
+| no_std, resolve_unchecked + experimental-hardware | 442 | 0 | 4 |
 
-The sole failing target is `native_capture_diagnostics`: rustc rejects the
-unsupported borrowed capture with E0597 but omits the source-note remedy. The
-test remains unchanged; full-suite acceptance is **not** green. Explicitly
-running the ignored packaged-consumer test also stops at the same missing-note
-assertion after its std consumer runs; that run does not establish no_std package
-completion. The other default-ignored checks are timing/codegen baselines and
-the extended parser mutation run, whose earlier evidence remains historical.
+The formerly failing `native_capture_diagnostics` assertions remain unchanged
+and now pass: local E0597 errors include the non-borrowing-implementation remedy.
+The separately run packaged-consumer test also passes for extracted std/no_std
+crates, including the diagnostic and both working rewrites. The other
+default-ignored checks are timing/codegen baselines and the extended parser
+mutation run, whose earlier evidence remains historical.
 
 Both optional-feature runs include passing embedded compile/link checks (not
-physical-board execution). All-target Clippy with both optional features,
-workspace Rustdoc with warnings denied, and all three application examples pass
-on std/no_std. The matrix includes twelve guide doctests per configuration.
+physical-board execution). All-target Clippy with both optional features
+and workspace Rustdoc with warnings denied pass on std/no_std. The matrix
+includes twelve guide doctests per configuration. All three application examples
+were last executed in the preceding release run; this run compiles them.
 No toolchain update, dependency or unsafe-code change occurred; no Miri trigger.
 
 Reproduction, with the four wrapper variables cleared as described below:
@@ -41,11 +41,23 @@ cargo test --workspace --no-default-features --features resolve_unchecked,experi
 cargo test --test packaged_consumer --offline --locked -- --ignored --nocapture
 ```
 
-Logs: `/private/tmp/systasis-release-validation.jItsZj/`. `*-checked-final.log`
-and `*-optional.log` are the final matrix runs; earlier logs retain intermediate
-failures. Fixes: 30c9f01 (macro-free child guard test), 84957b9 (requested native
-auto traits), 4d987a4 (required error traits in compiler checks), 98893fc (cfg
-diagnostic compatibility). Earlier failure entries below describe pre-fix runs.
+Matrix, no_std Clippy, and std/no_std Rustdoc logs:
+`/private/tmp/systasis-capture-diagnostic.V9TGYE/`. Packaged artifacts and
+diagnostics: `target/packaged-consumer/46876-1790096366128624000/`.
+The preceding release logs in `/private/tmp/systasis-release-validation.jItsZj/`
+retain the pre-fix missing-remedy failures. Earlier failure entries below
+describe pre-fix runs.
+
+2026-09-22 borrowed-capture diagnostic repair (a7bd95b): checking the concrete
+closure before opaque assignment restores the remedy in rustc's local E0597
+source note. A separate generated signature constraint preserves higher-ranked
+returned-guard lifetimes. Keep the capture check in a let initializer: making
+it the block's tail expression suppresses the source note on this compiler.
+Existing diagnostic, native constructor, auto-trait, cross-crate and child-guard
+checks pass on std/no_std. A new macro-free test combines an inferred owned
+capture with a returned write guard, checking contention, mutation and release.
+No supported capture behavior or caller syntax changed. E0521 and generic-case
+diagnostic limits remain; this is not a universal custom diagnostic.
 
 2026-09-22 cfg diagnostic compatibility: configured_scaling's positive
 256-condition program already passed. The negative generated/plain-Rust controls
