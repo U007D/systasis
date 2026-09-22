@@ -1,8 +1,13 @@
 # Temporary nightly toolchain
 
-The project pins `nightly-2026-09-06`. Nightly was accepted temporarily to
-complete the crate while preserving its concrete `AppContainer` and named
-subcontainer APIs. Investigate stable replacements after integration.
+The project selects the floating `nightly` channel, not a dated toolchain.
+Nightly was accepted temporarily to complete the crate while preserving its
+concrete `AppContainer` and named subcontainer APIs. Record the actual compiler
+version with validation results; different nightly versions may behave differently.
+Investigate stable replacements after integration.
+
+Selecting `nightly` uses that installed channel; it does not update an existing
+installation. Updating it is a separate `rustup update nightly` operation.
 
 User macros inside registrations were deferred from the initial release on
 2026-09-15. Native closure storage also supports macro-free capture cases, so
@@ -37,7 +42,7 @@ are anonymous; the generated opaque alias currently supplies that field's name.
 
 ## Verification and removal
 
-The 2026-09-16 comparison used installed stable 1.98.1 and the pinned nightly.
+The 2026-09-16 comparison used installed stable 1.98.1 and nightly-2026-09-06.
 In an isolated source copy with only the nightly permission attributes removed,
 typed owned captures and lending from owned captures compile and run on std/no_std.
 Inferred owned captures and typed struct-destructuring captures still fail with
@@ -48,8 +53,9 @@ on stable, including build-error inference.
 
 Those stable successes describe a modified research copy, not a supported stable
 package: the unmodified macro crate fails stable compilation at its feature gate.
-Production remains pinned to nightly; no capture support or concrete container
-signature was removed. Reproduction source and logs are preserved in the parent
+That comparison retained the dated nightly pin; the pin was removed on
+2026-09-21 without changing capture support or concrete container signatures.
+Reproduction source and logs are preserved in the parent
 workspace's `research/stable-boundary/` directory.
 
 Retain native capture ownership, lazy/repeatable calls, returned guards, natural

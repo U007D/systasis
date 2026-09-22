@@ -6,15 +6,15 @@ types and traits; dependency queries select registrations in the container.
 The crate is under development: see the repository README and
 `docs/CAPTURE_LIMITS.md` for remaining implementation limits.
 
-The current procedural-macro crate requires nightly Rust. Use the tested
-`nightly-2026-09-06` toolchain; application crates need no extra feature
+The current procedural-macro crate requires nightly Rust. Use the
+`nightly` toolchain; application crates need no extra feature
 attributes for generated containers. The repository's `docs/NIGHTLY.md` records
 the unstable features and their purposes. A consuming project's
-`rust-toolchain.toml` can select the tested compiler:
+`rust-toolchain.toml` can select the channel:
 
 ```toml
 [toolchain]
-channel = "nightly-2026-09-06"
+channel = "nightly"
 profile = "minimal"
 ```
 

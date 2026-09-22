@@ -100,7 +100,7 @@ workspace member. The implementation follows the accepted design documents
 in the parent directory. Research artifacts remain outside this package.
 
 `std` is enabled by default. Disable default features for the no_std runtime.
-The project temporarily pins nightly Rust while native constructor closure
+The project temporarily uses nightly Rust while native constructor closure
 storage is integrated. See [the feature inventory](docs/NIGHTLY.md) for what
 requires nightly and the later stable-support checks. Infallible builds infer
 the never error type without spelling `!` in generated source. No nightly guard
