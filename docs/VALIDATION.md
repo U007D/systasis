@@ -7,6 +7,16 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22: `initialization_order` verifies R06 through observable build
+initializer execution: frozen dependency layers, source order within a layer,
+waiting for the deepest dependency, type-query-only dependencies, and final
+override selection/source position. The compiler driver also verifies that a
+two-registration cycle reports the cycle without a blocked downstream dependent.
+All three behavior tests and `container_compiler` pass on std/no_std with the
+installed rustc 1.97.0-nightly (4b0c9d76a, 2026-05-10); targeted Clippy passes
+with warnings denied. These close an integration-coverage gap; no generator,
+runtime, dependency, unsafe code or toolchain change was needed.
+
 2026-09-21, after removing the date pin (6516e3a): the installed floating
 `nightly` reports rustc 1.97.0-nightly (4b0c9d76a, 2026-05-10). It was not updated.
 The full default workspace test build fails with E0283 (`__NativeClosure: Send`)
@@ -84,7 +94,7 @@ The initial-release operations have implementations and representative tests:
 | R03 | Default/custom constructors, owned captures and returned borrows | `fresh_container`, `custom_constructor`, `capture_patterns` |
 | R04 | Nonblocking ownership/shared/mutable access and guard lifetimes | `storage`, `compiler`, `unsynchronized` |
 | R05 | Named/nested child scopes and aliases | `child_aliases`, `nested_children`, `child_borrows` |
-| R06 | Final overrides, dependency layers and build lifecycle | `owned_container`, `builder`; macro `graph` unit tests |
+| R06 | Final overrides, dependency layers and build lifecycle | `initialization_order`, `owned_container`, `builder`, `container_compiler`; macro `graph` unit tests |
 | R07 | Natural/requested auto traits, local tracking and async guards | `container_compiler`, `generic_container`, `async_guards` |
 | R08 | Explicit stored-value cloning | `container_access`, `storage` |
 | R09 | Opt-in single/group dyn access and type queries | `dyn_container`, `dyn_groups`, `dyn_type_query` |

@@ -589,6 +589,15 @@ fn container_diagnostics() {
             Some("registration dependency cycle: IValue -> IValue"),
         ),
         (
+            "cycle_excludes_blocked_dependent",
+            "",
+            "register_value!(try_resolve_from!(IValue, first)?: String as IValue);\n\
+             register_value!(try_resolve_from!(IValue, second)?: String as IValue in first);\n\
+             register_value!(try_resolve_from!(IValue, first)?: String as IValue in second);",
+            "",
+            Some("registration dependency cycle: IValue in first -> IValue in second -> IValue in first"),
+        ),
+        (
             "wrong_interface",
             "",
             "register_value!(42_u32: u32 as IValue);",
