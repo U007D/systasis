@@ -7,6 +7,22 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-21, after removing the date pin (6516e3a): the installed floating
+`nightly` reports rustc 1.97.0-nightly (4b0c9d76a, 2026-05-10). It was not updated.
+The full default workspace test build fails with E0283 (`__NativeClosure: Send`)
+in `capture_generic_array_remainder` and `native_child_context`; therefore no
+full-suite success is claimed on this compiler. Neither test was changed,
+disabled or made an expected failure. No compatibility investigation was started.
+
+The explicitly selected basic-operation suites below pass on both backends:
+241 tests checked-only and 248 with `resolve_unchecked,experimental-hardware`,
+with zero failures and one intentionally ignored parser test per configuration.
+The optional run also checks embedded linking. All twelve guide doctests and
+all three existing application examples pass on both backends. Workspace checking,
+formatting, and library/example Clippy with warnings denied pass; this is not
+all-targets Clippy. Logs: `/private/tmp/systasis-basic-acceptance.uyX13L/`.
+No unsafe/dependency change occurred; the Miri trigger does not apply.
+
 2026-09-21 work priority: the R01–R15 inventory below tracks basic required
 operations. Its representative coverage is separate from complete input-form
 compatibility. Further Copy-alias, type-spelling and capture/cfg combination
@@ -26,7 +42,7 @@ warnings denied. This is targeted validation, not a new full release-matrix run.
 Renamed Copy imports and differently spelled type aliases remain unresolved.
 No dependency, unsafe operation or compiler feature changed; no Miri trigger.
 
-The post-integration toolchain check leaves production on pinned nightly. The
+The 2026-09-16 post-integration toolchain check left production on the then-pinned nightly. The
 isolated gate-removal comparison verifies sixteen expected outcomes on installed
 stable/nightly and std/no_std: typed owned/lending captures pass; inferred owned
 and typed destructuring captures need TAIT. See [NIGHTLY.md](NIGHTLY.md) for the
@@ -461,7 +477,7 @@ deallocation of preexisting caller state. It does not assert zero allocator even
 Host no_std tests still use std for the test harness and counting allocator;
 they are not an allocator installation on embedded hardware.
 
-Reproduce with the repository's pinned toolchain using `cargo test --offline --locked --test allocations`,
+Reproduce with the repository's selected toolchain using `cargo test --offline --locked --test allocations`,
 then add `--release`, `--no-default-features`, or both. Miri uses
 `cargo +nightly miri test --offline --locked --test allocations`, repeated with
 `--no-default-features`. Debug/release positive controls detect if a changed
@@ -678,9 +694,11 @@ Rust-driver tests, covering intended errors and diagnostic-matcher checks.
 
 ## Reproduction
 
-Run from the repository root to select `nightly-2026-09-06` through
+Run from the repository root to select the installed `nightly` channel through
 `rust-toolchain.toml`. The macro package currently requires nightly; historical
-stable results above describe earlier revisions, not the current compiler requirement.
+results above describe their named revisions and compilers. Record `rustc --version`
+with new results. The complete-suite commands below currently encounter the two
+compile failures documented above on the installed 2026-05-10 compiler.
 
 ```sh
 cargo test --workspace --offline --locked
@@ -693,6 +711,31 @@ cargo fmt --all -- --check
 cargo check --no-default-features --target thumbv8m.main-none-eabihf --offline --locked
 cargo check --no-default-features --target riscv32imac-unknown-none-elf --offline --locked
 ```
+
+The bounded basic-operation run used this existing-test selection. Repeat with
+`--no-default-features` for no_std, and with
+`--features resolve_unchecked,experimental-hardware --test embedded_targets`
+for each backend's optional-feature run. This selection does not replace or
+silently weaken the complete-suite commands above.
+
+```sh
+cargo test --workspace --offline --locked --lib \
+  --test builder --test builder_compiler --test container_access \
+  --test generic_container --test fresh_container --test custom_constructor \
+  --test owned_container --test storage --test compiler --test container_compiler \
+  --test namespaces --test trait_groups --test nested_children --test child_borrows \
+  --test resolver_scope --test unsynchronized --test async_guards \
+  --test dyn_container --test dyn_groups --test dyn_type_query --test fallible \
+  --test build_inference --test failure_effects --test allocations \
+  --test unchecked --test child_unchecked
+cargo test --workspace --doc --offline --locked
+cargo run --example quick_start --offline --locked
+cargo run --example owned --offline --locked
+cargo run --example scopes --offline --locked
+cargo clippy --workspace --lib --examples --offline --locked -- -D warnings
+```
+
+The doctest, example and Clippy commands also passed with `--no-default-features`.
 
 Run Miri when changing systasis-owned unsafe code, adding a dependency, or
 investigating a specific dependency concern. Use a compatible installed Miri
