@@ -7,6 +7,13 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 cfg diagnostic compatibility: configured_scaling's positive
+256-condition program already passed. The negative generated/plain-Rust controls
+now recognize both E0537 invalid-predicate and E0539 malformed-cfg diagnostics,
+retaining their error reason and caller-source location checks. The installed
+compiler emits E0537. Both backend runs and targeted Clippy pass; the generator
+and supported cfg behavior are unchanged.
+
 2026-09-22 error compiler-test correction: the full run found an obsolete
 `public_error_is_not_copy` rejection expectation, contradicting the gist's value
 traits implemented in bc2b647. The downstream fixture now positively requires

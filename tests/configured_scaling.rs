@@ -170,9 +170,12 @@ fn main() {
             );
         } else {
             assert!(
-                diagnostics
-                    .lines()
-                    .any(|line| line.starts_with("error[E0539]: malformed `cfg` attribute input")),
+                diagnostics.lines().any(|line| {
+                    // rustc versions differ in whether this unknown
+                    // predicate is reported directly or as malformed cfg.
+                    line.starts_with("error[E0537]: invalid predicate `invalid_predicate`")
+                        || line.starts_with("error[E0539]: malformed `cfg` attribute input")
+                }),
                 "{diagnostics}"
             );
             assert!(
