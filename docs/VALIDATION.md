@@ -7,6 +7,15 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22: `concurrent_container` verifies R04/R07 through generated methods on
+a Sync container holding a non-'static borrowed payload. Scoped threads verify
+compatible reads/clones, rejection of incompatible reads/writes/takes, independent
+field access, transfer of a write guard, visibility of its mutation, and ownership
+transfer followed by consumed errors. A channel handshake orders the observations;
+a watchdog releases held guards before reporting a blocking regression. The test
+and targeted Clippy pass on std/no_std with the installed nightly. This adds
+integration evidence, not a runtime, dependency, unsafe-code or toolchain change.
+
 2026-09-22: `initialization_order` verifies R06 through observable build
 initializer execution: frozen dependency layers, source order within a layer,
 waiting for the deepest dependency, type-query-only dependencies, and final
@@ -92,10 +101,10 @@ The initial-release operations have implementations and representative tests:
 | R01 | Concrete named container and consuming builder | `builder`, `builder_compiler`, `generic_cross_crate` |
 | R02 | Stored Copy/consumable values and generic bound policy | `container_access`, `generic_container`, `policy` |
 | R03 | Default/custom constructors, owned captures and returned borrows | `fresh_container`, `custom_constructor`, `capture_patterns` |
-| R04 | Nonblocking ownership/shared/mutable access and guard lifetimes | `storage`, `compiler`, `unsynchronized` |
+| R04 | Nonblocking ownership/shared/mutable access and guard lifetimes | `concurrent_container`, `storage`, `compiler`, `unsynchronized` |
 | R05 | Named/nested child scopes and aliases | `child_aliases`, `nested_children`, `child_borrows` |
 | R06 | Final overrides, dependency layers and build lifecycle | `initialization_order`, `owned_container`, `builder`, `container_compiler`; macro `graph` unit tests |
-| R07 | Natural/requested auto traits, local tracking and async guards | `container_compiler`, `generic_container`, `async_guards` |
+| R07 | Natural/requested auto traits, local tracking and async guards | `concurrent_container`, `container_compiler`, `generic_container`, `async_guards` |
 | R08 | Explicit stored-value cloning | `container_access`, `storage` |
 | R09 | Opt-in single/group dyn access and type queries | `dyn_container`, `dyn_groups`, `dyn_type_query` |
 | R10 | Exact fallible constructor returns and Fallible conversions | `custom_constructor`, `fallible` |
