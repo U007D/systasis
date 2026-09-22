@@ -7,6 +7,17 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 subcontainer write-guard check: `child_write_guard` verifies a
+macro-free constructor returning RefMut from a named subcontainer while requiring
+Send + Sync. It preserves a non-static borrowed payload, checks contention and
+mutation, drops the returned guard on another thread, and resolves again after
+release. The test and targeted Clippy pass on std/no_std on the installed nightly.
+The original `native_child_context` fixture remains unchanged and still fails
+E0283 at its Send assertion. Its constructor contains assert!, which selects the
+native-closure path; the macro-free counterpart passes without a generator fix.
+This distinguishes the supported operation from the deferred user-macro case;
+it does not establish that arbitrary native closures work or fix that failure.
+
 2026-09-22 value-annotation amendment: the user deferred general expression-result
 inference for the initial release and requested a clear missing-type error.
 `container_compiler` checks the complete message, including an example placing
