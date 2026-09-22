@@ -7,6 +7,26 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 value-annotation amendment: the user deferred general expression-result
+inference for the initial release and requested a clear missing-type error.
+`container_compiler` checks the complete message, including an example placing
+`: Type` before `as`, for the gist's PathBuf expression and untyped/shadowed locals.
+The new expectation failed against the old diagnostic before implementation.
+The annotated PathBuf expression compiles and a public behavior test verifies its
+concrete return type, value and one-time consumption. Existing supported omissions
+remain covered. Workspace library tests, `container_compiler`, `value_inference`,
+guide doctests and targeted Clippy pass on std/no_std using the installed nightly
+reported below. No runtime, dependency, unsafe-code or compiler-feature change.
+
+Reproduce with wrappers cleared as described below, adding `--no-default-features`
+to each command for the no_std backend:
+
+```text
+cargo test --workspace --lib --test container_compiler --test value_inference --offline --locked
+cargo test --doc --offline --locked
+cargo clippy --workspace --lib --test container_compiler --test value_inference --offline --locked -- -D warnings
+```
+
 2026-09-22 gist comparison: value registrations can reuse an already declared
 local/parameter type or an explicit cast type. The parser previously rejected
 every omitted registration annotation. Five public-API tests now cover named

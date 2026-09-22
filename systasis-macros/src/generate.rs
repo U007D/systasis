@@ -329,12 +329,15 @@ pub(crate) fn expand(
         // must not cause a type-lookup error or impose a capture requirement.
         for registration in &mut registrations {
             if registration.infer_value_type {
-                registration.ty = bindings.declared_value_type(&registration.value).ok_or_else(|| {
-                    Error::new_spanned(
-                        &registration.value,
-                        "value type is not available from an existing annotation; specify expression: Type as Trait",
-                    )
-                })?;
+                registration.ty = bindings
+                    .declared_value_type(&registration.value)
+                    .ok_or_else(|| {
+                        Error::new_spanned(
+                            &registration.value,
+                            "cannot determine this registered value's type\n\
+                             help: add `: Type` before `as`, for example `register_value!(String::new(): String as IValue);`",
+                        )
+                    })?;
             }
         }
         let mut child_borrows = Vec::new();

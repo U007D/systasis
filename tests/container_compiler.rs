@@ -9,6 +9,8 @@ use std::{fs, path::PathBuf, process::Command};
 
 #[test]
 fn container_diagnostics() {
+    let missing_value_type = "cannot determine this registered value's type\n\
+        help: add `: Type` before `as`, for example `register_value!(String::new(): String as IValue);`";
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let backend = if cfg!(feature = "std") {
         "std"
@@ -561,22 +563,32 @@ fn container_diagnostics() {
             None,
         ),
         (
+            "omitted_expression_value_type_explains_annotation",
+            "",
+            "register_value!(std::path::PathBuf::from(\"/etc/app\") as IConfigPath);",
+            "",
+            Some(missing_value_type),
+        ),
+        (
+            "annotated_expression_value_type_resolves",
+            "",
+            "register_value!(std::path::PathBuf::from(\"/etc/app\"): std::path::PathBuf as IConfigPath);",
+            "let path: std::path::PathBuf = built.unwrap().try_resolve_i_config_path().unwrap();",
+            None,
+        ),
+        (
             "omitted_value_type_is_not_guessed",
             "",
             "register_value!(untyped as IValue);",
             "",
-            Some(
-                "value type is not available from an existing annotation; specify expression: Type as Trait",
-            ),
+            Some(missing_value_type),
         ),
         (
             "omitted_value_type_does_not_reuse_shadowed_annotation",
             "",
             "",
             "mod shadow { trait IValue {} impl IValue for String {} impl IValue for u32 {} #[systasis::container] fn run() { let value: String = String::new(); let value = 7_u32; let Ok(container) = systasis::systasis_container! { register_value!(value as IValue); }.build(); } }",
-            Some(
-                "value type is not available from an existing annotation; specify expression: Type as Trait",
-            ),
+            Some(missing_value_type),
         ),
         (
             "missing_dependency",
@@ -698,6 +710,7 @@ impl IGeneric for String {{ fn generic<T>(&self) {{}} }}
 struct Borrowed<'a>(&'a str);
 impl IValue for String {{}}
 trait INumber {{}}
+trait IConfigPath {{}} impl IConfigPath for std::path::PathBuf {{}}
 trait ISize {{}} impl ISize for usize {{}}
 impl INumber for u32 {{}}
 mod a {{ pub trait IValue {{}} impl IValue for String {{}} }}
@@ -727,6 +740,7 @@ fn main() {{
             .expect("retain diagnostics");
         if let Some(expected) = expected {
             assert!(!output.status.success(), "{name} unexpectedly compiled");
+            let expected = expected.replace('\n', "\\n");
             assert!(
                 diagnostics
                     .lines()

@@ -9,6 +9,31 @@ impl IText for String {}
 trait ICount {}
 impl ICount for usize {}
 
+mod annotated_expression {
+    use super::Error;
+    use std::path::PathBuf;
+
+    trait IConfigPath {}
+    impl IConfigPath for PathBuf {}
+
+    #[systasis::container]
+    #[test]
+    fn explicit_expression_type_builds_and_resolves() -> Result<(), Error> {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(PathBuf::from("/etc/app"): PathBuf as IConfigPath);
+        }
+        .build();
+
+        let path: PathBuf = container.try_resolve_i_config_path()?;
+        assert_eq!(path, PathBuf::from("/etc/app"));
+        assert_eq!(
+            container.try_resolve_i_config_path(),
+            Err(Error::ValueAlreadyConsumed)
+        );
+        Ok(())
+    }
+}
+
 mod locals {
     use super::*;
 

@@ -35,6 +35,10 @@ paths instead of public aliases such as `AppContainer`.
 `register_type_with!` runs its constructor each time it is resolved;
 `register_type!` uses `Default::default()` to do the same.
 
+Supply the stored value's type before `as`, for example
+`register_value!(String::new(): String as ILabel);`. Missing type information
+produces a compile-time error showing where to add the annotation.
+
 ```rust
 use systasis::{app_container::Error, systasis_container};
 
