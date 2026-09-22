@@ -49,6 +49,46 @@ mod inferred {
     }
 }
 
+mod send_only {
+    use core::cell::Cell;
+
+    trait ICount {}
+    impl ICount for u32 {}
+
+    #[systasis::container(require(Send))]
+    #[test]
+    fn requested_send_does_not_also_require_sync() {
+        let count = Cell::new(0_u32);
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(u32 as ICount, move || {
+                count.set(count.get() + 1);
+                count.get()
+            });
+        }
+        .build();
+        assert_eq!(container.resolve_i_count(), 1);
+        assert_eq!(container.resolve_i_count(), 2);
+    }
+}
+
+mod no_requirements {
+    use std::rc::Rc;
+
+    trait IText {}
+    impl IText for String {}
+
+    #[systasis::container]
+    #[test]
+    fn local_capture_does_not_gain_thread_safety_requirements() {
+        let text = Rc::new(String::from("local"));
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!(String as IText, move || text.as_ref().clone());
+        }
+        .build();
+        assert_eq!(container.resolve_i_text(), "local");
+    }
+}
+
 mod tuple {
     struct Parts(String, usize);
     trait IText {}

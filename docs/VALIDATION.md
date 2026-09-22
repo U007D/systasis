@@ -7,12 +7,26 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 requested native auto-trait fix: the broader release run exposed E0283
+in native_fallback's ordinary String-owning constructors with require(Send, Sync).
+Generated opaque closure aliases now state only the explicitly requested auto
+traits, so their defining function can check them without revealing the opaque
+type. The completed-container assertions remain to check all other fields too.
+Unrequested traits are not added. Existing native_fallback, native_child_context
+and capture_generic_array_remainder tests now pass unchanged on std/no_std.
+New controls preserve Send-only Cell captures and unrestricted local Rc captures,
+and reject non-Send/non-Sync inferred captures for the corresponding requirement.
+Selected workspace libraries, compiler controls and cross-crate tests pass on
+both backends. This is safe code generation only, with no new dependencies or
+compiler features. Full-matrix validation follows; the earlier failures below
+are pre-fix evidence, not current results.
+
 2026-09-22 subcontainer write-guard check: `child_write_guard` verifies a
 macro-free constructor returning RefMut from a named subcontainer while requiring
 Send + Sync. It preserves a non-static borrowed payload, checks contention and
 mutation, drops the returned guard on another thread, and resolves again after
 release. The test and targeted Clippy pass on std/no_std on the installed nightly.
-The original `native_child_context` fixture remains unchanged and still fails
+Before the fix above, the unchanged `native_child_context` fixture still failed
 E0283 at its Send assertion. Its constructor contains assert!, which selects the
 native-closure path; the macro-free counterpart passes without a generator fix.
 This distinguishes the supported operation from the deferred user-macro case;

@@ -1111,7 +1111,11 @@ pub(crate) fn expand(
                             pub(super) _children: __ContextChildren,
                             pub(super) _marker: ::core::marker::PhantomData<(&#call_lifetime __ContextChildren, __ContextMarker)>,
                         }
-                        pub(super) type #opaque_name #native_parameters #native_where = impl for<#call_lifetime> Fn(#native_context_type) -> #helper_output;
+                        // The defining function must prove requested auto traits
+                        // without first revealing its own opaque closure type.
+                        // Keep the whole-container assertions as well: other
+                        // slots and child references must satisfy them too.
+                        pub(super) type #opaque_name #native_parameters #native_where = impl for<#call_lifetime> Fn(#native_context_type) -> #helper_output #(+ ::core::marker::#requirements)*;
                         // The named wrapper prevents a private constructor
                         // result from leaking through the public container alias.
                         pub struct #native_name #native_parameters #native_where {

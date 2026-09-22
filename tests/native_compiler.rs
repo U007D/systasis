@@ -115,6 +115,36 @@ fn native_closure_public_api_and_rejection_controls() {
             "E0277",
         ),
         (
+            "non_send_inferred_capture",
+            r#"
+            trait IValue {} impl IValue for String {}
+            #[systasis::container(require(Send))]
+            fn main() {
+                let value = std::rc::Rc::new(String::from("local"));
+                let Ok(container) = systasis::systasis_container! {
+                    register_type_with!(String as IValue, move || value.as_ref().clone());
+                }.build();
+                drop(container.resolve_i_value());
+            }
+        "#,
+            "`Rc<String>` cannot be sent between threads safely",
+        ),
+        (
+            "non_sync_inferred_capture",
+            r#"
+            trait IValue {} impl IValue for u32 {}
+            #[systasis::container(require(Sync))]
+            fn main() {
+                let value = core::cell::Cell::new(7_u32);
+                let Ok(container) = systasis::systasis_container! {
+                    register_type_with!(u32 as IValue, move || value.get());
+                }.build();
+                let _ = container.resolve_i_value();
+            }
+        "#,
+            "`Cell<u32>` cannot be shared between threads safely",
+        ),
+        (
             "captured_value_moved",
             r#"
             trait IValue {} impl IValue for String {}
