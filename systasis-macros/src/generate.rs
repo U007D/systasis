@@ -1018,6 +1018,7 @@ pub(crate) fn expand(
                 if factory.native {
                     let native_name = format_ident!("__NativeFactory{i}");
                     let opaque_name = format_ident!("__NativeClosure{i}");
+                    let signature_name = format_ident!("__native_signature{i}");
                     let (native_parameters, native_arguments, native_where) =
                         original_generics.split_for_impl();
                     // Avoid a scope GAT projection in the higher-ranked Fn
@@ -1051,9 +1052,9 @@ pub(crate) fn expand(
                         quote!(__systasis_injected::#context<'_, #(#source_slots,)* #native_children, _>),
                     )?;
                     SourceLifetimes(&lifetimes.0).visit_type_mut(&mut source_context);
-                    // The HRTB is established by the opaque alias. An explicit
-                    // context annotation makes the source closure independently
-                    // valid before coercion, including returned dependency guards.
+                    // The signature helper (or generic opaque alias) establishes
+                    // the HRTB. Explicit context typing supports returned
+                    // dependency guards before assignment to opaque storage.
                     let mut native_closure = closure.clone();
                     native_closure
                         .inputs
@@ -1066,19 +1067,31 @@ pub(crate) fn expand(
                     } else {
                         parse_quote!({ let __systasis_output: #registered = { #body }; __systasis_output })
                     };
-                    // A parameterless opaque alias cannot name a captured
-                    // local lifetime. State that existing restriction at a
-                    // library source location containing its remedy. Keep the
-                    // opaque annotation on the temporary: without it, closures
-                    // returning dependency guards lose their expected HRTB.
+                    // Infer the higher-ranked call signature before checking
+                    // captures and assigning the opaque storage type. Assigning
+                    // that type first hides the capture-bound diagnostic; leaving
+                    // the signature unconstrained breaks returned guard lifetimes.
+                    // Keep the capture check in a separate let initializer too:
+                    // a tail call inherits the opaque expected type and loses
+                    // the diagnostic's source note on the tested compiler.
+                    let signature_function = original_generics.params.is_empty().then(|| quote! {
+                        pub(super) fn #signature_name<__Constructor>(constructor: __Constructor) -> __Constructor
+                        where
+                            __Constructor: for<#call_lifetime> Fn(#native_context_type) -> #helper_output,
+                        {
+                            constructor
+                        }
+                    });
                     let checked_closure = if original_generics.params.is_empty() {
                         let source_span = registration.constructor.as_ref().map_or_else(
                             || registration.ty.span(),
                             |constructor| constructor.inputs_begin.span,
                         );
                         quote::quote_spanned!(source_span=> {
-                            let __systasis_native_closure: __systasis_injected::#opaque_name #native_arguments = #native_closure;
-                            ::systasis::__private::check_native_constructor_captures(&__systasis_native_closure);
+                            let __systasis_native_closure =
+                                __systasis_injected::#signature_name(#native_closure);
+                            let __systasis_native_closure =
+                                ::systasis::__private::check_native_constructor_captures(__systasis_native_closure);
                             __systasis_native_closure
                         })
                     } else {
@@ -1106,6 +1119,7 @@ pub(crate) fn expand(
                     // an authored child borrow has its own longer lifetime.
                     // No borrow of the temporary context is returned.
                     constructor_functions.push(quote!(
+                        #signature_function
                         pub(super) struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
                             #(#native_context_fields,)*
                             pub(super) _children: __ContextChildren,

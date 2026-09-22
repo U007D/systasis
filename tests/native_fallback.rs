@@ -49,6 +49,40 @@ mod inferred {
     }
 }
 
+mod inferred_capture_with_guard {
+    use systasis::app_container::Error;
+
+    struct View<'a>(systasis::RefMut<'a, String>, usize);
+    trait IView {}
+    impl IView for View<'_> {}
+    trait IText {}
+    impl IText for String {}
+
+    #[systasis::container(require(Send, Sync))]
+    #[test]
+    fn checked_native_capture_preserves_returned_guard_lifetime() -> Result<(), Error> {
+        // An inferred capture selects native storage without a caller macro.
+        let label = String::from("label");
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(String::from("before"): String as IText);
+            register_type_with!(View<'_> as IView, try move || -> Result<View<'_>, Error> {
+                Ok(View(try_resolve_ref_mut!(IText)?, label.len()))
+            });
+        }
+        .build();
+        let mut view = container.try_resolve_i_view()?;
+        assert_eq!(view.1, 5);
+        assert!(matches!(
+            container.try_resolve_i_text_ref(),
+            Err(Error::ValueAccessContention)
+        ));
+        view.0.push_str("-after");
+        drop(view);
+        assert_eq!(&*container.try_resolve_i_view()?.0, "before-after");
+        Ok(())
+    }
+}
+
 mod send_only {
     use core::cell::Cell;
 

@@ -121,7 +121,7 @@ In a nongeneric function, a macro-containing constructor capturing a local
 borrow can currently fail with E0597. For example, `config: &str` borrowed from
 a local `String` and used in `move || format!("{config}")` reaches this storage
 limitation. The generated capture check has the following remedy in its source;
-whether rustc includes that source excerpt in the error is compiler-dependent:
+the tested compiler includes it in the local E0597 error:
 
 ```text
 systasis cannot store this borrowed capture here; register a non-borrowing implementation.
@@ -175,13 +175,14 @@ This is guidance for a current implementation limitation, not a new requirement
 that all captures be `'static`. Generic enclosing functions keep their existing
 borrowed-capture support. Rust's E0521 for an elided reference parameter does not
 show this source note, and generic native-storage failures still use ordinary
-compiler diagnostics. The installed rustc 1.97.0-nightly (2026-05-10) also omits
-the note for the tested local E0597 case. The rendered-remedy tests currently
-fail on this compiler; they remain unchanged. Earlier compiler results are
-historical evidence, not a custom structured message or an IDE-specific quick fix.
-The [packaged-consumer test](../tests/packaged_consumer.rs) includes the same
-rendered-remedy assertion and currently fails there too. Earlier runs verified
-the remedy and rewrite against extracted std/no_std crates.
+compiler diagnostics. The installed rustc 1.97.0-nightly (2026-05-10) now includes
+the remedy for both the macro-containing example and an inferred, macro-free
+borrowed capture. The capture check runs before assignment to opaque storage;
+a separate signature constraint preserves constructors returning dependency
+guards. The rendered-remedy checks and the
+[packaged-consumer test](../tests/packaged_consumer.rs) pass on std/no_std,
+including the owned-input and borrowed-helper rewrites. This remains a rendered
+source note, not a compiler-independent structured diagnostic or IDE quick fix.
 
 Do not resolve this gap by silently capturing extra bindings, changing captured
 values into references, adding allocation/type erasure, or adding new annotations.
