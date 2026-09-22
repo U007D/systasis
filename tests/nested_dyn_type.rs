@@ -18,7 +18,7 @@ mod leaf {
             register_value!(Value(42): Value as dyn IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -30,7 +30,7 @@ mod middle {
             register_container!(primary: &'a leaf::AppContainer);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -78,7 +78,7 @@ mod borrowed_payload {
                 register_value!(Value(input): Value<'data> as dyn IValue<Number = u32>);
             }
             .build();
-            call(container);
+            call(&container);
         }
     }
     mod middle {
@@ -92,7 +92,7 @@ mod borrowed_payload {
                 register_container!(primary: &'a leaf::AppContainer<'data>);
             }
             .build();
-            call(container);
+            call(&container);
         }
     }
     mod outer {

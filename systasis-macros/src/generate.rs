@@ -163,8 +163,8 @@ fn build_expression(expression: &mut Expr) -> Option<&mut Expr> {
 }
 
 // The declaration can stand alone or be followed by `.build()` and its result
-// handling. Do not search unrelated arguments or nested scopes: the hidden
-// owning anchor must live in the declaration's enclosing scope.
+// handling. Do not search unrelated arguments or nested scopes: registration
+// discovery follows the declaration's own expression chain.
 fn registration_expression(expression: &mut Expr) -> Option<&mut Expr> {
     if matches!(expression, Expr::Macro(registry)
         if registry.mac.path.segments.last().is_some_and(|segment| segment.ident == "systasis_container"))
@@ -236,7 +236,6 @@ pub(crate) fn expand(
     let mut opaque_definitions = Vec::new();
     let systasis_error_ident = Ident::new("__systasis_error", Span::mixed_site());
     let systasis_result_ident = Ident::new("__systasis_result", Span::mixed_site());
-    let systasis_owner_ident = Ident::new("__systasis_owner", Span::mixed_site());
     let systasis_builder_ident = Ident::new("__systasis_builder", Span::mixed_site());
     let slot_type = if local_policy {
         quote!(::systasis::__private::LocalTakeSlot)
@@ -579,7 +578,11 @@ pub(crate) fn expand(
                 policies.push(quote!(::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy>));
                 constants.push(quote!(pub(super) const #flag: bool = ::systasis::__private::Pick::<#original>::IS_COPY;));
             }
-            lifetimes.visit_type_mut(&mut registration.ty);
+            // A custom constructor stores its captures, not its output. Elided
+            // output lifetimes belong to each resolver call, not AppContainer.
+            if registration.constructor.is_none() {
+                lifetimes.visit_type_mut(&mut registration.ty);
+            }
             alias_policies.push(if projected {
                 crate::child_queries::projected_policy(&registration.ty, local_policy)
                     .unwrap_or_else(|| {
@@ -802,9 +805,15 @@ pub(crate) fn expand(
         for (i, registration) in registrations.iter().enumerate() {
             let first_implementation = implementations.len();
             let check = format_ident!("check_{i}");
-            let ty = &registration.ty;
+            let mut checked_type = registration.ty.clone();
+            let mut checked_lifetimes = Lifetimes(lifetimes.0.clone());
+            checked_lifetimes.visit_type_mut(&mut checked_type);
+            let ty = &checked_type;
             let interface = &registration.interface;
             let mut checked = generics.clone();
+            for lifetime in checked_lifetimes.0.iter().skip(lifetimes.0.len()) {
+                checked.params.insert(0, parse_quote!(#lifetime));
+            }
             let inherited = checked
                 .type_params_mut()
                 .filter_map(|parameter| {
@@ -1532,9 +1541,7 @@ pub(crate) fn expand(
             #(#validation_calls)*
             #(#capture_initialization)*
             let #children_ident = (#(#child_values,)*);
-            let #systasis_owner_ident=::core::pin::pin!(::core::cell::OnceCell::new());
             let #systasis_builder_ident=::systasis::__private::Builder::new(
-                #systasis_owner_ident.as_ref().get_ref(),
                 || {
                     let #systasis_error_ident: ::core::option::Option<#error_ty>=::core::result::Result::<(), ::core::convert::Infallible>::Ok(()).map_err(|never| match never {}).err();
                     #(#initialization)*

@@ -14,7 +14,7 @@ mod leaf {
             register_value!(value: String as IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -46,7 +46,7 @@ mod middle {
             });
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 

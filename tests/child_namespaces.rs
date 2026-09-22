@@ -18,7 +18,7 @@ mod child {
             register_value!(String::from("metrics"): String as dyn IValue in metrics);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 

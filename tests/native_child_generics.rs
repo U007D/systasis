@@ -28,7 +28,7 @@ mod leaf {
             register_value!(Payload(label,data): Payload<'env,T> as IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 macro_rules! ordered_case {
@@ -110,7 +110,7 @@ mod authored_names {
                 register_value!(7: u32 as IValue);
             }
             .build();
-            call(container);
+            call(&container);
         }
     }
 

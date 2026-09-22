@@ -18,7 +18,8 @@ dependency injection, concrete registered-type lookup, overrides, dependency
 layers, checked access, cloning, multi-trait groups, local namespaces, explicit dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
 Builders can be held, moved, built once, or dropped without running initializers.
-Building returns `Result<&AppContainer, E>` backed by a hidden scope-owned value.
+Building returns `Result<AppContainer, E>`; the caller owns the built container
+and may return it from the initialization function.
 The [usage guide](docs/USAGE.md) is also the crate-level API documentation;
 its examples compile and run as doctests.
 The requirements' complete [quick example](examples/quick_start.rs) is also

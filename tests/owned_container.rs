@@ -35,7 +35,7 @@ macro_rules! scenario {
                     register_value!(Database(String::from("db")): Database as IDatabase);
                 }.build::<Error>();
                 let container = built?;
-                accepts_named_container(container);
+                accepts_named_container(&container);
                 assert!(matches!(container.try_resolve_i_database(), Err(Error::ValueAlreadyConsumed)));
                 let service = container.try_resolve_i_service()?;
                 assert_eq!(service.database.name(), "db");

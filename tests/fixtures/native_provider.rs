@@ -10,7 +10,7 @@ pub mod public_result {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(Service as IService, move || Service(format!("{config}")));
         }.build();
-        inspect(container);
+        inspect(&container);
     }
 }
 
@@ -26,7 +26,7 @@ pub mod private_result {
         }.build();
         let service: Service = container.resolve_i_service();
         assert_eq!(service.0, "private");
-        inspect(container);
+        inspect(&container);
     }
 }
 
@@ -43,7 +43,7 @@ pub mod generic {
                 Service(label, value.clone())
             });
         }.build();
-        inspect(container);
+        inspect(&container);
     }
 }
 
@@ -57,7 +57,7 @@ pub mod borrowed_child {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Value(value): Value<'env> as IValue);
         }.build();
-        inspect(container);
+        inspect(&container);
     }
 }
 
@@ -69,6 +69,6 @@ pub mod borrowed_branch {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &'a Child<'env>);
         }.build();
-        inspect(container);
+        inspect(&container);
     }
 }

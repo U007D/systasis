@@ -19,7 +19,7 @@ mod child {
             register_value!(value: T as IValue);
         }
         .build();
-        use_child(container);
+        use_child(&container);
     }
 }
 

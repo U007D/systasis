@@ -39,7 +39,7 @@ macro_rules! scenario {
                 let Ok(container) = systasis::systasis_container! {
                     register_value!(String::from("value"): String as IValue);
                 }.build();
-                is_send(container);
+                is_send(&container);
                 let reader = container.try_resolve_i_value_ref()?;
                 let read_future = async move {
                     std::future::pending::<()>().await;
@@ -103,15 +103,15 @@ mod released {
             register_value!(String::from("value"): String as IValue);
         }
         .build();
-        is_send(container);
-        is_sync(container);
+        is_send(&container);
+        is_sync(&container);
         let future = async {
             {
                 let mut writer = container.try_resolve_i_value_ref_mut().unwrap();
                 writer.push('!');
             }
             std::future::pending::<()>().await;
-            std::hint::black_box(container);
+            std::hint::black_box(&container);
         };
         is_send(&future);
         pending(future, || {
@@ -157,15 +157,15 @@ fn main() {
     let Ok(container) = systasis::systasis_container! {
         register_value!(String::from("value"): String as IValue);
     }.build();
-    is_send(container);
+    is_send(&container);
     #[cfg(container_sync)]
-    is_sync(container);
+    is_sync(&container);
     #[cfg(container_reference)]
     {
         let future = async {
             { let guard = container.try_resolve_i_value_ref().unwrap(); std::hint::black_box(&*guard); }
             std::future::pending::<()>().await;
-            std::hint::black_box(container);
+            std::hint::black_box(&container);
         };
         is_send(&future);
     }
@@ -247,7 +247,7 @@ fn main() {
             assert!(!output.status.success(), "{case} unexpectedly compiled");
             let location = format!("--> {}:", source.display());
             let call = if case == "container_sync" {
-                "is_sync(container);"
+                "is_sync(&container);"
             } else {
                 "is_send(&future);"
             };

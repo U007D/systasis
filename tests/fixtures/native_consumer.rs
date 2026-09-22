@@ -39,7 +39,7 @@ mod borrowing_parent {
     trait IView {}
     impl IView for View<'_, '_> {}
 
-    fn receive<'call, 'env>(container: &'call AppContainer<'_, '_, 'env>) -> View<'call, 'env> {
+    fn receive<'call, 'env>(container: &'call AppContainer<'_, 'env>) -> View<'call, 'env> {
         container.try_resolve_i_view().unwrap()
     }
 
@@ -57,7 +57,7 @@ mod borrowing_parent {
                 Ok(View(value))
             });
         }.build();
-        let view = receive(container);
+        let view = receive(&container);
         assert_eq!(view.0.0, "borrowed child");
         assert_eq!(scoped_receive(container.primary()).0, "borrowed child");
         assert!(matches!(primary.try_resolve_i_value(), Err(Error::ValueAccessContention)));
@@ -74,7 +74,7 @@ mod nested_borrowing_parent {
     trait IView {}
     impl IView for View<'_, '_> {}
 
-    fn receive<'call, 'a, 'env>(container: &'call AppContainer<'_, '_, 'a, 'env>) -> View<'call, 'env> {
+    fn receive<'call, 'a, 'env>(container: &'call AppContainer<'_, 'a, 'env>) -> View<'call, 'env> {
         container.try_resolve_i_view().unwrap()
     }
 
@@ -92,7 +92,7 @@ mod nested_borrowing_parent {
                 Ok(View(value))
             });
         }.build();
-        let view = receive(container);
+        let view = receive(&container);
         assert_eq!(view.0.0, "nested borrowed child");
         assert_eq!(scoped_receive(container.branch()).0, "nested borrowed child");
         assert!(matches!(branch.primary().try_resolve_i_value(), Err(Error::ValueAccessContention)));

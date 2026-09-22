@@ -52,8 +52,8 @@ mod locals {
         }
         .build();
 
-        assert_eq!(count(container), 5);
-        assert_eq!(count(container), 5);
+        assert_eq!(count(&container), 5);
+        assert_eq!(count(&container), 5);
         assert_eq!(&*container.try_resolve_i_text_ref()?, "value");
         assert_eq!(container.try_resolve_i_text()?, "value");
         assert_eq!(
@@ -75,7 +75,7 @@ mod generic_consumable {
             register_value!(value as IValue);
         }
         .build();
-        let _: &AppContainer<T> = container;
+        let _: &AppContainer<T> = &container;
         assert_eq!(container.try_resolve_i_value()?, expected);
         assert_eq!(
             container.try_resolve_i_value(),
@@ -101,7 +101,7 @@ mod generic_copy {
             register_value!(value as IValue);
         }
         .build();
-        let _: &AppContainer<T> = container;
+        let _: &AppContainer<T> = &container;
         assert_eq!(container.resolve_i_value(), value);
         assert_eq!(container.resolve_i_value(), value);
     }

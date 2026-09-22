@@ -57,7 +57,7 @@ pub mod inferred_value {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value as crate::IValue);
         }.build();
-        use_container(container);
+        use_container(&container);
     }
 }
 pub mod grouped {
@@ -66,7 +66,7 @@ pub mod grouped {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: (T) as crate::IValue);
         }.build();
-        use_container(container);
+        use_container(&container);
     }
 }
 pub trait IArray {}
@@ -78,7 +78,7 @@ pub mod arrays {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: [T; N] as crate::IArray);
         }.build();
-        use_container(container);
+        use_container(&container);
     }
 }
 pub trait IBorrow {}
@@ -91,7 +91,7 @@ pub mod private_factory {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(Service as IService, || Service);
         }.build();
-        use_container(container);
+        use_container(&container);
     }
 }
 impl<T: ?Sized> IBorrow for &T {}
@@ -102,7 +102,7 @@ pub mod borrowed {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: &'a T as crate::IBorrow);
         }.build();
-        use_container(container);
+        use_container(&container);
     }
 }
 "#,

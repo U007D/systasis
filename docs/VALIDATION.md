@@ -7,6 +7,19 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 owned-build refactor: `.build()` returns an owned container, not a
+reference to a hidden owner. Full checked std/no_std workspace runs each pass
+441 tests, with zero failures and four intentionally ignored. New tests return
+containers from initialization functions, move captured state across threads,
+retain external references (including a borrowed field of an owned service),
+and check value/capture destruction. Compiler tests reject escaping local input
+borrows and moving a container while a resolved guard remains usable. Failed and
+abandoned build cleanup, auto traits, and existing resolver tests remain passing.
+Logs: `/private/tmp/systasis-owned-tests.log` and
+`/private/tmp/systasis-owned-no-std-tests.log`. No unsafe code or dependency was
+added; the builder's hidden owner and its two invariant diagnostics were removed.
+Optional-feature and extracted-package revalidation follow the requested type rename.
+
 Release verification at a7bd95b, on installed rustc 1.97.0-nightly
 (4b0c9d76a, 2026-05-10), ran every workspace test target without exclusions:
 

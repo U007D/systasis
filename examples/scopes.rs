@@ -49,5 +49,5 @@ fn main() -> Result<(), Error> {
     .build();
 
     // The generated owner stays in main's scope throughout application::run.
-    application::run(database)
+    application::run(&database)
 }

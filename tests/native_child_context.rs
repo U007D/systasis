@@ -16,7 +16,7 @@ mod leaf {
             register_value!(Borrowed(value): Borrowed<'env> as IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 mod single {
@@ -135,7 +135,7 @@ mod nested {
                 register_value!(value: String as IValue);
             }
             .build();
-            call(container);
+            call(&container);
         }
     }
     mod middle {
@@ -146,7 +146,7 @@ mod nested {
                 register_container!(primary: &'a leaf::AppContainer);
             }
             .build();
-            call(container);
+            call(&container);
         }
     }
     #[systasis::container]
@@ -229,7 +229,7 @@ mod local {
                 register_value!(Borrowed(value): Borrowed<'env> as IValue);
             }
             .build();
-            call(container);
+            call(&container);
         }
     }
 
@@ -316,7 +316,7 @@ mod nested_borrowed {
                 register_container!(primary: &'a leaf::AppContainer<'env>);
             }
             .build();
-            call(container);
+            call(&container);
         }
     }
 

@@ -228,7 +228,7 @@ pub mod child {
             register_type_with!(u32 as IFresh, || seed);
         }.build();
         assert_eq!(container.resolve_i_fresh(), 42);
-        visit(container);
+        visit(&container);
     }
 }
 pub mod outer {
@@ -258,7 +258,7 @@ pub mod outer {
         let moved_builder = builder;
         let Ok(container) = moved_builder.build();
         assert_eq!(container.resolve_i_check(), 42);
-        assert_eq!(named_container(container), 41);
+        assert_eq!(named_container(&container), 41);
         assert!(core::ptr::eq(container.primary(), container.primary()));
         let guard = container.try_resolve_i_stored_ref().unwrap();
         assert!(matches!(container.try_resolve_i_stored(), Err(systasis::app_container::Error::ValueAccessContention)));
@@ -285,8 +285,8 @@ pub mod native {
                 Word(bytes)
             });
         }.build();
-        assert_eq!(named(container), 42);
-        named(container)
+        assert_eq!(named(&container), 42);
+        named(&container)
     }
 }
 pub fn run() -> u32 {

@@ -46,7 +46,7 @@ mod copying {
             register_value!(black_box(17u64): u64 as IValue);
         }
         .build();
-        timed(|_| black_box(container).resolve_i_value())
+        timed(|_| black_box(&container).resolve_i_value())
     }
     pub fn handwritten() -> (Duration, u64) {
         let slot = CopySlot::new(black_box(17u64));
@@ -64,9 +64,9 @@ macro_rules! guarded {
                     register_value!(Value(black_box(0)): Value as IValue);
                 }.build();
                 match work {
-                    Work::Shared => timed(|_| black_box(container).try_resolve_i_value_ref().unwrap().0),
+                    Work::Shared => timed(|_| black_box(&container).try_resolve_i_value_ref().unwrap().0),
                     Work::Exclusive => timed(|_| {
-                        let mut guard = black_box(container).try_resolve_i_value_ref_mut().unwrap();
+                        let mut guard = black_box(&container).try_resolve_i_value_ref_mut().unwrap();
                         guard.0 += 1;
                         guard.0
                     }),
@@ -105,7 +105,7 @@ mod lazy {
             register_type_with!(Value as IValue, || construct(&calls));
         }
         .build();
-        timed(|_| black_box(container).resolve_i_value().0)
+        timed(|_| black_box(&container).resolve_i_value().0)
     }
     pub fn handwritten() -> (Duration, u64) {
         let calls = Cell::new(0);
@@ -135,7 +135,7 @@ macro_rules! lifecycle {
                     register_value!(Dropped { value: index, drops }: Dropped<'_> as IValue);
                 }.build();
                 if consume {
-                    let value = black_box(container).try_resolve_i_value().unwrap();
+                    let value = black_box(&container).try_resolve_i_value().unwrap();
                     black_box(value.value)
                 } else {
                     black_box(container);

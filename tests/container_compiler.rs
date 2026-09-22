@@ -60,21 +60,21 @@ fn container_diagnostics() {
             "scope_cannot_restore_restricted_owned_accessor",
             "",
             "register_value!(String::new(): String as IValue);",
-            "type M = systasis::scoped::mask::Mask<__systasis_injected::__SystasisRestrictionKey0, systasis::scoped::mask::Empty>; let scope = systasis::scoped::AsScope::<M>::scope(built.unwrap()); scope.try_resolve_i_value();",
+            "type M = systasis::scoped::mask::Mask<__systasis_injected::__SystasisRestrictionKey0, systasis::scoped::mask::Empty>; let container = built.unwrap(); let scope = systasis::scoped::AsScope::<M>::scope(&container); scope.try_resolve_i_value();",
             Some("E0599"),
         ),
         (
             "scope_cannot_consume_indirectly_through_factory",
             "",
             "register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> { Ok(try_resolve!(IValue)?.len()) });",
-            "type M = systasis::scoped::mask::Mask<__systasis_injected::__SystasisRestrictionKey0, systasis::scoped::mask::Empty>; let scope = systasis::scoped::AsScope::<M>::scope(built.unwrap()); scope.try_resolve_i_size();",
+            "type M = systasis::scoped::mask::Mask<__systasis_injected::__SystasisRestrictionKey0, systasis::scoped::mask::Empty>; let container = built.unwrap(); let scope = systasis::scoped::AsScope::<M>::scope(&container); scope.try_resolve_i_size();",
             Some("E0599"),
         ),
         (
             "scope_does_not_expose_backing_container",
             "",
             "register_value!(String::new(): String as IValue);",
-            "let scope = systasis::scoped::AsScope::<systasis::scoped::mask::Empty>::scope(built.unwrap()); scope.backing;",
+            "let container = built.unwrap(); let scope = systasis::scoped::AsScope::<systasis::scoped::mask::Empty>::scope(&container); scope.backing;",
             Some("E0616"),
         ),
         #[cfg(feature = "resolve_unchecked")]
@@ -666,7 +666,7 @@ fn container_diagnostics() {
             "local_not_sync",
             "require(!Sync)",
             "register_value!(String::new(): String as IValue);",
-            "fn check<T: Sync>(_: &T) {} check(built.unwrap());",
+            "fn check<T: Sync>(_: &T) {} check(&built.unwrap());",
             Some("E0277"),
         ),
         (

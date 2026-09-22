@@ -35,8 +35,8 @@ mod generic_fields {
 
         drop(unused);
         assert_eq!(drops.get(), 1);
-        assert_eq!(receive(container), 2);
-        assert_eq!(receive(container), 2);
+        assert_eq!(receive(&container), 2);
+        assert_eq!(receive(&container), 2);
         assert!(core::ptr::eq(values, &input.0));
     }
 

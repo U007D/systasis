@@ -17,7 +17,7 @@ mod child {
             register_value!(Borrowed(value): Borrowed<'env> as IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 

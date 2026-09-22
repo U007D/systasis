@@ -19,7 +19,7 @@ mod leaf {
                 Ok(try_resolve!(IValue)?.len())
             });
         }.build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -41,7 +41,7 @@ mod middle {
             });
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 

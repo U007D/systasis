@@ -33,7 +33,7 @@ mod owned {
             register_type_with!(&'_ [T; 2] as ISequence, move || &whole);
         }
         .build();
-        receive(container)
+        receive(&container)
     }
 
     #[test]
@@ -86,7 +86,7 @@ mod external_shared {
             register_type_with!(&'a [T; 2] as ISequence, move || whole);
         }
         .build();
-        receive(container)
+        receive(&container)
     }
 
     #[test]
@@ -225,8 +225,8 @@ mod explicit_shared {
             });
         }
         .build();
-        assert_eq!(receive(container), 2);
-        assert_eq!(receive(container), 2);
+        assert_eq!(receive(&container), 2);
+        assert_eq!(receive(&container), 2);
         assert!(core::ptr::eq(whole, &input));
     }
 

@@ -53,8 +53,8 @@ fn main() {
     fn receive(container: &AppContainer) -> String {
         container.resolve_i_message()
     }
-    assert_eq!(receive(container), "configuration");
-    assert_eq!(receive(container), "configuration");
+    assert_eq!(receive(&container), "configuration");
+    assert_eq!(receive(&container), "configuration");
     #[cfg(helper)]
     assert_eq!(text, "configuration");
 }

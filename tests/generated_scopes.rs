@@ -21,7 +21,7 @@ fn descriptor_retains_guards_without_exposing_backing_storage() -> Result<(), Er
     }
     .build();
     let guard = {
-        let scope = AsScope::<Empty>::scope(container);
+        let scope = AsScope::<Empty>::scope(&container);
         scope.try_resolve_i_value_ref()?
     };
     assert_eq!(&*guard, "scoped");
@@ -30,7 +30,7 @@ fn descriptor_retains_guards_without_exposing_backing_storage() -> Result<(), Er
         Err(Error::ValueAccessContention)
     ));
     drop(guard);
-    let scope = AsScope::<Empty>::scope(container);
+    let scope = AsScope::<Empty>::scope(&container);
     assert_eq!(scope.try_resolve_i_value()?, "scoped");
     Ok(())
 }
@@ -46,7 +46,7 @@ mod restricted {
         }
         .build();
         type Restrictions = Mask<__systasis_injected::__SystasisRestrictionKey0, Empty>;
-        let scope = AsScope::<Restrictions>::scope(container);
+        let scope = AsScope::<Restrictions>::scope(&container);
         scope.try_resolve_i_value_ref_mut()?.push('!');
         assert_eq!(&*scope.try_resolve_i_value_ref()?, "reserved-name-only!");
         assert_eq!(scope.try_resolve_i_value_clone()?, "reserved-name-only!");
@@ -66,7 +66,7 @@ mod factory {
             register_type_with!(Value as IValue, move || Value(text.clone()));
         }
         .build();
-        let scope = AsScope::<Empty>::scope(container);
+        let scope = AsScope::<Empty>::scope(&container);
         assert_eq!(scope.resolve_i_value().0, "factory");
         assert_eq!(scope.resolve_i_value().0, "factory");
     }
@@ -83,7 +83,7 @@ mod borrowed_context {
         }
         .build();
         let read = {
-            let scope = AsScope::<Empty>::scope(container);
+            let scope = AsScope::<Empty>::scope(&container);
             let context = scope.borrow_context();
             context.descriptor().try_resolve_i_value_ref()?
         };
@@ -94,7 +94,7 @@ mod borrowed_context {
         ));
         drop(read);
         let mut write = {
-            let scope = AsScope::<Empty>::scope(container);
+            let scope = AsScope::<Empty>::scope(&container);
             let context = scope.borrow_context();
             context.descriptor().try_resolve_i_value_ref_mut()?
         };

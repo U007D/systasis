@@ -44,8 +44,8 @@ mod inferred {
             register_type_with!(String as IText, move || text.clone());
         }
         .build();
-        assert_eq!(receive(container), "inferred");
-        assert_eq!(receive(container), "inferred");
+        assert_eq!(receive(&container), "inferred");
+        assert_eq!(receive(&container), "inferred");
     }
 }
 
@@ -176,7 +176,7 @@ mod generic {
             register_type_with!(T as IValue, move || capture.clone());
         }
         .build();
-        (receive(container), receive(container))
+        (receive(&container), receive(&container))
     }
 
     #[test]

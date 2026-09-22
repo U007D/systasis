@@ -10,7 +10,7 @@ mod generic_child {
             register_value!(value: T as IValue);
         }
         .build();
-        use_child(container);
+        use_child(&container);
     }
 }
 
@@ -51,7 +51,7 @@ mod borrowed_child {
             register_type_with!(String as IText, move || config.to_owned());
         }
         .build();
-        use_child(container);
+        use_child(&container);
     }
 }
 

@@ -35,7 +35,7 @@ mod child {
             register_value!(Resource { drops }: Resource as IResource);
         }
         .build();
-        inspect(container);
+        inspect(&container);
     }
 }
 

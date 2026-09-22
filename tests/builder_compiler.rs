@@ -49,7 +49,7 @@ fn configure() {
     };
     let moved = builder;
     let Ok(container) = moved.build();
-    assert_eq!(inspect(container), 7);
+    assert_eq!(inspect(&container), 7);
     assert_eq!(container.resolve_i_value(), 7);
 }
 fn main() { configure(); }
@@ -142,11 +142,58 @@ fn configure() -> &'static AppContainer {
         register_value!(7_usize: usize as IValue);
     };
     let Ok(container) = builder.build();
+    &container
+}
+fn main() { let _ = configure(); }
+"#,
+            Some(("E0515", "cannot return reference to local variable")),
+        ),
+        (
+            "owned_container_can_leave_initialization_scope",
+            r#"
+#[systasis::container]
+fn configure() -> AppContainer {
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(7_usize: usize as IValue);
+    }.build();
+    container
+}
+fn main() { assert_eq!(configure().resolve_i_value(), 7); }
+"#,
+            None,
+        ),
+        (
+            "owned_container_cannot_retain_a_local_reference",
+            r#"
+trait IReference {} impl IReference for &str {}
+#[systasis::container]
+fn configure() -> AppContainer<'static> {
+    let text = String::from("local");
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(text.as_str(): &str as IReference);
+    }.build();
     container
 }
 fn main() { let _ = configure(); }
 "#,
-            Some(("E0515", "cannot return value referencing")),
+            Some(("E0373", "it borrows `text`")),
+        ),
+        (
+            "owned_container_cannot_move_while_a_guard_borrows_it",
+            r#"
+trait IText {} impl IText for String {}
+#[systasis::container]
+fn configure() {
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(String::from("value"): String as IText);
+    }.build();
+    let guard = container.try_resolve_i_text_ref().unwrap();
+    drop(container);
+    assert_eq!(&*guard, "value");
+}
+fn main() { configure(); }
+"#,
+            Some(("E0505", "cannot move out of `container`")),
         ),
         (
             "pending_shared_borrow_prevents_mutation",

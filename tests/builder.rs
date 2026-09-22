@@ -74,7 +74,7 @@ mod delayed {
         let moved_builder = builder;
         let Ok(container) = moved_builder.build();
         assert_eq!(calls.get(), 1);
-        assert_eq!(read(container), 7);
+        assert_eq!(read(&container), 7);
         assert_eq!(container.resolve_i_fresh(), 15);
         assert_eq!(container.resolve_i_fresh(), 15);
         assert_eq!(text, "a different binding");

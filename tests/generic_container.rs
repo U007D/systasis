@@ -35,7 +35,7 @@ mod bounded {
         assert_eq!(container.resolve_i_value(), value);
         assert_eq!(container.resolve_i_value(), value);
         assert_eq!(*container.resolve_i_value_ref(), value);
-        super::named_parameter(container, value);
+        super::named_parameter(&container, value);
     }
 }
 

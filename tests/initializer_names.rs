@@ -109,7 +109,7 @@ mod leaf {
             register_value!(String::from("child"): String as IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -122,7 +122,7 @@ mod middle {
             register_container!(primary: &'a leaf::AppContainer);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 

@@ -10,7 +10,7 @@ mod child {
             register_value!(7: u32 as IValue);
         }
         .build();
-        use_child(container);
+        use_child(&container);
     }
 }
 

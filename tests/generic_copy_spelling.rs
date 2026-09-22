@@ -20,7 +20,7 @@ mod parenthesized_registration {
             register_value!(value: ((T)) as IValue);
         }
         .build();
-        inspect(container)
+        inspect(&container)
     }
 }
 

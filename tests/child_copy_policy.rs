@@ -11,7 +11,7 @@ mod child {
             register_value!(value: T as IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -24,7 +24,7 @@ mod copied_child {
             register_value!(value: T as IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 

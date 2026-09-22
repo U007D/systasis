@@ -142,7 +142,7 @@ mod child_hygiene {
             register_value!(String::from("value"): String as IDatabase);
         }
         .build();
-        outer::run(container)
+        outer::run(&container)
     }
 }
 

@@ -76,7 +76,7 @@ mod leaf {
             register_value!(value: u32 as dyn IValue);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -93,7 +93,7 @@ mod middle {
             register_container!(replica: &'a leaf::AppContainer);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 

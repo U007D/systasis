@@ -2,18 +2,18 @@
 
 ## Generated ownership and the builder
 
-The declaration creates a hidden pinned `OnceCell<AppContainer>` in its enclosing
-scope. One consuming builder holds a shared reference to that owner and a safe
-`FnOnce` initializer. Building runs initialization, stores the successful container
-once, and returns a shared reference; it never exposes the owner for replacement.
-The owner is not part of `AppContainer`, so it does not alter that type's auto
-traits. Abandoning the builder drops its captures without running initialization.
-Failure drops partial state before returning, except values owned by the error.
+A consuming builder retains a safe `FnOnce` initializer. Building executes it
+and returns an owned `AppContainer`; there is no hidden scope owner or allocation.
+The container owns its slots and constructor captures. It may retain references
+to external inputs, with ordinary Rust lifetime checks. Resolver references and
+guards borrow `&self`, preventing moves or destruction while those borrows remain
+usable. Stored internal borrows are not supported by this mechanism.
 
-The builder's two `unreachable!` diagnostics express internal invariants: generated
-code creates exactly one writer for a fresh owner and consumes it; a successful
-write followed by shared access cannot observe an empty cell. No unsafe code,
-allocation or self-referential storage is introduced by this mechanism.
+The generated type remains `!Unpin`, but construction does not pin its result.
+No storage operation relies on pinning: address stability during access follows
+from the resolver borrow. Abandoning the builder drops its captures without
+running initialization. Failure drops partial state before returning, except
+values owned by the error. The builder adds no unsafe code or invariant panics.
 
 ## Test-only allocator instrumentation
 

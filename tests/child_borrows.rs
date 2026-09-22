@@ -19,7 +19,7 @@ mod child {
                 Ok(try_resolve!(IValue)?.len())
             });
         }.build();
-        call(container);
+        call(&container);
     }
 }
 

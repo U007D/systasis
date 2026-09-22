@@ -22,7 +22,7 @@ macro_rules! scenario {
                     let Ok(container) = systasis::systasis_container! {
                         register_value!(Packet([value; 4]): Packet as dyn IPacket);
                     }.build();
-                    call(container)
+                    call(&container)
                 }
             }
 
@@ -34,7 +34,7 @@ macro_rules! scenario {
                         register_container!(primary: &'a leaf::AppContainer);
                         register_container!(replica: &'a leaf::AppContainer);
                     }.build();
-                    call(container)
+                    call(&container)
                 }
             }
 
@@ -95,7 +95,7 @@ macro_rules! scenario {
                         });
                     }.build::<Error>()?;
                     for _ in 0..2 {
-                        let view = core::hint::black_box(container).try_resolve_i_view()?;
+                        let view = core::hint::black_box(&container).try_resolve_i_view()?;
                         assert_eq!(view.0.0, [11; 4]);
                         assert!(matches!(branch.primary().try_resolve_i_packet(), Err(Error::ValueAccessContention)));
                         drop(view);

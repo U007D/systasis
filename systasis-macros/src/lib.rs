@@ -48,8 +48,8 @@ pub fn __systasis_erase_configuration(
 ///
 /// The function contains one `systasis_container!` declaration with stored values,
 /// fresh constructors, or named child containers. Its consuming `.build()`
-/// transition returns `Result<&AppContainer, E>`; generated code retains the
-/// pinned owner until the enclosing scope exits.
+/// transition returns `Result<AppContainer, E>`, transferring ownership to the
+/// caller. Resolved references and guards borrow that owned container.
 ///
 /// Optional `require(Send)`, `require(Sync)`, or `require(Send, Sync)` arguments
 /// assert the completed container's auto traits. `require(!Sync)` instead selects

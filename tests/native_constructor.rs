@@ -30,7 +30,7 @@ fn native_macro_captures_are_lazy_repeatable_and_nameable() {
     }
     .build();
     assert_eq!(observed.load(Ordering::SeqCst), 0);
-    assert_eq!(receive(container), "configuration");
+    assert_eq!(receive(&container), "configuration");
     assert_eq!(container.resolve_i_service().0, "configuration");
     assert_eq!(observed.load(Ordering::SeqCst), 2);
 }
@@ -51,8 +51,8 @@ mod inferred_capture {
             register_type_with!(Service as IService, move || Service(format!("{config}")));
         }
         .build();
-        assert_eq!(receive(container), "inferred");
-        assert_eq!(receive(container), "inferred");
+        assert_eq!(receive(&container), "inferred");
+        assert_eq!(receive(&container), "inferred");
     }
 }
 
@@ -244,7 +244,7 @@ mod generic_capture {
         ) -> View<'env, T> {
             container.resolve_i_view()
         }
-        let View(observed, value) = receive(container);
+        let View(observed, value) = receive(&container);
         assert_eq!(observed, label);
         drop(value);
     }
@@ -283,7 +283,7 @@ mod children {
                 register_type_with!(Service as IService, move || Service(format!("{config}")));
             }
             .build();
-            replica_factory::run(container);
+            replica_factory::run(&container);
         }
     }
     mod replica_factory {
@@ -295,7 +295,7 @@ mod children {
                 register_type_with!(Service as IService, move || Service(format!("{config}")));
             }
             .build();
-            check(primary, container);
+            check(primary, &container);
         }
     }
     #[systasis::container]

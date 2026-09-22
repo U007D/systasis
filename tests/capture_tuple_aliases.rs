@@ -22,7 +22,7 @@ mod borrowed {
             register_type_with!(&'a str as IText, || head.as_str());
         }
         .build();
-        call(receive(container));
+        call(receive(&container));
     }
     #[test]
     fn nested_borrowed_alias_has_nameable_container_and_returned_reference() {
@@ -156,7 +156,7 @@ mod generic {
             register_type_with!(usize as ILength, || head.as_ref().len());
         }
         .build();
-        assert_eq!(receive(container), 4);
+        assert_eq!(receive(&container), 4);
     }
     #[test]
     fn generic_alias_keeps_only_authored_container_parameters() {
@@ -198,7 +198,7 @@ mod const_lifetime {
             register_type_with!(usize as ILength, || tail.len());
         }
         .build();
-        assert_eq!(receive(container), "input");
+        assert_eq!(receive(&container), "input");
         assert_eq!(container.resolve_i_length(), N);
     }
     #[test]
@@ -267,7 +267,7 @@ pub fn run<'a>(value: &'a Cell<usize>, call: impl FnOnce(&AppContainer<'a>)) {
     let Ok(container) = systasis::systasis_container! {
         register_type_with!(usize as ILength, || head.0.get());
     }.build();
-    call(container);
+    call(&container);
 }
 "#;
     let consumer = r#"

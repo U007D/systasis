@@ -28,7 +28,7 @@ mod conflicting {
         }
         .build();
         fn guarantees<T: Send + Sync>(_: &T) {}
-        guarantees(container);
+        guarantees(&container);
         assert_eq!(container.resolve_i_value(), ordinary());
     }
 }

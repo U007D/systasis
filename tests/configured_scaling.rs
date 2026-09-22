@@ -102,7 +102,7 @@ fn main() {
     let Ok(container) = systasis::systasis_container! {
         register_type_with!(u32 as IValue, move || __SystasisConfiguration_main + value_255);
     }.build();
-    assert_eq!(named(container), 258);
+    assert_eq!(named(&container), 258);
 }
 "#,
     );
@@ -121,7 +121,7 @@ mod {module} {{
         let Ok(container) = systasis::systasis_container! {{
             register_type_with!(u32 as IValue, move || value);
         }}.build();
-        assert_eq!(named(container), 3);
+        assert_eq!(named(&container), 3);
     }}
 }}
 "#

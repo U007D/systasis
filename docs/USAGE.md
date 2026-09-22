@@ -71,7 +71,7 @@ fn main() -> Result<(), Error> {
         register_type_with!(String as ILabel, move || label.clone());
     }.build();
 
-    assert_eq!(count(container), 7);
+    assert_eq!(count(&container), 7);
     assert_eq!(container.resolve_i_count(), 7); // Copy: repeatable, no lock.
     assert_eq!(container.resolve_i_label(), "request");
     assert_eq!(container.resolve_i_label(), "request"); // A fresh String.
@@ -95,9 +95,12 @@ fn main() -> Result<(), Error> {
 }
 ```
 
-`build()` returns `Result<&AppContainer, E>`, not an owned container. Generated
-code keeps the pinned owner alive until the enclosing scope exits, preventing
-early destruction while resolved values or guards still borrow its contents.
+`build()` returns `Result<AppContainer, E>`. The caller owns the container and
+can return it from its initialization function. Pass `&container` to functions
+accepting a shared container reference. Resolved borrows prevent moving or
+dropping the container while those borrows remain usable. References stored in
+the container must refer to data that outlives them; borrowing another stored
+registration remains deferred.
 Infallible builds infer the never error type, allowing `let Ok(container) = ...`.
 Use `.build::<E>()` when a fallible initializer needs an explicit error type.
 A fallible constructor alone does not make build fallible: it has not run yet.
@@ -549,7 +552,7 @@ fn main() -> Result<(), Error> {
     let Ok(database) = systasis::systasis_container! {
         register_value!(String::from("application"): String as IDatabase);
     }.build();
-    application::run(database)
+    application::run(&database)
 }
 ```
 

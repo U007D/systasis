@@ -60,7 +60,7 @@ mod mutable_tail_auto_traits {
         }
         .build();
         fn requires_send<T: Send>(_: &T) {}
-        requires_send(container);
+        requires_send(&container);
         head.set(9);
         assert_eq!(container.resolve_i_value(), 2);
     }
@@ -136,7 +136,7 @@ mod shared {
         }
         .build();
         assert_eq!(c.resolve_i_value(), 3);
-        assert!(core::ptr::eq(receive(c), &input[1..]));
+        assert!(core::ptr::eq(receive(&c), &input[1..]));
     }
     #[test]
     fn generic_shared_slice_returns_original_tail_from_named_container() {
