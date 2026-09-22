@@ -44,11 +44,11 @@ pub fn __systasis_erase_configuration(
     proc_macro::TokenStream::new()
 }
 
-/// Generate the module-scope `AppContainer` declared inside this function.
+/// Generate the module-scope `SystasisContainer` declared inside this function.
 ///
 /// The function contains one `systasis_container!` declaration with stored values,
 /// fresh constructors, or named child containers. Its consuming `.build()`
-/// transition returns `Result<AppContainer, E>`, transferring ownership to the
+/// transition returns `Result<SystasisContainer, E>`, transferring ownership to the
 /// caller. Resolved references and guards borrow that owned container.
 ///
 /// Optional `require(Send)`, `require(Sync)`, or `require(Send, Sync)` arguments

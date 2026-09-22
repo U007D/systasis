@@ -50,7 +50,7 @@ fn main() {
     drop(unrelated);
     #[cfg(any(ignored, static_reference, wrong_output))]
     drop(text);
-    fn receive(container: &AppContainer) -> String {
+    fn receive(container: &SystasisContainer) -> String {
         container.resolve_i_message()
     }
     assert_eq!(receive(&container), "configuration");

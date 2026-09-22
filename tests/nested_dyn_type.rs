@@ -13,7 +13,7 @@ mod leaf {
         }
     }
     #[systasis::container]
-    pub fn run(call: impl FnOnce(&AppContainer)) {
+    pub fn run(call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Value(42): Value as dyn IValue);
         }
@@ -25,9 +25,12 @@ mod leaf {
 mod middle {
     use super::*;
     #[systasis::container]
-    pub fn run<'a>(primary: &'a leaf::AppContainer, call: impl FnOnce(&AppContainer<'a>)) {
+    pub fn run<'a>(
+        primary: &'a leaf::SystasisContainer,
+        call: impl FnOnce(&SystasisContainer<'a>),
+    ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer);
+            register_container!(primary: &'a leaf::SystasisContainer);
         }
         .build();
         call(&container);
@@ -39,9 +42,9 @@ mod outer {
     trait IObserved {}
     impl IObserved for u32 {}
     #[systasis::container]
-    pub fn run<'a>(branch: &middle::AppContainer<'a>) -> Result<u32, Error> {
+    pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<u32, Error> {
         let container = systasis::systasis_container! {
-            register_container!(branch: &middle::AppContainer<'a>);
+            register_container!(branch: &middle::SystasisContainer<'a>);
             register_value!({
                 let guard = try_resolve_dyn_ref_from!(IValue, branch::primary)?;
                 let value: &resolve_type_from!(dyn IValue, branch::primary) = &*guard;
@@ -73,7 +76,7 @@ mod borrowed_payload {
             }
         }
         #[systasis::container(require(!Sync))]
-        pub fn run<'data>(input: &'data u32, call: impl FnOnce(&AppContainer<'data>)) {
+        pub fn run<'data>(input: &'data u32, call: impl FnOnce(&SystasisContainer<'data>)) {
             let Ok(container) = systasis::systasis_container! {
                 register_value!(Value(input): Value<'data> as dyn IValue<Number = u32>);
             }
@@ -85,11 +88,11 @@ mod borrowed_payload {
         use super::*;
         #[systasis::container(require(!Sync))]
         pub fn run<'a, 'data>(
-            primary: &'a leaf::AppContainer<'data>,
-            call: impl FnOnce(&AppContainer<'a, 'data>),
+            primary: &'a leaf::SystasisContainer<'data>,
+            call: impl FnOnce(&SystasisContainer<'a, 'data>),
         ) {
             let Ok(container) = systasis::systasis_container! {
-                register_container!(primary: &'a leaf::AppContainer<'data>);
+                register_container!(primary: &'a leaf::SystasisContainer<'data>);
             }
             .build();
             call(&container);
@@ -99,15 +102,15 @@ mod borrowed_payload {
         use super::*;
         trait IObserved {}
         impl IObserved for u32 {}
-        fn ordinary_rust_control<'a, 'data>(branch: &middle::AppContainer<'a, 'data>) {
-            fn needs_relationship<'a, 'data: 'a>(_: &middle::AppContainer<'a, 'data>) {}
+        fn ordinary_rust_control<'a, 'data>(branch: &middle::SystasisContainer<'a, 'data>) {
+            fn needs_relationship<'a, 'data: 'a>(_: &middle::SystasisContainer<'a, 'data>) {}
             needs_relationship(branch);
         }
         #[systasis::container(require(!Sync))]
-        pub fn run<'a, 'data>(branch: &middle::AppContainer<'a, 'data>) -> Result<u32, Error> {
+        pub fn run<'a, 'data>(branch: &middle::SystasisContainer<'a, 'data>) -> Result<u32, Error> {
             ordinary_rust_control(branch);
             let container = systasis::systasis_container! {
-                register_container!(branch: &middle::AppContainer<'a, 'data>);
+                register_container!(branch: &middle::SystasisContainer<'a, 'data>);
                 register_value!({
                     let guard = try_resolve_dyn_ref_from!(IValue<Number = u32>, branch::primary)?;
                     let value: &resolve_type_from!(dyn IValue<Number = u32>, branch::primary) = &*guard;

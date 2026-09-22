@@ -12,7 +12,7 @@ struct Service(String);
 trait IService {}
 impl IService for Service {}
 
-fn receive(container: &AppContainer) -> String {
+fn receive(container: &SystasisContainer) -> String {
     container.resolve_i_service().0
 }
 
@@ -38,7 +38,7 @@ fn native_macro_captures_are_lazy_repeatable_and_nameable() {
 mod inferred_capture {
     use super::{IService, Service};
 
-    fn receive(container: &AppContainer) -> String {
+    fn receive(container: &SystasisContainer) -> String {
         container.resolve_i_service().0
     }
 
@@ -240,7 +240,7 @@ mod generic_capture {
         }
         .build();
         fn receive<'env, T: Clone + Send + Sync>(
-            container: &AppContainer<'env, T>,
+            container: &SystasisContainer<'env, T>,
         ) -> View<'env, T> {
             container.resolve_i_view()
         }
@@ -289,7 +289,7 @@ mod children {
     mod replica_factory {
         use super::*;
         #[systasis::container]
-        pub fn run(primary: &leaf::AppContainer) {
+        pub fn run(primary: &leaf::SystasisContainer) {
             let config: String = String::from("replica");
             let Ok(container) = systasis::systasis_container! {
                 register_type_with!(Service as IService, move || Service(format!("{config}")));
@@ -299,10 +299,13 @@ mod children {
         }
     }
     #[systasis::container]
-    fn check<'a>(primary: &'a leaf::AppContainer, replica: &'a replica_factory::AppContainer) {
+    fn check<'a>(
+        primary: &'a leaf::SystasisContainer,
+        replica: &'a replica_factory::SystasisContainer,
+    ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer);
-            register_container!(replica: &'a replica_factory::AppContainer);
+            register_container!(primary: &'a leaf::SystasisContainer);
+            register_container!(replica: &'a replica_factory::SystasisContainer);
             register_type_with!(Service as IService, || {
                 let primary = resolve_from!(IService, primary);
                 let replica = resolve_from!(IService, replica);

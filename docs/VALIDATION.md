@@ -7,6 +7,21 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 generated-type rename: the public type is now `SystasisContainer`.
+The user's `pub fn init_container() -> Result<SystasisContainer, Box<dyn Error +
+Send + 'static>>` example with `.build()?` passes on std/no_std. Existing
+cross-crate and subcontainer tests use the new name; resolution error messages
+name it too. No compatibility alias or configurable-name option was added.
+
+Full std/no_std workspace runs with `resolve_unchecked,experimental-hardware`
+each pass 448 tests, zero failures and four intentionally ignored. Extracted
+package consumers pass separately on both backends. All-target optional-feature
+Clippy and warnings-denied Rustdoc pass on both backends. Formatting and diff
+checks pass. Logs: `/private/tmp/systasis-renamed-{std,no-std}-tests.log`,
+`/private/tmp/systasis-renamed-package.log`, and the corresponding `clippy`/`doc`
+logs (the std lint/doc filenames omit `std-`). No unsafe implementation, compiler
+feature, dependency or toolchain changed; Miri was not rerun.
+
 2026-09-22 owned-build refactor: `.build()` returns an owned container, not a
 reference to a hidden owner. Full checked std/no_std workspace runs each pass
 441 tests, with zero failures and four intentionally ignored. New tests return
@@ -18,7 +33,7 @@ abandoned build cleanup, auto traits, and existing resolver tests remain passing
 Logs: `/private/tmp/systasis-owned-tests.log` and
 `/private/tmp/systasis-owned-no-std-tests.log`. No unsafe code or dependency was
 added; the builder's hidden owner and its two invariant diagnostics were removed.
-Optional-feature and extracted-package revalidation follow the requested type rename.
+Optional-feature and extracted-package revalidation is recorded above.
 
 Release verification at a7bd95b, on installed rustc 1.97.0-nightly
 (4b0c9d76a, 2026-05-10), ran every workspace test target without exclusions:

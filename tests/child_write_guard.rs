@@ -11,7 +11,7 @@ mod child {
     use super::*;
 
     #[systasis::container]
-    pub fn run<'env>(value: &'env str, call: impl FnOnce(&AppContainer<'env>)) {
+    pub fn run<'env>(value: &'env str, call: impl FnOnce(&SystasisContainer<'env>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Borrowed(value): Borrowed<'env> as IValue);
         }
@@ -28,9 +28,9 @@ mod parent {
     impl IEditor for Editor<'_, '_> {}
 
     #[systasis::container(require(Send, Sync))]
-    fn check<'env>(primary: &child::AppContainer<'env>, replacement: &'env str) {
+    fn check<'env>(primary: &child::SystasisContainer<'env>, replacement: &'env str) {
         let Ok(container) = systasis::systasis_container! {
-        register_container!(primary: &child::AppContainer<'env>);
+        register_container!(primary: &child::SystasisContainer<'env>);
         register_type_with!(Editor<'_, 'env> as IEditor, try || -> Result<Editor<'_, 'env>, Error> {
             let value = try_resolve_ref_mut_from!(IValue, primary)?;
             Ok(Editor(value))

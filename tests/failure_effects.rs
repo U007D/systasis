@@ -30,7 +30,7 @@ mod child {
     use super::*;
 
     #[systasis::container]
-    pub fn with_resource(drops: Rc<Cell<usize>>, inspect: impl FnOnce(&AppContainer)) {
+    pub fn with_resource(drops: Rc<Cell<usize>>, inspect: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Resource { drops }: Resource as IResource);
         }
@@ -43,9 +43,9 @@ mod consumed_child {
     use super::*;
 
     #[systasis::container]
-    fn fail(primary: &child::AppContainer, drops: &Cell<usize>) {
+    fn fail(primary: &child::SystasisContainer, drops: &Cell<usize>) {
         let built = systasis::systasis_container! {
-            register_container!(primary: &child::AppContainer);
+            register_container!(primary: &child::SystasisContainer);
             register_value!({
                 // The dependency forces transfer before this initializer fails.
                 let _resource = try_resolve_ref!(IResource).map_err(Failure::Access)?;
@@ -161,9 +161,9 @@ mod guarded_error {
     }
 
     #[systasis::container]
-    fn fail<'a>(primary: &'a child::AppContainer) -> GuardFailure<'a> {
+    fn fail<'a>(primary: &'a child::SystasisContainer) -> GuardFailure<'a> {
         let built = systasis::systasis_container! {
-            register_container!(primary: &'a child::AppContainer);
+            register_container!(primary: &'a child::SystasisContainer);
             register_value!({
                 let guard = try_resolve_ref_from!(IResource, primary).map_err(GuardFailure::Access)?;
                 Err::<usize, GuardFailure<'a>>(GuardFailure::Rejected(guard))?

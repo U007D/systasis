@@ -12,7 +12,7 @@ mod leaf {
     pub trait ISize {}
     impl ISize for usize {}
     #[systasis::container]
-    pub fn run(value: String, call: impl FnOnce(&AppContainer)) {
+    pub fn run(value: String, call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: String as IValue);
             register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> {
@@ -29,13 +29,13 @@ mod middle {
     impl ILength for usize {}
     #[systasis::container]
     pub fn run<'a>(
-        primary: &'a leaf::AppContainer,
-        replica: &'a leaf::AppContainer,
-        call: impl FnOnce(&AppContainer<'a>),
+        primary: &'a leaf::SystasisContainer,
+        replica: &'a leaf::SystasisContainer,
+        call: impl FnOnce(&SystasisContainer<'a>),
     ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer);
-            register_container!(replica: &'a leaf::AppContainer);
+            register_container!(primary: &'a leaf::SystasisContainer);
+            register_container!(replica: &'a leaf::SystasisContainer);
             register_type_with!(usize as ILength, try || -> Result<usize, Error> {
                 Ok(try_resolve_ref_from!(IValue, primary)?.len())
             });
@@ -55,9 +55,9 @@ mod outer {
         scope.try_resolve_i_length()
     }
     #[systasis::container]
-    pub fn run<'a>(branch: &middle::AppContainer<'a>) -> Result<(), Error> {
+    pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_container!(branch: &middle::AppContainer<'a>);
+            register_container!(branch: &middle::SystasisContainer<'a>);
             register_value!(try_resolve_from!(IValue, branch::replica)?: resolve_type_from!(IValue, branch::replica) as ICopied);
             register_type_with!(usize as IObserved, try || -> Result<usize, Error> {
                 Ok(try_resolve_ref_from!(IValue, branch::primary)?.len())

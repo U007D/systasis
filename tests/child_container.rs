@@ -5,7 +5,7 @@ mod child {
     pub trait IValue {}
     impl IValue for u32 {}
     #[systasis::container]
-    pub fn run(use_child: impl FnOnce(&AppContainer)) {
+    pub fn run(use_child: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(7: u32 as IValue);
         }
@@ -17,7 +17,7 @@ mod child {
 mod outer {
     trait ILength {}
     impl ILength for u32 {}
-    type Alias = super::child::AppContainer;
+    type Alias = super::child::SystasisContainer;
     fn scoped_lookup(scope: &primary::SubContainer<'_>) -> u32 {
         scope.resolve_i_value()
     }

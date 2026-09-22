@@ -40,7 +40,7 @@ mod bounded {
 }
 
 fn named_parameter<T: Copy + PartialEq + core::fmt::Debug>(
-    container: &bounded::AppContainer<T>,
+    container: &bounded::SystasisContainer<T>,
     expected: T,
 ) {
     assert_eq!(container.resolve_i_value(), expected);

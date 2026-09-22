@@ -11,7 +11,7 @@ impl IView for View<'_, '_> {}
 mod leaf {
     use super::*;
     #[systasis::container]
-    pub fn run<'env>(value: &'env str, call: impl FnOnce(&AppContainer<'env>)) {
+    pub fn run<'env>(value: &'env str, call: impl FnOnce(&SystasisContainer<'env>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Borrowed(value): Borrowed<'env> as IValue);
         }
@@ -22,9 +22,9 @@ mod leaf {
 mod single {
     use super::*;
     #[systasis::container]
-    fn check<'env>(primary: &leaf::AppContainer<'env>) {
+    fn check<'env>(primary: &leaf::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &leaf::AppContainer<'env>);
+            register_container!(primary: &leaf::SystasisContainer<'env>);
             register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
                 let value = try_resolve_ref_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
@@ -58,12 +58,12 @@ mod multiple {
     impl IPair for Pair<'_, '_, '_> {}
     #[systasis::container]
     fn check<'left, 'right>(
-        primary: &leaf::AppContainer<'left>,
-        replica: &leaf::AppContainer<'right>,
+        primary: &leaf::SystasisContainer<'left>,
+        replica: &leaf::SystasisContainer<'right>,
     ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &leaf::AppContainer<'left>);
-            register_container!(replica: &leaf::AppContainer<'right>);
+            register_container!(primary: &leaf::SystasisContainer<'left>);
+            register_container!(replica: &leaf::SystasisContainer<'right>);
             register_type_with!(Pair<'_, 'left, 'right> as IPair, try || -> Result<Pair<'_, 'left, 'right>, Error> {
                 let first = try_resolve_ref_from!(IValue, primary)?;
                 let second = try_resolve_ref_from!(IValue, replica)?;
@@ -100,9 +100,9 @@ mod explicit_child_lifetime {
     use super::*;
 
     #[systasis::container]
-    fn check<'a, 'env>(primary: &'a leaf::AppContainer<'env>) {
+    fn check<'a, 'env>(primary: &'a leaf::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer<'env>);
+            register_container!(primary: &'a leaf::SystasisContainer<'env>);
             register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
                 let value = try_resolve_ref_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
@@ -130,7 +130,7 @@ mod nested {
     mod leaf {
         use super::*;
         #[systasis::container]
-        pub fn run(value: String, call: impl FnOnce(&AppContainer)) {
+        pub fn run(value: String, call: impl FnOnce(&SystasisContainer)) {
             let Ok(container) = systasis::systasis_container! {
                 register_value!(value: String as IValue);
             }
@@ -141,18 +141,21 @@ mod nested {
     mod middle {
         use super::*;
         #[systasis::container]
-        pub fn run<'a>(primary: &'a leaf::AppContainer, call: impl FnOnce(&AppContainer<'a>)) {
+        pub fn run<'a>(
+            primary: &'a leaf::SystasisContainer,
+            call: impl FnOnce(&SystasisContainer<'a>),
+        ) {
             let Ok(container) = systasis::systasis_container! {
-                register_container!(primary: &'a leaf::AppContainer);
+                register_container!(primary: &'a leaf::SystasisContainer);
             }
             .build();
             call(&container);
         }
     }
     #[systasis::container]
-    fn check<'a>(branch: &middle::AppContainer<'a>) {
+    fn check<'a>(branch: &middle::SystasisContainer<'a>) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(branch: &middle::AppContainer<'a>);
+            register_container!(branch: &middle::SystasisContainer<'a>);
             register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
                 let value = try_resolve_ref_from!(IValue, branch::primary)?;
                 assert!(!value.is_empty());
@@ -184,9 +187,9 @@ mod exclusive {
     impl IEditor for Editor<'_, '_> {}
 
     #[systasis::container(require(Send, Sync))]
-    fn check<'env>(primary: &leaf::AppContainer<'env>, replacement: &'env str) {
+    fn check<'env>(primary: &leaf::SystasisContainer<'env>, replacement: &'env str) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &leaf::AppContainer<'env>);
+            register_container!(primary: &leaf::SystasisContainer<'env>);
             register_type_with!(Editor<'_, 'env> as IEditor, try || -> Result<Editor<'_, 'env>, Error> {
                 let value = try_resolve_ref_mut_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
@@ -224,7 +227,7 @@ mod local {
         use super::*;
 
         #[systasis::container(require(!Sync))]
-        pub fn run<'env>(value: &'env str, call: impl FnOnce(&AppContainer<'env>)) {
+        pub fn run<'env>(value: &'env str, call: impl FnOnce(&SystasisContainer<'env>)) {
             let Ok(container) = systasis::systasis_container! {
                 register_value!(Borrowed(value): Borrowed<'env> as IValue);
             }
@@ -234,9 +237,9 @@ mod local {
     }
 
     #[systasis::container(require(!Sync))]
-    fn check<'env>(primary: &leaf::AppContainer<'env>, replacement: &'env str) {
+    fn check<'env>(primary: &leaf::SystasisContainer<'env>, replacement: &'env str) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &leaf::AppContainer<'env>);
+            register_container!(primary: &leaf::SystasisContainer<'env>);
             register_type_with!(Editor<'_, 'env> as IEditor, try || -> Result<Editor<'_, 'env>, Error> {
                 let value = try_resolve_ref_mut_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
@@ -271,9 +274,9 @@ mod transitive {
     impl IWrapped for Wrapped<'_, '_> {}
 
     #[systasis::container]
-    fn check<'env>(primary: &leaf::AppContainer<'env>) {
+    fn check<'env>(primary: &leaf::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &leaf::AppContainer<'env>);
+            register_container!(primary: &leaf::SystasisContainer<'env>);
             register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
                 Ok(View(try_resolve_ref_from!(IValue, primary)?))
             });
@@ -309,11 +312,11 @@ mod nested_borrowed {
 
         #[systasis::container]
         pub fn run<'a, 'env>(
-            primary: &'a leaf::AppContainer<'env>,
-            call: impl FnOnce(&AppContainer<'a, 'env>),
+            primary: &'a leaf::SystasisContainer<'env>,
+            call: impl FnOnce(&SystasisContainer<'a, 'env>),
         ) {
             let Ok(container) = systasis::systasis_container! {
-                register_container!(primary: &'a leaf::AppContainer<'env>);
+                register_container!(primary: &'a leaf::SystasisContainer<'env>);
             }
             .build();
             call(&container);
@@ -321,9 +324,9 @@ mod nested_borrowed {
     }
 
     #[systasis::container]
-    fn check<'a, 'env>(branch: &middle::AppContainer<'a, 'env>) {
+    fn check<'a, 'env>(branch: &middle::SystasisContainer<'a, 'env>) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(branch: &middle::AppContainer<'a, 'env>);
+            register_container!(branch: &middle::SystasisContainer<'a, 'env>);
             register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
                 let value = try_resolve_ref_from!(IValue, branch::primary)?;
                 assert!(!value.0.is_empty());

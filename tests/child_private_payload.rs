@@ -12,7 +12,7 @@ mod child {
     use super::*;
 
     #[systasis::container]
-    pub fn run<'env>(value: &'env str, call: impl FnOnce(&AppContainer<'env>)) {
+    pub fn run<'env>(value: &'env str, call: impl FnOnce(&SystasisContainer<'env>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Borrowed(value): Borrowed<'env> as IValue);
         }
@@ -25,9 +25,9 @@ mod parent {
     use super::*;
 
     #[systasis::container]
-    pub fn check<'a, 'env>(primary: &'a child::AppContainer<'env>) {
+    pub fn check<'a, 'env>(primary: &'a child::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a child::AppContainer<'env>);
+            register_container!(primary: &'a child::SystasisContainer<'env>);
             register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, systasis::app_container::Error> {
                 Ok(View(try_resolve_ref_from!(IValue, primary)?))
             });

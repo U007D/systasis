@@ -37,7 +37,7 @@ mod annotated_expression {
 mod locals {
     use super::*;
 
-    fn count(container: &AppContainer) -> usize {
+    fn count(container: &SystasisContainer) -> usize {
         container.resolve_i_count()
     }
 
@@ -75,7 +75,7 @@ mod generic_consumable {
             register_value!(value as IValue);
         }
         .build();
-        let _: &AppContainer<T> = &container;
+        let _: &SystasisContainer<T> = &container;
         assert_eq!(container.try_resolve_i_value()?, expected);
         assert_eq!(
             container.try_resolve_i_value(),
@@ -101,7 +101,7 @@ mod generic_copy {
             register_value!(value as IValue);
         }
         .build();
-        let _: &AppContainer<T> = &container;
+        let _: &SystasisContainer<T> = &container;
         assert_eq!(container.resolve_i_value(), value);
         assert_eq!(container.resolve_i_value(), value);
     }

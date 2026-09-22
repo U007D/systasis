@@ -12,7 +12,7 @@ mod child {
         }
     }
     #[systasis::container]
-    pub fn run(call: impl FnOnce(&AppContainer)) {
+    pub fn run(call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(String::from("default"): String as dyn IValue);
             register_value!(String::from("metrics"): String as dyn IValue in metrics);
@@ -33,9 +33,9 @@ mod outer {
     trait ILater {}
     impl ILater for usize {}
     #[systasis::container]
-    pub fn run(primary: &child::AppContainer) -> Result<(), Error> {
+    pub fn run(primary: &child::SystasisContainer) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_container!(primary: &child::AppContainer);
+            register_container!(primary: &child::SystasisContainer);
             register_value!(try_resolve_clone_from!(IValue, primary::metrics)?: resolve_type_from!(IValue, primary::metrics) as ICopied);
             register_value!({
                 let guard = try_resolve_dyn_ref_from!(IValue, primary::metrics)?;

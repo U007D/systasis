@@ -2,7 +2,7 @@
 
 The project selects the floating `nightly` channel, not a dated toolchain.
 Nightly was accepted temporarily to complete the crate while preserving its
-concrete `AppContainer` and named subcontainer APIs. Record the actual compiler
+concrete `SystasisContainer` and named subcontainer APIs. Record the actual compiler
 version with validation results; different nightly versions may behave differently.
 Investigate stable replacements after integration.
 
@@ -24,7 +24,7 @@ This package assumes no stabilization date and does not claim a stable MSRV.
 
 | Feature | Purpose | Location |
 | --- | --- | --- |
-| `type_alias_impl_trait` | Name compiler-inferred native closure storage without exposing closure type parameters in `AppContainer`. | Generated private constructor storage. |
+| `type_alias_impl_trait` | Name compiler-inferred native closure storage without exposing closure type parameters in `SystasisContainer`. | Generated private constructor storage. |
 | `allow_internal_unstable` | Permit the generated opaque aliases and their defining functions without requiring application-level feature annotations. | Procedural-macro entry points. |
 
 These are compiler/code-generation features, not runtime dependencies or unsafe
@@ -36,7 +36,7 @@ selected compiler's support for that spelling.
 selection has no independent unstable mechanism. The temporary builder closure
 is inferred locally and consumed at build time, so it does not need TAIT.
 The stored constructor closure is different: its type becomes part of the
-module-scope, concrete `AppContainer`, including when its captures are inferred.
+module-scope, concrete `SystasisContainer`, including when its captures are inferred.
 Rust [closure types](https://doc.rust-lang.org/reference/types/closure.html)
 are anonymous; the generated opaque alias currently supplies that field's name.
 

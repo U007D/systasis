@@ -579,7 +579,7 @@ pub(crate) fn expand(
                 constants.push(quote!(pub(super) const #flag: bool = ::systasis::__private::Pick::<#original>::IS_COPY;));
             }
             // A custom constructor stores its captures, not its output. Elided
-            // output lifetimes belong to each resolver call, not AppContainer.
+            // output lifetimes belong to each resolver call, not SystasisContainer.
             if registration.constructor.is_none() {
                 lifetimes.visit_type_mut(&mut registration.ty);
             }
@@ -1405,14 +1405,16 @@ pub(crate) fn expand(
             let mask = &child_masks[index];
             child_values.push(quote!(::systasis::scoped::AsScope::<#mask>::scope(#name)));
         }
-        let mut construction_type: Type = parse_quote!(AppContainer #alias_arguments);
+        let mut construction_type: Type = parse_quote!(SystasisContainer #alias_arguments);
         if let Type::Path(path) = &mut construction_type
             && let PathArguments::AngleBracketed(arguments) = &mut path
                 .path
                 .segments
                 .last_mut()
                 .unwrap_or_else(|| {
-                    unreachable!("construction_type was just parsed from the AppContainer path")
+                    unreachable!(
+                        "construction_type was just parsed from the SystasisContainer path"
+                    )
                 })
                 .arguments
         {
@@ -1459,7 +1461,7 @@ pub(crate) fn expand(
             }
             /// The container generated from this module's registration declaration.
             #[allow(type_alias_bounds)]
-            pub type AppContainer #alias_parameters #alias_where = __systasis_injected::Container #alias_arguments;
+            pub type SystasisContainer #alias_parameters #alias_where = __systasis_injected::Container #alias_arguments;
             #(#child_exports)*
         ));
         let mut initialization = Vec::new();
@@ -1547,7 +1549,7 @@ pub(crate) fn expand(
                     #(#initialization)*
                     let #systasis_result_ident=match #systasis_error_ident {
                         ::core::option::Option::None=>{
-                            let container: #construction_type = AppContainer {#(#values,)*_children: #stored_child_values, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
+                            let container: #construction_type = SystasisContainer {#(#values,)*_children: #stored_child_values, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
                             ::core::result::Result::Ok(container)
                         },
                         #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]

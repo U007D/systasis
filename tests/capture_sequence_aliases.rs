@@ -122,7 +122,7 @@ mod shared {
     type Input<'a, T> = &'a [T];
     trait ISequence {}
     impl<T> ISequence for &[T] {}
-    fn receive<'a, T>(container: &AppContainer<'a, T>) -> &'a [T] {
+    fn receive<'a, T>(container: &SystasisContainer<'a, T>) -> &'a [T] {
         container.resolve_i_sequence()
     }
     #[systasis::container]

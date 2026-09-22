@@ -53,7 +53,7 @@ pub trait IValue {}
 impl<T> IValue for T {}
 pub mod inferred_value {
     #[systasis::container]
-    pub fn run(value: u32, use_container: impl FnOnce(&AppContainer)) {
+    pub fn run(value: u32, use_container: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value as crate::IValue);
         }.build();
@@ -62,7 +62,7 @@ pub mod inferred_value {
 }
 pub mod grouped {
     #[systasis::container]
-    pub fn run<T: Copy>(value: T, use_container: impl FnOnce(&AppContainer<T>)) {
+    pub fn run<T: Copy>(value: T, use_container: impl FnOnce(&SystasisContainer<T>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: (T) as crate::IValue);
         }.build();
@@ -73,7 +73,7 @@ pub trait IArray {}
 impl<T, const N: usize> IArray for [T; N] {}
 pub mod arrays {
     #[systasis::container]
-    pub fn run<T, const N: usize>(value: [T; N], use_container: impl FnOnce(&AppContainer<T, N>))
+    pub fn run<T, const N: usize>(value: [T; N], use_container: impl FnOnce(&SystasisContainer<T, N>))
     where [T; N]: Copy {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: [T; N] as crate::IArray);
@@ -87,7 +87,7 @@ pub mod private_factory {
     trait IService {}
     impl IService for Service {}
     #[systasis::container]
-    pub fn run(use_container: impl FnOnce(&AppContainer)) {
+    pub fn run(use_container: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(Service as IService, || Service);
         }.build();
@@ -97,7 +97,7 @@ pub mod private_factory {
 impl<T: ?Sized> IBorrow for &T {}
 pub mod borrowed {
     #[systasis::container]
-    pub fn run<'a, T: ?Sized>(value: &'a T, use_container: impl FnOnce(&AppContainer<'a, T>))
+    pub fn run<'a, T: ?Sized>(value: &'a T, use_container: impl FnOnce(&SystasisContainer<'a, T>))
     where &'a T: Copy {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: &'a T as crate::IBorrow);
@@ -120,26 +120,26 @@ pub mod borrowed {
         &caller,
         r#"
 #![forbid(unsafe_code)]
-fn inspect_inferred(container: &generic_provider::inferred_value::AppContainer) {
+fn inspect_inferred(container: &generic_provider::inferred_value::SystasisContainer) {
     assert_eq!(container.resolve_i_value(), 11);
     assert_eq!(container.resolve_i_value(), 11);
 }
-fn inspect_grouped<T: Copy>(container: &generic_provider::grouped::AppContainer<T>) {
+fn inspect_grouped<T: Copy>(container: &generic_provider::grouped::SystasisContainer<T>) {
     let _: T = container.resolve_i_value();
     let _: &T = container.resolve_i_value_ref();
     let _: T = container.resolve_i_value();
 }
-fn inspect_array<T, const N: usize>(container: &generic_provider::arrays::AppContainer<T, N>)
+fn inspect_array<T, const N: usize>(container: &generic_provider::arrays::SystasisContainer<T, N>)
 where [T; N]: Copy {
     let _: [T; N] = container.resolve_i_array();
     let _: &[T; N] = container.resolve_i_array_ref();
 }
-fn inspect_borrow<'a, T: ?Sized>(container: &generic_provider::borrowed::AppContainer<'a, T>)
+fn inspect_borrow<'a, T: ?Sized>(container: &generic_provider::borrowed::SystasisContainer<'a, T>)
 where &'a T: Copy {
     let _: &'a T = container.resolve_i_borrow();
 }
 mod composed_array {
-    use generic_provider::arrays::AppContainer as Imported;
+    use generic_provider::arrays::SystasisContainer as Imported;
     type Alias<T, const N: usize> = Imported<T, N>;
     trait ISelected {}
     impl<T, const N: usize> ISelected for [T; N] {}
@@ -156,7 +156,7 @@ mod composed_array {
     }
 }
 mod composed_borrow {
-    use generic_provider::borrowed::AppContainer as Imported;
+    use generic_provider::borrowed::SystasisContainer as Imported;
     type Alias<'a, T> = Imported<'a, T>;
     trait ISelected {}
     impl<T: ?Sized> ISelected for &T {}
@@ -175,7 +175,7 @@ mod composed_borrow {
 fn main() {
     generic_provider::inferred_value::run(11, inspect_inferred);
     generic_provider::grouped::run(7u32, inspect_grouped);
-    fn inspect_private_factory(_: &generic_provider::private_factory::AppContainer) {}
+    fn inspect_private_factory(_: &generic_provider::private_factory::SystasisContainer) {}
     generic_provider::private_factory::run(inspect_private_factory);
     generic_provider::arrays::run([1u32, 2, 3], inspect_array);
     let owned = String::from("borrowed");

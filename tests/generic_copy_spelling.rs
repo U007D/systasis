@@ -8,7 +8,7 @@ impl<T> IValue for T {}
 mod parenthesized_registration {
     use super::IValue;
 
-    fn inspect<T: Copy>(container: &AppContainer<T>) -> T {
+    fn inspect<T: Copy>(container: &SystasisContainer<T>) -> T {
         let _: &T = container.resolve_i_value_ref();
         let _: T = container.resolve_i_value();
         container.resolve_i_value()

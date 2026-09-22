@@ -16,7 +16,7 @@ mod generic_fields {
         }
     }
 
-    fn receive<T: Sync, U>(container: &AppContainer<'_, T, U>) -> usize {
+    fn receive<T: Sync, U>(container: &SystasisContainer<'_, T, U>) -> usize {
         container.resolve_i_length()
     }
 

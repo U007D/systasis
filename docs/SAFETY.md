@@ -3,7 +3,7 @@
 ## Generated ownership and the builder
 
 A consuming builder retains a safe `FnOnce` initializer. Building executes it
-and returns an owned `AppContainer`; there is no hidden scope owner or allocation.
+and returns an owned `SystasisContainer`; there is no hidden scope owner or allocation.
 The container owns its slots and constructor captures. It may retain references
 to external inputs, with ordinary Rust lifetime checks. Resolver references and
 guards borrow `&self`, preventing moves or destruction while those borrows remain

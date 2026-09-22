@@ -6,7 +6,7 @@ mod child {
     pub trait IValue {}
     impl<T> IValue for T {}
     #[systasis::container]
-    pub fn run<T>(value: T, call: impl FnOnce(&AppContainer<T>)) {
+    pub fn run<T>(value: T, call: impl FnOnce(&SystasisContainer<T>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: T as IValue);
         }
@@ -19,7 +19,7 @@ mod copied_child {
     pub trait IValue {}
     impl<T> IValue for T {}
     #[systasis::container]
-    pub fn run<T: Copy>(value: T, call: impl FnOnce(&AppContainer<T>)) {
+    pub fn run<T: Copy>(value: T, call: impl FnOnce(&SystasisContainer<T>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: T as IValue);
         }
@@ -34,11 +34,11 @@ mod owned_parent {
     impl<T> ISelected for T {}
     #[systasis::container(require(!Sync))]
     pub fn run<T: PartialEq>(
-        child: &crate::child::AppContainer<T>,
+        child: &crate::child::SystasisContainer<T>,
         expected: T,
     ) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_container!(child: &crate::child::AppContainer<T>);
+            register_container!(child: &crate::child::SystasisContainer<T>);
             register_value!(try_resolve_from!(IValue, child)?: resolve_type_from!(IValue, child) as ISelected);
         }.build::<Error>()?;
         assert!(matches!(
@@ -67,9 +67,9 @@ mod copied_parent {
     trait ISelected {}
     impl<T> ISelected for T {}
     #[systasis::container(require(!Sync))]
-    pub fn run<T: Copy + PartialEq>(child: &copied_child::AppContainer<T>, expected: T) {
+    pub fn run<T: Copy + PartialEq>(child: &copied_child::SystasisContainer<T>, expected: T) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(child: &copied_child::AppContainer<T>);
+            register_container!(child: &copied_child::SystasisContainer<T>);
             register_value!(resolve_from!(IValue, child): resolve_type_from!(IValue, child) as ISelected);
         }.build();
         let plain: &T = container.resolve_i_selected_ref();
@@ -86,11 +86,11 @@ mod explicit_parent {
     impl<T> ISelected for T {}
     #[systasis::container]
     pub fn run<T: Copy + PartialEq>(
-        child: &crate::child::AppContainer<T>,
+        child: &crate::child::SystasisContainer<T>,
         expected: T,
     ) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_container!(child: &crate::child::AppContainer<T>);
+            register_container!(child: &crate::child::SystasisContainer<T>);
             register_value!(try_resolve_from!(IValue, child)?: T as ISelected);
         }
         .build::<Error>()?;

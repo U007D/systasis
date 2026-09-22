@@ -40,7 +40,7 @@ fn builder_lifecycle_diagnostics() {
         (
             "held_builder_moves_then_builds",
             r#"
-fn inspect(container: &AppContainer) -> usize { container.resolve_i_value() }
+fn inspect(container: &SystasisContainer) -> usize { container.resolve_i_value() }
 #[systasis::container]
 fn configure() {
     let input: String = String::from("pending");
@@ -137,7 +137,7 @@ fn main() { configure(); }
             "container_reference_cannot_escape_owner",
             r#"
 #[systasis::container]
-fn configure() -> &'static AppContainer {
+fn configure() -> &'static SystasisContainer {
     let builder = systasis::systasis_container! {
         register_value!(7_usize: usize as IValue);
     };
@@ -152,7 +152,7 @@ fn main() { let _ = configure(); }
             "owned_container_can_leave_initialization_scope",
             r#"
 #[systasis::container]
-fn configure() -> AppContainer {
+fn configure() -> SystasisContainer {
     let Ok(container) = systasis::systasis_container! {
         register_value!(7_usize: usize as IValue);
     }.build();
@@ -167,7 +167,7 @@ fn main() { assert_eq!(configure().resolve_i_value(), 7); }
             r#"
 trait IReference {} impl IReference for &str {}
 #[systasis::container]
-fn configure() -> AppContainer<'static> {
+fn configure() -> SystasisContainer<'static> {
     let text = String::from("local");
     let Ok(container) = systasis::systasis_container! {
         register_value!(text.as_str(): &str as IReference);

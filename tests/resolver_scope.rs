@@ -71,7 +71,7 @@ mod leaf {
         }
     }
     #[systasis::container]
-    pub fn run(value: u32, call: impl FnOnce(&AppContainer)) {
+    pub fn run(value: u32, call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: u32 as dyn IValue);
         }
@@ -84,13 +84,13 @@ mod middle {
     use super::leaf;
     #[systasis::container]
     pub fn run<'a>(
-        primary: &'a leaf::AppContainer,
-        replica: &'a leaf::AppContainer,
-        call: impl FnOnce(&AppContainer<'a>),
+        primary: &'a leaf::SystasisContainer,
+        replica: &'a leaf::SystasisContainer,
+        call: impl FnOnce(&SystasisContainer<'a>),
     ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer);
-            register_container!(replica: &'a leaf::AppContainer);
+            register_container!(primary: &'a leaf::SystasisContainer);
+            register_container!(replica: &'a leaf::SystasisContainer);
         }
         .build();
         call(&container);
@@ -109,11 +109,11 @@ mod outer {
     }
 
     #[systasis::container]
-    pub fn run<'a>(primary: &leaf::AppContainer, branch: &middle::AppContainer<'a>) {
+    pub fn run<'a>(primary: &leaf::SystasisContainer, branch: &middle::SystasisContainer<'a>) {
         let _: &dyn IValue = &IValue();
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &leaf::AppContainer);
-            register_container!(branch: &middle::AppContainer<'a>);
+            register_container!(primary: &leaf::SystasisContainer);
+            register_container!(branch: &middle::SystasisContainer<'a>);
             register_value!({
                 let direct: resolve_type_from!(IValue, primary) = resolve_from!(IValue, primary);
                 let nested: resolve_type_from!(IValue, branch::primary) = resolve_from!(IValue, branch::primary);
@@ -173,15 +173,15 @@ use IMissing as Renamed;
 trait IOutput {{}} impl IOutput for u32 {{}}
 mod leaf {{
     #[systasis::container]
-    pub fn run(call: impl FnOnce(&AppContainer)) {{
+    pub fn run(call: impl FnOnce(&SystasisContainer)) {{
         let Ok(container) = systasis::systasis_container! {{}}.build();
         call(container);
     }}
 }}
 #[systasis::container]
-fn outer(primary: &leaf::AppContainer) {{
+fn outer(primary: &leaf::SystasisContainer) {{
     let Ok(_) = systasis::systasis_container! {{
-        register_container!(primary: &leaf::AppContainer);
+        register_container!(primary: &leaf::SystasisContainer);
         {registration}
         register_value!({query}: u32 as IOutput);
     }}.build();

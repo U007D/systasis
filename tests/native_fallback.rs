@@ -32,7 +32,7 @@ mod inferred {
     trait IText {}
     impl IText for String {}
 
-    fn receive(container: &AppContainer) -> String {
+    fn receive(container: &SystasisContainer) -> String {
         container.resolve_i_text()
     }
 
@@ -165,7 +165,7 @@ mod generic {
     trait IValue {}
     impl<T> IValue for T {}
 
-    fn receive<T: Clone>(container: &AppContainer<T>) -> T {
+    fn receive<T: Clone>(container: &SystasisContainer<T>) -> T {
         container.resolve_i_value()
     }
 

@@ -18,7 +18,7 @@ dependency injection, concrete registered-type lookup, overrides, dependency
 layers, checked access, cloning, multi-trait groups, local namespaces, explicit dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
 Builders can be held, moved, built once, or dropped without running initializers.
-Building returns `Result<AppContainer, E>`; the caller owns the built container
+Building returns `Result<SystasisContainer, E>`; the caller owns the built container
 and may return it from the initialization function.
 The [usage guide](docs/USAGE.md) is also the crate-level API documentation;
 its examples compile and run as doctests.
@@ -52,7 +52,7 @@ An array reference extracted from a generic tuple alias likewise needs its own
 binding annotation; see the [tuple-alias example](docs/USAGE.md#capturing-an-array-reference-from-a-tuple-alias).
 
 Generic enclosing functions preserve authored type, const and lifetime parameters
-in `AppContainer`, with registration-site Copy policy. See
+in `SystasisContainer`, with registration-site Copy policy. See
 [generic tests](tests/generic_container.rs) and [cross-crate checks](tests/generic_cross_crate.rs).
 Source-relative paths are preserved when hoisted. Differently spelled equivalent
 Copy bounds remain a recognition gap.

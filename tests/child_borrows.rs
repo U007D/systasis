@@ -12,7 +12,7 @@ mod child {
     pub trait ISize {}
     impl ISize for usize {}
     #[systasis::container]
-    pub fn run(value: String, call: impl FnOnce(&AppContainer)) {
+    pub fn run(value: String, call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: String as IValue);
             register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> {
@@ -28,10 +28,13 @@ mod parent {
     trait ILength {}
     impl ILength for usize {}
     #[systasis::container]
-    pub fn run(primary: &child::AppContainer, replica: &child::AppContainer) -> Result<(), Error> {
+    pub fn run(
+        primary: &child::SystasisContainer,
+        replica: &child::SystasisContainer,
+    ) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_container!(primary: &child::AppContainer);
-            register_container!(replica: &child::AppContainer);
+            register_container!(primary: &child::SystasisContainer);
+            register_container!(replica: &child::SystasisContainer);
             register_type_with!(usize as ILength, try || -> Result<usize, Error> {
                 Ok(try_resolve_ref_from!(IValue, primary)?.len())
             });
@@ -113,7 +116,7 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
         ),
         (
             "context_cannot_clear_mask",
-            "systasis::scoped::BorrowContext::<'_, child::AppContainer, systasis::scoped::mask::Empty>::borrow_context(container.primary())",
+            "systasis::scoped::BorrowContext::<'_, child::SystasisContainer, systasis::scoped::mask::Empty>::borrow_context(container.primary())",
             Some("\"code\":\"E0277\""),
         ),
         (
@@ -123,7 +126,7 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
         ),
         (
             "context_cannot_extend_backing_lifetime",
-            "{ let context: systasis::scoped::BorrowedContext<'static, child::AppContainer, _> = systasis::scoped::BorrowContext::borrow_context(container.primary()); context }",
+            "{ let context: systasis::scoped::BorrowedContext<'static, child::SystasisContainer, _> = systasis::scoped::BorrowContext::borrow_context(container.primary()); context }",
             Some("lifetime may not live long enough"),
         ),
         (
@@ -152,10 +155,10 @@ mod child {{
 use child::IValue;
 trait ILength {{}} impl ILength for usize {{}}
 #[systasis::container]
-fn parent(primary: &child::AppContainer, replica: &child::AppContainer) {{
+fn parent(primary: &child::SystasisContainer, replica: &child::SystasisContainer) {{
     let Ok(container) = systasis::systasis_container! {{
-        register_container!(primary: &child::AppContainer);
-        register_container!(replica: &child::AppContainer);
+        register_container!(primary: &child::SystasisContainer);
+        register_container!(replica: &child::SystasisContainer);
         register_type_with!(usize as ILength, try || -> Result<usize, systasis::app_container::Error> {{ Ok(try_resolve_ref_from!(IValue, primary)?.len()) }});
     }}.build();
     let _ = {access};

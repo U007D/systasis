@@ -4,9 +4,9 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum Error {
     /// Ownership was already transferred out of the container.
-    #[error("Error: `AppContainer` value has already been consumed.")]
+    #[error("Error: `SystasisContainer` value has already been consumed.")]
     ValueAlreadyConsumed,
     /// The required access could not be acquired immediately.
-    #[error("Error: `AppContainer` value access is contended.")]
+    #[error("Error: `SystasisContainer` value access is contended.")]
     ValueAccessContention,
 }

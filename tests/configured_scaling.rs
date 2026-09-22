@@ -36,7 +36,7 @@ trait IValue {}
 impl IValue for u32 {}
 #[allow(non_camel_case_types, dead_code)]
 struct __SystasisConfiguration_main {}
-fn named(container: &AppContainer) -> u32 { container.resolve_i_value() }
+fn named(container: &SystasisContainer) -> u32 { container.resolve_i_value() }
 #[systasis::container]
 #[cfg(any())]
 fn disabled_function_with_condition() {
@@ -112,7 +112,7 @@ fn main() {
             r#"
 mod {module} {{
     trait IValue {{}} impl IValue for u32 {{}}
-    fn named(container: &AppContainer) -> u32 {{ container.resolve_i_value() }}
+    fn named(container: &SystasisContainer) -> u32 {{ container.resolve_i_value() }}
     #[systasis::container]
     #[cfg(all())]
     #[inline]

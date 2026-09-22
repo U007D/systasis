@@ -42,7 +42,7 @@ macro_rules! scenario {
                 assert!(matches!(container.try_resolve_i_service(), Err(Error::ValueAlreadyConsumed)));
                 Ok(())
             }
-            fn accepts_named_container(_: &AppContainer) {}
+            fn accepts_named_container(_: &SystasisContainer) {}
         }
     };
 }

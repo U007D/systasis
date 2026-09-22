@@ -22,6 +22,14 @@ fn availability_errors_are_distinct_and_have_no_source() {
     assert!(consumed.source().is_none());
     assert!(contended.source().is_none());
     assert_ne!(consumed.to_string(), contended.to_string());
+    assert_eq!(
+        consumed.to_string(),
+        "Error: `SystasisContainer` value has already been consumed."
+    );
+    assert_eq!(
+        contended.to_string(),
+        "Error: `SystasisContainer` value access is contended."
+    );
 }
 
 #[test]

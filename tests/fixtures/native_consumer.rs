@@ -1,18 +1,18 @@
 #![forbid(unsafe_code)]
 
-fn public(container: &native_provider::public_result::AppContainer) {
+fn public(container: &native_provider::public_result::SystasisContainer) {
     let service: native_provider::public_result::Service = container.resolve_i_service();
     assert_eq!(service.0, "public");
 }
-fn private(_: &native_provider::private_result::AppContainer) {}
-fn generic<'a>(container: &native_provider::generic::AppContainer<'a, String>) {
+fn private(_: &native_provider::private_result::SystasisContainer) {}
+fn generic<'a>(container: &native_provider::generic::SystasisContainer<'a, String>) {
     let service: native_provider::generic::Service<'a, String> = container.resolve_i_service();
     assert_eq!(service.0, "label");
     assert_eq!(service.1, "owned");
 }
 
 mod parent {
-    use native_provider::public_result::AppContainer as Child;
+    use native_provider::public_result::SystasisContainer as Child;
 
     fn receive(scope: &primary::SubContainer<'_>) -> String {
         scope.resolve_i_service().0
@@ -32,14 +32,14 @@ mod parent {
 }
 
 mod borrowing_parent {
-    use native_provider::borrowed_child::{AppContainer as Child, Value};
+    use native_provider::borrowed_child::{SystasisContainer as Child, Value};
     use systasis::app_container::Error;
 
     struct View<'a, 'env>(systasis::Ref<'a, Value<'env>>);
     trait IView {}
     impl IView for View<'_, '_> {}
 
-    fn receive<'call, 'env>(container: &'call AppContainer<'_, 'env>) -> View<'call, 'env> {
+    fn receive<'call, 'env>(container: &'call SystasisContainer<'_, 'env>) -> View<'call, 'env> {
         container.try_resolve_i_view().unwrap()
     }
 
@@ -67,14 +67,14 @@ mod borrowing_parent {
 }
 
 mod nested_borrowing_parent {
-    use native_provider::{borrowed_branch::AppContainer as Branch, borrowed_child::Value};
+    use native_provider::{borrowed_branch::SystasisContainer as Branch, borrowed_child::Value};
     use systasis::app_container::Error;
 
     struct View<'a, 'env>(systasis::Ref<'a, Value<'env>>);
     trait IView {}
     impl IView for View<'_, '_> {}
 
-    fn receive<'call, 'a, 'env>(container: &'call AppContainer<'_, 'a, 'env>) -> View<'call, 'env> {
+    fn receive<'call, 'a, 'env>(container: &'call SystasisContainer<'_, 'a, 'env>) -> View<'call, 'env> {
         container.try_resolve_i_view().unwrap()
     }
 

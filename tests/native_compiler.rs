@@ -77,7 +77,7 @@ fn native_closure_public_api_and_rejection_controls() {
         (
             "private_result",
             r#"
-            fn inspect(container: &native_provider::private_result::AppContainer) {
+            fn inspect(container: &native_provider::private_result::SystasisContainer) {
                 let _ = container.resolve_i_service();
             }
             fn main() {}

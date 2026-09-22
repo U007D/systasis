@@ -8,25 +8,28 @@ mod leaf {
     pub trait IValue {}
     impl IValue for String {}
     #[systasis::container]
-    pub fn run(call: impl FnOnce(&AppContainer)) {
+    pub fn run(call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(String::from("value"): String as IValue);
             register_value!(String::from("metric"): String as IValue in metrics);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
 mod branch {
     use super::*;
     #[systasis::container]
-    pub fn run<'a>(primary: &'a leaf::AppContainer, call: impl FnOnce(&AppContainer<'a>)) {
+    pub fn run<'a>(
+        primary: &'a leaf::SystasisContainer,
+        call: impl FnOnce(&SystasisContainer<'a>),
+    ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer);
+            register_container!(primary: &'a leaf::SystasisContainer);
         }
         .build();
-        call(container);
+        call(&container);
     }
 }
 
@@ -35,9 +38,9 @@ mod outer {
     trait ILength {}
     impl ILength for usize {}
     #[systasis::container]
-    pub fn run<'a>(branch: &crate::branch::AppContainer<'a>) -> Result<(), Error> {
+    pub fn run<'a>(branch: &crate::branch::SystasisContainer<'a>) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_container!(branch: &crate::branch::AppContainer<'a>);
+            register_container!(branch: &crate::branch::SystasisContainer<'a>);
             register_value!({
                 // SAFETY: freshly built child is present with no mutable guard.
                 let read = unsafe { resolve_ref_unchecked_from!(IValue, branch::primary) };

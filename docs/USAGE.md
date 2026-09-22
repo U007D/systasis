@@ -1,6 +1,6 @@
 Statically wired dependency injection with checked, nonblocking value access.
 
-Systasis generates a module-scope `AppContainer` from registrations written
+Systasis generates a module-scope `SystasisContainer` from registrations written
 inside an attributed function. Registration annotations name ordinary Rust
 types and traits; dependency queries select registrations in the container.
 The crate is under development: see the repository README and
@@ -27,7 +27,7 @@ introduce them through caller declarations, imports (including globs), or macro
 expansions into generated-code scopes. A violation may compile and resolve the
 wrong value; this is not a compiler-enforced naming check. Other glob imports
 remain allowed. Rust diagnostics may display generated implementation types and
-paths instead of public aliases such as `AppContainer`.
+paths instead of public aliases such as `SystasisContainer`.
 
 ## Stored values and fresh constructors
 
@@ -57,7 +57,7 @@ trait ILabel {}
 impl ILabel for String {}
 
 // The generated type can be named outside main().
-fn count(container: &AppContainer) -> u32 {
+fn count(container: &SystasisContainer) -> u32 {
     container.resolve_i_count()
 }
 
@@ -95,7 +95,7 @@ fn main() -> Result<(), Error> {
 }
 ```
 
-`build()` returns `Result<AppContainer, E>`. The caller owns the container and
+`build()` returns `Result<SystasisContainer, E>`. The caller owns the container and
 can return it from its initialization function. Pass `&container` to functions
 accepting a shared container reference. Resolved borrows prevent moving or
 dropping the container while those borrows remain usable. References stored in
@@ -511,7 +511,7 @@ under the path `primary`; it does not import that container's registrations into
 the parent's default namespace. `ChildContainer` may be a Rust type alias.
 Children need names: `register_container!(default: ...)` is rejected.
 
-Each container definition generates its own `AppContainer`. Separate modules
+Each container definition generates its own `SystasisContainer`. Separate modules
 keep those type names distinct. In this example, `main` builds the database
 container and `application::run` builds a container that uses it.
 
@@ -533,9 +533,9 @@ mod application {
     }
 
     #[systasis::container]
-    pub fn run(primary: &super::AppContainer) -> Result<(), Error> {
+    pub fn run(primary: &super::SystasisContainer) -> Result<(), Error> {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &super::AppContainer);
+            register_container!(primary: &super::SystasisContainer);
             register_type_with!(usize as ILength, try || -> Result<usize, Error> {
                 Ok(try_resolve_ref_from!(IDatabase, primary)?.len())
             });

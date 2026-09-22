@@ -49,7 +49,7 @@ mod fallible {
     #[systasis::container]
     #[test]
     fn ordinary_result_annotation_controls_error_type() {
-        let built: Result<AppContainer, Failure> = systasis::systasis_container! {
+        let built: Result<SystasisContainer, Failure> = systasis::systasis_container! {
             register_value!(Err::<String, Failure>(Failure)?: String as IValue);
         }
         .build();

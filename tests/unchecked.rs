@@ -14,7 +14,7 @@ fn generated_unchecked_access_retains_nonblocking_guards() {
         register_value!(value: String as IValue);
     }
     .build();
-    let scope = systasis::scoped::AsScope::<systasis::scoped::mask::Empty>::scope(container);
+    let scope = systasis::scoped::AsScope::<systasis::scoped::mask::Empty>::scope(&container);
     // SAFETY: the freshly built value is present and no incompatible guard exists.
     let read = unsafe { scope.resolve_i_value_ref_unchecked() };
     assert_eq!(&*read, "value");

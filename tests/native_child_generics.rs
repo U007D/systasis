@@ -22,7 +22,7 @@ mod leaf {
     pub fn run<'env, T: IData>(
         label: &'env str,
         data: T,
-        call: impl FnOnce(&AppContainer<'env, T>),
+        call: impl FnOnce(&SystasisContainer<'env, T>),
     ) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Payload(label,data): Payload<'env,T> as IValue);
@@ -38,9 +38,9 @@ macro_rules! ordered_case {
             trait IFirst {}
             impl<T> IFirst for View<'_, '_, T> {}
             #[systasis::container]
-            fn run<'a, 'env, T:IData>(primary: &'a leaf::AppContainer<'env,T>) {
+            fn run<'a, 'env, T:IData>(primary: &'a leaf::SystasisContainer<'env,T>) {
                 let Ok(container) = systasis::systasis_container! {
-                    register_container!(primary: &'a leaf::AppContainer<'env,T>);
+                    register_container!(primary: &'a leaf::SystasisContainer<'env,T>);
                     register_type_with!(View<'a,'env,T> as IView, try || -> Result<View<'a,'env,T>,Error> {
                         let first=try_resolve!(IFirst)?;
                         assert_eq!(first.0.0,"data");
@@ -73,9 +73,9 @@ ordered_case!(native_to_native, {
 mod explicit {
     use super::*;
     #[systasis::container]
-    fn run<'a, 'env, T: IData>(primary: &'a leaf::AppContainer<'env, T>) {
+    fn run<'a, 'env, T: IData>(primary: &'a leaf::SystasisContainer<'env, T>) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer<'env,T>);
+            register_container!(primary: &'a leaf::SystasisContainer<'env,T>);
             register_type_with!(View<'a,'env,T> as IView, try || -> Result<View<'a,'env,T>,Error> {
                 let value = try_resolve_ref_from!(IValue,primary)?;
                 assert_eq!(value.0,value.1.text());
@@ -105,7 +105,7 @@ mod authored_names {
         impl IValue for u32 {}
 
         #[systasis::container]
-        pub fn run(call: impl FnOnce(&AppContainer)) {
+        pub fn run(call: impl FnOnce(&SystasisContainer)) {
             let Ok(container) = systasis::systasis_container! {
                 register_value!(7: u32 as IValue);
             }
@@ -125,7 +125,7 @@ mod authored_names {
         __Restrictions,
         const __LOCAL: bool,
     >(
-        primary: &'__item child::AppContainer,
+        primary: &'__item child::SystasisContainer,
         unrelated: (
             __StoredIdentity,
             __ChildKey,
@@ -136,7 +136,7 @@ mod authored_names {
         ),
     ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'__item child::AppContainer);
+            register_container!(primary: &'__item child::SystasisContainer);
         }
         .build();
         assert_eq!(container.primary().resolve_i_value(), 7);

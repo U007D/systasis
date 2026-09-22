@@ -36,7 +36,7 @@ fn flat(count: usize) -> String {
         )
         .unwrap();
     }
-    source.push_str("fn named(container: &AppContainer) -> u64 {\n");
+    source.push_str("fn named(container: &SystasisContainer) -> u64 {\n");
     let calls = (0..count)
         .map(|index| format!("container.resolve_i_value{index}()"))
         .collect::<Vec<_>>()
@@ -64,7 +64,7 @@ fn constructors(count: usize) -> String {
         )
         .unwrap();
     }
-    source.push_str("fn named(container: &AppContainer) -> u64 {\n");
+    source.push_str("fn named(container: &SystasisContainer) -> u64 {\n");
     let calls = (0..count)
         .map(|index| format!("container.resolve_i_value{index}()"))
         .collect::<Vec<_>>()
@@ -99,9 +99,9 @@ fn nested(depth: usize) -> String {
 mod layer0 {
     pub trait IValue {}
     impl IValue for u64 {}
-    fn named(container: &AppContainer) { assert_eq!(container.resolve_i_value(), 17); }
+    fn named(container: &SystasisContainer) { assert_eq!(container.resolve_i_value(), 17); }
     #[systasis::container]
-    pub fn run(visit: impl FnOnce(&AppContainer)) {
+    pub fn run(visit: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(17u64: u64 as IValue);
         }.build();
@@ -120,21 +120,21 @@ mod layer0 {
         let borrow = &lifetimes[previous];
         let inferred = vec!["'_"; layer].join(", ");
         let child_type = if layer == 1 {
-            format!("super::layer{previous}::AppContainer")
+            format!("super::layer{previous}::SystasisContainer")
         } else {
-            format!("super::layer{previous}::AppContainer<{child_lifetimes}>")
+            format!("super::layer{previous}::SystasisContainer<{child_lifetimes}>")
         };
         let chain = "child().".repeat(layer);
         // Each layer borrows an independently owned child. Do not equate that
         // short borrow with the child's longer backing lifetimes: child storage
-        // can be invariant, so &'a AppContainer<'a> overconstrains nested callers.
+        // can be invariant, so &'a SystasisContainer<'a> overconstrains nested callers.
         let nested_chain = "child().".repeat(layer - 1);
         writeln!(source, r#"
 mod layer{layer} {{
-    fn named(container: &AppContainer<{inferred}>) {{ assert_eq!(container.{chain}resolve_i_value(), 17); }}
+    fn named(container: &SystasisContainer<{inferred}>) {{ assert_eq!(container.{chain}resolve_i_value(), 17); }}
     fn named_scope(scope: &child::SubContainer<{inferred}>) {{ assert_eq!(scope.{nested_chain}resolve_i_value(), 17); }}
     #[systasis::container]
-    pub fn run<{parameters}>(child: &{borrow} {child_type}, visit: impl FnOnce(&AppContainer<{parameters}>)) {{
+    pub fn run<{parameters}>(child: &{borrow} {child_type}, visit: impl FnOnce(&SystasisContainer<{parameters}>)) {{
         let Ok(container) = systasis::systasis_container! {{
             register_container!(child: &{borrow} {child_type});
         }}.build();

@@ -2,14 +2,12 @@
 #![forbid(unsafe_code)]
 
 mod plain {
-    use core::convert::Infallible;
-
     #[systasis::container]
-    fn init_container() -> Result<AppContainer, Infallible> {
-        let container: AppContainer = systasis::systasis_container! {
+    pub fn init_container() -> Result<SystasisContainer, Box<dyn std::error::Error + Send + 'static>> {
+        let container: SystasisContainer = systasis::systasis_container! {
             register_value!(42: u8 as Copy);
         }
-        .build::<Infallible>()?;
+        .build()?;
         Ok(container)
     }
 
@@ -26,7 +24,7 @@ mod captured {
     impl IView for View<'_> {}
 
     #[systasis::container(require(Send, Sync))]
-    fn init_container(text: String) -> AppContainer {
+    fn init_container(text: String) -> SystasisContainer {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(View<'_> as IView, move || View(text.as_str()));
         }
@@ -47,7 +45,7 @@ mod captured {
 
 mod external_reference {
     #[systasis::container]
-    fn init_container(value: &u8) -> AppContainer<'_> {
+    fn init_container(value: &u8) -> SystasisContainer<'_> {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: &u8 as Copy);
         }
@@ -71,7 +69,7 @@ mod borrowed_field {
     impl IService for Service<'_> {}
 
     #[systasis::container]
-    fn init_container(database: &str) -> AppContainer<'_> {
+    fn init_container(database: &str) -> SystasisContainer<'_> {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Service { database }: Service<'_> as IService);
         }
@@ -105,7 +103,7 @@ mod destruction {
     impl ICount for usize {}
 
     #[systasis::container(require(!Sync))]
-    fn init_container(value: Tracked, capture: Tracked) -> AppContainer {
+    fn init_container(value: Tracked, capture: Tracked) -> SystasisContainer {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: Tracked as ITracked);
             register_type_with!(usize as ICount, move || capture.0.get());
@@ -129,7 +127,7 @@ mod native_capture {
     impl IText for String {}
 
     #[systasis::container(require(Send, Sync))]
-    fn init_container() -> AppContainer {
+    fn init_container() -> SystasisContainer {
         let text = String::from("native owned capture");
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(String as IText, move || text.clone());

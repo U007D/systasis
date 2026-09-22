@@ -6,7 +6,7 @@ pub mod public_result {
     impl IService for Service {}
 
     #[systasis::container(require(Send, Sync))]
-    pub fn run(config: String, inspect: fn(&AppContainer)) {
+    pub fn run(config: String, inspect: fn(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(Service as IService, move || Service(format!("{config}")));
         }.build();
@@ -20,7 +20,7 @@ pub mod private_result {
     impl IService for Service {}
 
     #[systasis::container]
-    pub fn run(config: String, inspect: fn(&AppContainer)) {
+    pub fn run(config: String, inspect: fn(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(Service as IService, move || Service(format!("{config}")));
         }.build();
@@ -36,7 +36,7 @@ pub mod generic {
     impl<T> IService for Service<'_, T> {}
 
     #[systasis::container]
-    pub fn run<'a, T: Clone>(label: &'a str, value: T, inspect: fn(&AppContainer<'a, T>)) {
+    pub fn run<'a, T: Clone>(label: &'a str, value: T, inspect: fn(&SystasisContainer<'a, T>)) {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(Service<'a, T> as IService, move || {
                 assert!(!label.is_empty());
@@ -53,7 +53,7 @@ pub mod borrowed_child {
     impl IValue for Value<'_> {}
 
     #[systasis::container]
-    pub fn run<'env>(value: &'env str, inspect: impl FnOnce(&AppContainer<'env>)) {
+    pub fn run<'env>(value: &'env str, inspect: impl FnOnce(&SystasisContainer<'env>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Value(value): Value<'env> as IValue);
         }.build();
@@ -62,10 +62,10 @@ pub mod borrowed_child {
 }
 
 pub mod borrowed_branch {
-    use super::borrowed_child::AppContainer as Child;
+    use super::borrowed_child::SystasisContainer as Child;
 
     #[systasis::container]
-    pub fn run<'a, 'env>(primary: &'a Child<'env>, inspect: impl FnOnce(&AppContainer<'a, 'env>)) {
+    pub fn run<'a, 'env>(primary: &'a Child<'env>, inspect: impl FnOnce(&SystasisContainer<'a, 'env>)) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &'a Child<'env>);
         }.build();

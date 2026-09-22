@@ -19,7 +19,7 @@ mod owned {
         }
     }
 
-    fn receive<T: Send + Sync>(container: &AppContainer<T>) -> usize {
+    fn receive<T: Send + Sync>(container: &SystasisContainer<T>) -> usize {
         let first: &[T; 2] = container.resolve_i_sequence();
         let second: &[T; 2] = container.resolve_i_sequence();
         assert!(core::ptr::eq(first, second));
@@ -75,7 +75,7 @@ mod external_shared {
     trait ISequence {}
     impl<T> ISequence for &[T; 2] {}
 
-    fn receive<'a, T>(container: &AppContainer<'a, T>) -> &'a [T; 2] {
+    fn receive<'a, T>(container: &SystasisContainer<'a, T>) -> &'a [T; 2] {
         container.resolve_i_sequence()
     }
 
@@ -211,7 +211,7 @@ mod explicit_shared {
     trait ILength {}
     impl ILength for usize {}
 
-    fn receive<T: Sync>(container: &AppContainer<'_, T>) -> usize {
+    fn receive<T: Sync>(container: &SystasisContainer<'_, T>) -> usize {
         container.resolve_i_length()
     }
 

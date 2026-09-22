@@ -14,7 +14,7 @@ mod child {
     pub trait IValue {}
     impl<T> IValue for T {}
     #[systasis::container]
-    pub fn run<T: Copy>(value: T, use_child: impl FnOnce(&AppContainer<T>)) {
+    pub fn run<T: Copy>(value: T, use_child: impl FnOnce(&SystasisContainer<T>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: T as IValue);
         }
@@ -25,7 +25,7 @@ mod child {
 
 mod outer {
     use super::Related;
-    type Alias<T> = super::child::AppContainer<T>;
+    type Alias<T> = super::child::SystasisContainer<T>;
     fn lookup<T: Copy>(scope: &primary::SubContainer<'_, T>) -> T {
         scope.resolve_i_value()
     }
@@ -41,7 +41,7 @@ mod outer {
 
 mod outer_where {
     use super::Related;
-    type Alias<T> = super::child::AppContainer<T>;
+    type Alias<T> = super::child::SystasisContainer<T>;
     fn lookup<T: Copy>(scope: &primary::SubContainer<'_, T>) -> T {
         scope.resolve_i_value()
     }

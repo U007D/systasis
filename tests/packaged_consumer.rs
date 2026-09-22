@@ -218,7 +218,7 @@ pub mod child {
     impl IFresh for u32 {}
     type Seed = (u32, bool);
     #[systasis::container]
-    pub fn run(visit: impl FnOnce(&AppContainer)) {
+    pub fn run(visit: impl FnOnce(&SystasisContainer)) {
         #[cfg(all())]
         let (seed, _): Seed = (42, false);
         #[cfg(any())]
@@ -232,7 +232,7 @@ pub mod child {
     }
 }
 pub mod outer {
-    type Alias = super::child::AppContainer;
+    type Alias = super::child::SystasisContainer;
     struct Stored(u32);
     trait IStored {}
     impl IStored for Stored {}
@@ -243,7 +243,7 @@ pub mod outer {
         pub const __systasis_children: u8 = 0;
     }
     fn named_scope(scope: &primary::SubContainer<'_>) -> u32 { scope.resolve_i_value() }
-    fn named_container(container: &AppContainer<'_>) -> u32 { named_scope(container.primary()) }
+    fn named_container(container: &SystasisContainer<'_>) -> u32 { named_scope(container.primary()) }
     #[systasis::container]
     pub fn run(primary: &Alias) -> u32 {
         let builder = systasis::systasis_container! {
@@ -273,7 +273,7 @@ pub mod native {
     struct Word([u8; 4]);
     trait IWord {}
     impl IWord for Word {}
-    fn named(container: &AppContainer) -> u32 {
+    fn named(container: &SystasisContainer) -> u32 {
         u32::from_le_bytes(container.resolve_i_word().0)
     }
     #[systasis::container(require(Send, Sync))]

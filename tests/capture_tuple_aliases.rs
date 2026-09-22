@@ -12,7 +12,7 @@ impl ILength for usize {}
 mod borrowed {
     use super::*;
     type Shared<'a> = &'a ((String, usize), bool);
-    fn receive<'a>(container: &AppContainer<'a>) -> &'a str {
+    fn receive<'a>(container: &SystasisContainer<'a>) -> &'a str {
         container.resolve_i_text()
     }
     #[systasis::container(require(Send, Sync))]
@@ -146,7 +146,7 @@ mod overridden {
 mod generic {
     use super::*;
     type Pair<T> = (T, bool);
-    fn receive<T: AsRef<str> + Send + Sync>(container: &AppContainer<T>) -> usize {
+    fn receive<T: AsRef<str> + Send + Sync>(container: &SystasisContainer<T>) -> usize {
         container.resolve_i_length()
     }
     #[systasis::container(require(Send, Sync))]
@@ -187,7 +187,7 @@ mod explicit_modes {
 mod const_lifetime {
     use super::*;
     type Pair<'a, const N: usize> = (&'a str, [u8; N]);
-    fn receive<'a, const N: usize>(container: &AppContainer<'a, N>) -> &'a str {
+    fn receive<'a, const N: usize>(container: &SystasisContainer<'a, N>) -> &'a str {
         container.resolve_i_text()
     }
     #[systasis::container(require(Send, Sync))]
@@ -262,7 +262,7 @@ mod private {
 type Alias<'a> = private::Tuple<'a>;
 trait ILength {} impl ILength for usize {}
 #[systasis::container]
-pub fn run<'a>(value: &'a Cell<usize>, call: impl FnOnce(&AppContainer<'a>)) {
+pub fn run<'a>(value: &'a Cell<usize>, call: impl FnOnce(&SystasisContainer<'a>)) {
     let (head, _): Alias<'a> = (private::Secret(value), false);
     let Ok(container) = systasis::systasis_container! {
         register_type_with!(usize as ILength, || head.0.get());
@@ -272,7 +272,7 @@ pub fn run<'a>(value: &'a Cell<usize>, call: impl FnOnce(&AppContainer<'a>)) {
 "#;
     let consumer = r#"
 #![forbid(unsafe_code)]
-use provider::AppContainer as Renamed;
+use provider::SystasisContainer as Renamed;
 type Alias<'a> = Renamed<'a>;
 fn receive(container: &Alias<'_>) -> usize { container.resolve_i_length() }
 fn main() { provider::run(&std::cell::Cell::new(17), |container| assert_eq!(receive(container),17)); }

@@ -39,7 +39,7 @@ definition-site candidate has not been adopted.
 Rust compiler errors may expose generated types and paths rather than their
 public aliases. For example, an incorrect resolver call can mention
 `Generated<systasis::__private::TakeSlot<String>, (), fn() -> (String,)>`
-instead of `AppContainer`. These are implementation names, not types callers
+instead of `SystasisContainer`. These are implementation names, not types callers
 must write in signatures; exact diagnostic text is compiler-dependent.
 
 ## Macros inside the constructor

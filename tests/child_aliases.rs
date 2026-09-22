@@ -5,7 +5,7 @@ mod generic_child {
     pub trait IValue {}
     impl<T> IValue for T {}
     #[systasis::container]
-    pub fn run<T: Copy>(value: T, use_child: impl FnOnce(&AppContainer<T>)) {
+    pub fn run<T: Copy>(value: T, use_child: impl FnOnce(&SystasisContainer<T>)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: T as IValue);
         }
@@ -15,7 +15,7 @@ mod generic_child {
 }
 
 mod generic_outer {
-    use super::generic_child::AppContainer as Renamed;
+    use super::generic_child::SystasisContainer as Renamed;
     type Alias<T> = Renamed<T>;
 
     fn receive<T: Copy>(scope: &primary::SubContainer<'_, T>) -> T {
@@ -46,7 +46,7 @@ mod borrowed_child {
     pub trait IText {}
     impl IText for String {}
     #[systasis::container]
-    pub fn run<'a>(config: &'a str, use_child: impl FnOnce(&AppContainer<'a>)) {
+    pub fn run<'a>(config: &'a str, use_child: impl FnOnce(&SystasisContainer<'a>)) {
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(String as IText, move || config.to_owned());
         }
@@ -56,7 +56,7 @@ mod borrowed_child {
 }
 
 mod borrowed_outer {
-    use super::borrowed_child::AppContainer as Renamed;
+    use super::borrowed_child::SystasisContainer as Renamed;
     type Alias<'a> = Renamed<'a>;
 
     fn receive(scope: &primary::SubContainer<'_, '_>) -> String {

@@ -104,7 +104,7 @@ mod leaf {
     impl IValue for String {}
 
     #[systasis::container]
-    pub fn run(call: impl FnOnce(&AppContainer)) {
+    pub fn run(call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(String::from("child"): String as IValue);
         }
@@ -117,9 +117,12 @@ mod middle {
     use super::leaf;
 
     #[systasis::container]
-    pub fn run<'a>(primary: &'a leaf::AppContainer, call: impl FnOnce(&AppContainer<'a>)) {
+    pub fn run<'a>(
+        primary: &'a leaf::SystasisContainer,
+        call: impl FnOnce(&SystasisContainer<'a>),
+    ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::AppContainer);
+            register_container!(primary: &'a leaf::SystasisContainer);
         }
         .build();
         call(&container);
@@ -133,9 +136,9 @@ mod outer {
     impl IOutput for String {}
 
     #[systasis::container]
-    pub fn run<'a>(branch: &middle::AppContainer<'a>) -> Result<(), Error> {
+    pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_container!(branch: &middle::AppContainer<'a>);
+            register_container!(branch: &middle::SystasisContainer<'a>);
             register_value!({
                 use imported::*;
                 let unrelated: IValue = false;

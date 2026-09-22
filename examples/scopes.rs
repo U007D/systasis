@@ -19,9 +19,9 @@ mod application {
     }
 
     #[systasis::container]
-    pub fn run(primary: &super::AppContainer) -> Result<(), Error> {
+    pub fn run(primary: &super::SystasisContainer) -> Result<(), Error> {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &super::AppContainer);
+            register_container!(primary: &super::SystasisContainer);
             register_type_with!(usize as ILength, try || -> Result<usize, Error> {
                 // IDatabase identifies a registration in primary. No import
                 // of the surrounding Rust trait is needed for this query.

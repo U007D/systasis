@@ -56,7 +56,7 @@ mod captured {
 mod delayed {
     use super::*;
 
-    fn read(container: &AppContainer) -> usize {
+    fn read(container: &SystasisContainer) -> usize {
         container.resolve_i_value()
     }
 

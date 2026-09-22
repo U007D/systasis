@@ -18,7 +18,7 @@ macro_rules! scenario {
                     fn drop(&mut self) { core::hint::black_box(&self.0); }
                 }
                 #[systasis::container($($requirements)*)]
-                pub fn run(value: u32, call: impl FnOnce(&AppContainer) -> Result<(), Error>) -> Result<(), Error> {
+                pub fn run(value: u32, call: impl FnOnce(&SystasisContainer) -> Result<(), Error>) -> Result<(), Error> {
                     let Ok(container) = systasis::systasis_container! {
                         register_value!(Packet([value; 4]): Packet as dyn IPacket);
                     }.build();
@@ -29,10 +29,10 @@ macro_rules! scenario {
             mod middle {
                 use super::*;
                 #[systasis::container($($requirements)*)]
-                pub fn run<'a>(primary: &'a leaf::AppContainer, replica: &'a leaf::AppContainer, call: impl FnOnce(&AppContainer<'a>) -> Result<(), Error>) -> Result<(), Error> {
+                pub fn run<'a>(primary: &'a leaf::SystasisContainer, replica: &'a leaf::SystasisContainer, call: impl FnOnce(&SystasisContainer<'a>) -> Result<(), Error>) -> Result<(), Error> {
                     let Ok(container) = systasis::systasis_container! {
-                        register_container!(primary: &'a leaf::AppContainer);
-                        register_container!(replica: &'a leaf::AppContainer);
+                        register_container!(primary: &'a leaf::SystasisContainer);
+                        register_container!(replica: &'a leaf::SystasisContainer);
                     }.build();
                     call(&container)
                 }
@@ -45,9 +45,9 @@ macro_rules! scenario {
                 trait IObserved {}
                 impl IObserved for u32 {}
                 #[systasis::container($($requirements)*)]
-                pub fn run<'a>(branch: &middle::AppContainer<'a>) -> Result<(), Error> {
+                pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<(), Error> {
                     let container = systasis::systasis_container! {
-                        register_container!(branch: &middle::AppContainer<'a>);
+                        register_container!(branch: &middle::SystasisContainer<'a>);
                         register_value!(try_resolve_clone_from!(IPacket, branch::primary)?: resolve_type_from!(IPacket, branch::primary) as ICopied);
                         register_value!({
                             let guard = try_resolve_dyn_ref_from!(IPacket, branch::primary)?;
@@ -84,9 +84,9 @@ macro_rules! scenario {
                 impl IView for View<'_> {}
 
                 #[systasis::container($($requirements)*)]
-                pub fn run<'a>(branch: &middle::AppContainer<'a>) -> Result<(), Error> {
+                pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<(), Error> {
                     let container = systasis::systasis_container! {
-                        register_container!(branch: &middle::AppContainer<'a>);
+                        register_container!(branch: &middle::SystasisContainer<'a>);
                         register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
                             let packet = try_resolve_ref_from!(IPacket, branch::primary)?;
                             // This macro selects native constructor storage.
