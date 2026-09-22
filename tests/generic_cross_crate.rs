@@ -51,6 +51,15 @@ fn exported_alias_preserves_generic_type_const_and_lifetime_parameters() {
 #![allow(unused_parens)]
 pub trait IValue {}
 impl<T> IValue for T {}
+pub mod inferred_value {
+    #[systasis::container]
+    pub fn run(value: u32, use_container: impl FnOnce(&AppContainer)) {
+        let Ok(container) = systasis::systasis_container! {
+            register_value!(value as crate::IValue);
+        }.build();
+        use_container(container);
+    }
+}
 pub mod grouped {
     #[systasis::container]
     pub fn run<T: Copy>(value: T, use_container: impl FnOnce(&AppContainer<T>)) {
@@ -111,6 +120,10 @@ pub mod borrowed {
         &caller,
         r#"
 #![forbid(unsafe_code)]
+fn inspect_inferred(container: &generic_provider::inferred_value::AppContainer) {
+    assert_eq!(container.resolve_i_value(), 11);
+    assert_eq!(container.resolve_i_value(), 11);
+}
 fn inspect_grouped<T: Copy>(container: &generic_provider::grouped::AppContainer<T>) {
     let _: T = container.resolve_i_value();
     let _: &T = container.resolve_i_value_ref();
@@ -160,6 +173,7 @@ mod composed_borrow {
     }
 }
 fn main() {
+    generic_provider::inferred_value::run(11, inspect_inferred);
     generic_provider::grouped::run(7u32, inspect_grouped);
     fn inspect_private_factory(_: &generic_provider::private_factory::AppContainer) {}
     generic_provider::private_factory::run(inspect_private_factory);

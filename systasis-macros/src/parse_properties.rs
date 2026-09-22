@@ -6,6 +6,7 @@ use quote::quote;
 const FIXTURES: &[&str] = &[
     "fn main() { let Ok(c) = systasis_container! {}.build(); }",
     "fn main() { let Ok(c) = systasis_container! { register_value!(42: u32 as IValue); }.build(); }",
+    "fn main(input: u32) { let Ok(c) = systasis_container! { register_value!(input as IValue); }.build(); }",
     "fn main() { let Ok(c) = systasis_container! { register_type!(Value as IValue); }.build(); }",
     "fn main(input: u32) { let Ok(c) = systasis_container! { register_type_with!(u32 as IValue, move || input); }.build(); }",
     "fn main<T: Copy>(input: T) { let Ok(c) = systasis_container! { register_value!(input: T as IValue); }.build(); }",
@@ -76,6 +77,25 @@ fn accepted_fixture_expansions_are_repeatable_rust_syntax() {
         let first = outcome(tokens.clone()).unwrap_or_else(|error| panic!("{source}\n{error}"));
         assert_eq!(outcome(tokens).unwrap(), first, "{source}");
     }
+}
+
+#[test]
+fn reused_value_annotation_emits_the_same_container_as_an_explicit_type() {
+    let explicit = quote! {
+        fn main(input: u32) {
+            let Ok(c) = systasis_container! {
+                register_value!(input: u32 as IValue);
+            }.build();
+        }
+    };
+    let inferred = quote! {
+        fn main(input: u32) {
+            let Ok(c) = systasis_container! {
+                register_value!(input as IValue);
+            }.build();
+        }
+    };
+    assert_eq!(outcome(inferred).unwrap(), outcome(explicit).unwrap());
 }
 
 fn check_mutations(cases_per_fixture: usize) {

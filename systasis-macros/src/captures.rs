@@ -128,6 +128,23 @@ impl Bindings {
         &self.imports
     }
 
+    /// Reuse an authored value type, without guessing a function's return type
+    /// or consulting an earlier binding after a shadowing declaration.
+    pub(crate) fn declared_value_type(&self, expression: &Expr) -> Option<Type> {
+        match expression {
+            Expr::Path(path) if path.qself.is_none() && self.uncertain.is_none() => path
+                .path
+                .get_ident()
+                .and_then(|ident| self.types.get(&name(ident)))
+                .cloned()
+                .flatten(),
+            Expr::Cast(cast) => Some(*cast.ty.clone()),
+            Expr::Paren(paren) => self.declared_value_type(&paren.expr),
+            Expr::Group(group) => self.declared_value_type(&group.expr),
+            _ => None,
+        }
+    }
+
     /// Emit only structural implementations: no source alias or concrete type
     /// appears here. Each authored exact tuple shape supplies its own arity.
     pub(crate) fn projection_helpers(&self) -> proc_macro2::TokenStream {

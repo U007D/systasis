@@ -325,6 +325,18 @@ pub(crate) fn expand(
                     .then_some(registration)
             })
             .collect();
+        // Only winning registrations need a storage type. A superseded value
+        // must not cause a type-lookup error or impose a capture requirement.
+        for registration in &mut registrations {
+            if registration.infer_value_type {
+                registration.ty = bindings.declared_value_type(&registration.value).ok_or_else(|| {
+                    Error::new_spanned(
+                        &registration.value,
+                        "value type is not available from an existing annotation; specify expression: Type as Trait",
+                    )
+                })?;
+            }
+        }
         let mut child_borrows = Vec::new();
         for child in &children {
             if let Some(namespace) = registrations

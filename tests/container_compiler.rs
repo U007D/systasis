@@ -561,6 +561,24 @@ fn container_diagnostics() {
             None,
         ),
         (
+            "omitted_value_type_is_not_guessed",
+            "",
+            "register_value!(untyped as IValue);",
+            "",
+            Some(
+                "value type is not available from an existing annotation; specify expression: Type as Trait",
+            ),
+        ),
+        (
+            "omitted_value_type_does_not_reuse_shadowed_annotation",
+            "",
+            "",
+            "mod shadow { trait IValue {} impl IValue for String {} impl IValue for u32 {} #[systasis::container] fn run() { let value: String = String::new(); let value = 7_u32; let Ok(container) = systasis::systasis_container! { register_value!(value as IValue); }.build(); } }",
+            Some(
+                "value type is not available from an existing annotation; specify expression: Type as Trait",
+            ),
+        ),
+        (
             "missing_dependency",
             "",
             "register_value!(try_resolve!(IMissing)?: String as IValue);",

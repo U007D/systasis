@@ -7,6 +7,19 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 gist comparison: value registrations can reuse an already declared
+local/parameter type or an explicit cast type. The parser previously rejected
+every omitted registration annotation. Five public-API tests now cover named
+containers, ownership/Copy policy (including generic parameters), final overrides,
+groups and namespaces on std/no_std. A downstream package names the generated
+container without added generic parameters; a macro test checks identical output
+to explicit annotation. Existing compiler tests retain a diagnostic for unknown
+or shadowed types instead of guessing. These are partial inference support, not
+general inference of arbitrary expressions or opaque types. The selected library,
+compiler, value, namespace/group and cross-crate tests and targeted Clippy pass on
+both backends. No unsafe code, dependency, compiler feature or documented syntax
+changed; examples continue to supply explicit registered types.
+
 2026-09-22 gist comparison: resolution errors now implement the source's Clone,
 Copy, Eq and PartialEq requirements, retaining the later chosen public names and
 thiserror messages. The new public trait-bound/equality test failed before the

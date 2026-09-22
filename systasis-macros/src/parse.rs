@@ -1,7 +1,7 @@
 use quote::{ToTokens, quote};
 use syn::{
     ext::IdentExt,
-    parse::{Parse, ParseStream},
+    parse::{Parse, ParseStream, Parser, discouraged::Speculative},
     *,
 };
 
@@ -99,15 +99,56 @@ pub(crate) struct Registration {
     pub(crate) dynamic: bool,
     pub(crate) value: Expr,
     pub(crate) ty: Type,
+    pub(crate) infer_value_type: bool,
     pub(crate) interface: InterfaceGroup,
     pub(crate) namespace: Namespace,
 }
 impl Parse for Registration {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let annotated = input.fork();
+        let annotation_error = match Self::parse_annotated(&annotated) {
+            Ok(registration) => {
+                input.advance_to(&annotated);
+                return Ok(registration);
+            }
+            Err(error) => error,
+        };
+
+        // An omitted annotation uses the final `as` that separates a complete
+        // Rust expression from a complete interface group. Parse both sides;
+        // a cast inside the value must not become the registration separator.
+        let tokens = input
+            .parse::<proc_macro2::TokenStream>()?
+            .into_iter()
+            .collect::<Vec<_>>();
+        for (separator, token) in tokens.iter().enumerate().rev() {
+            if !matches!(token, proc_macro2::TokenTree::Ident(ident) if ident == "as") {
+                continue;
+            }
+            let Ok(value) = syn::parse2::<Expr>(tokens[..separator].iter().cloned().collect())
+            else {
+                continue;
+            };
+            let tail = |input: ParseStream<'_>| Self::parse_value_tail(input, value, None);
+            if let Ok(registration) = tail.parse2(tokens[separator + 1..].iter().cloned().collect())
+            {
+                return Ok(registration);
+            }
+        }
+        Err(annotation_error)
+    }
+}
+
+impl Registration {
+    fn parse_annotated(input: ParseStream<'_>) -> Result<Self> {
         let value = input.parse()?;
         input.parse::<Token![:]>()?;
         let ty = input.parse()?;
         input.parse::<Token![as]>()?;
+        Self::parse_value_tail(input, value, Some(ty))
+    }
+
+    fn parse_value_tail(input: ParseStream<'_>, value: Expr, ty: Option<Type>) -> Result<Self> {
         let dynamic = input.parse::<Option<Token![dyn]>>()?.is_some();
         let interface: InterfaceGroup = input.parse()?;
         let namespace = Namespace::registration(input)?;
@@ -117,7 +158,8 @@ impl Parse for Registration {
             fallible: false,
             dynamic,
             value,
-            ty,
+            infer_value_type: ty.is_none(),
+            ty: ty.unwrap_or_else(|| parse_quote!(_)),
             interface,
             namespace,
         })
@@ -171,6 +213,7 @@ impl Parse for Registrations {
                     dynamic: false,
                     value: parse_quote!(()),
                     ty,
+                    infer_value_type: false,
                     interface,
                     namespace,
                 }
