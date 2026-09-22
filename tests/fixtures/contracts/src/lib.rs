@@ -78,10 +78,10 @@ pub fn convert(value: Option<u8>) -> Result<u8, ()> {
     value.into_result()
 }
 
-#[cfg(feature = "bad-copy-error")]
-pub fn error_is_not_copy() {
-    fn requires_copy<T: Copy>() {}
-    requires_copy::<Error>();
+#[cfg(feature = "error-value-traits")]
+pub fn error_supports_value_traits() {
+    fn requires_value_traits<T: Clone + Copy + core::fmt::Debug + Eq + PartialEq>() {}
+    requires_value_traits::<Error>();
 }
 
 #[cfg(feature = "bad-poison-in-no-std")]

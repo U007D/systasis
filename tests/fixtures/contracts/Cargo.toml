@@ -11,7 +11,7 @@ systasis = { path = "../../..", default-features = false }
 
 [features]
 std = ["systasis/std"]
-bad-copy-error = []
+error-value-traits = []
 bad-poison-in-no-std = []
 bad-fallible = []
 bad-local-sync = []

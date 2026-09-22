@@ -141,8 +141,16 @@ fn matcher_rejects_warning_and_unrelated_error_fragments() {
 }
 
 #[test]
-fn public_error_is_not_copy() {
-    rejects("bad-copy-error", "E0277", &["Copy"]);
+fn public_error_supports_value_traits() {
+    let _serial = COMPILER.lock().expect("compiler driver lock");
+    let driver = DRIVER.get_or_init(Driver::initialize);
+    let output = driver.check(Some("error-value-traits"));
+    driver.record("error-value-traits", &output);
+    assert!(
+        output.status.success(),
+        "resolution errors must implement their required value traits:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

@@ -7,6 +7,14 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 error compiler-test correction: the full run found an obsolete
+`public_error_is_not_copy` rejection expectation, contradicting the gist's value
+traits implemented in bc2b647. The downstream fixture now positively requires
+Clone, Copy, Debug, Eq and PartialEq; no runtime contract changed. This replaces
+the incorrect expectation rather than removing coverage or changing the error
+back to a non-Copy type. The compiler and error suites and their targeted Clippy
+checks pass on std/no_std, including all existing borrow/thread-safety rejections.
+
 2026-09-22 requested native auto-trait fix: the broader release run exposed E0283
 in native_fallback's ordinary String-owning constructors with require(Send, Sync).
 Generated opaque closure aliases now state only the explicitly requested auto
