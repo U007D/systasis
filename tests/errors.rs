@@ -3,6 +3,19 @@ use std::error::Error as _;
 use systasis::app_container::Error;
 
 #[test]
+fn resolution_errors_support_the_required_value_traits() {
+    fn assert_value_traits<T: Clone + Copy + core::fmt::Debug + Eq + PartialEq>() {}
+    assert_value_traits::<Error>();
+
+    for error in [Error::ValueAlreadyConsumed, Error::ValueAccessContention] {
+        let copied = error;
+        assert_eq!(copied, error);
+        assert_eq!(Err::<(), _>(copied), Err(error));
+    }
+    assert_ne!(Error::ValueAlreadyConsumed, Error::ValueAccessContention);
+}
+
+#[test]
 fn availability_errors_are_distinct_and_have_no_source() {
     let consumed = Error::ValueAlreadyConsumed;
     let contended = Error::ValueAccessContention;

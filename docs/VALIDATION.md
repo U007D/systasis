@@ -7,6 +7,13 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 gist comparison: resolution errors now implement the source's Clone,
+Copy, Eq and PartialEq requirements, retaining the later chosen public names and
+thiserror messages. The new public trait-bound/equality test failed before the
+change. `errors`, `storage` and `container_access` tests and targeted Clippy pass
+on std/no_std. This omission was not represented in the derived R01–R15 inventory;
+that inventory alone does not establish complete coverage of the gist.
+
 2026-09-22: type-query cycle diagnostics now identify the closed registration
 path, completing the R06 diagnostic requirement previously implemented only for
 runtime query cycles. Compiler cases check self-cycles and a two-registration
