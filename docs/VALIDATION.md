@@ -7,6 +7,14 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-21 work priority: the R01–R15 inventory below tracks basic required
+operations. Its representative coverage is separate from complete input-form
+compatibility. Further Copy-alias, type-spelling and capture/cfg combination
+research is deferred while demonstrating the basic container. Preserve known
+limitations without turning them into new annotation requirements or additional
+basic-completion gates. This is a prioritization change, not new test evidence
+or a claim that the deferred inputs now work.
+
 2026-09-17: explicit generic Copy bounds now ignore parentheses and invisible
 type groups, without confusing tuples/wrappers with their arguments. New public
 API tests cover repeated reads, ordinary references, named generic containers,
