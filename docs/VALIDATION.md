@@ -17,8 +17,8 @@ Release verification at a7bd95b, on installed rustc 1.97.0-nightly
 | std, resolve_unchecked + experimental-hardware | 442 | 0 | 4 |
 | no_std, resolve_unchecked + experimental-hardware | 442 | 0 | 4 |
 
-The formerly failing `native_capture_diagnostics` assertions remain unchanged
-and now pass: local E0597 errors include the non-borrowing-implementation remedy.
+The formerly failing `native_capture_diagnostics` checks remain in place
+and now pass: local E0597 errors recommend owned fields and captures.
 The separately run packaged-consumer test also passes for extracted std/no_std
 crates, including the diagnostic and both working rewrites. The other
 default-ignored checks are timing/codegen baselines and the extended parser
@@ -58,6 +58,10 @@ checks pass on std/no_std. A new macro-free test combines an inferred owned
 capture with a returned write guard, checking contention, mutation and release.
 No supported capture behavior or caller syntax changed. E0521 and generic-case
 diagnostic limits remain; this is not a universal custom diagnostic.
+
+The subsequent wording-only change recommends "owned fields and captures".
+Both backend diagnostic drivers and extracted-package consumers pass with that
+literal message; the full-matrix counts above remain the a7bd95b run.
 
 2026-09-22 cfg diagnostic compatibility: configured_scaling's positive
 256-condition program already passed. The negative generated/plain-Rust controls

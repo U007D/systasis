@@ -124,10 +124,10 @@ limitation. The generated capture check has the following remedy in its source;
 the tested compiler includes it in the local E0597 error:
 
 ```text
-systasis cannot store this borrowed capture here; register a non-borrowing implementation.
+systasis cannot store this borrowed capture here; register an implementation with owned fields and captures.
 ```
 
-The simple, coarse workaround is to register a non-borrowing implementation:
+The simple, coarse workaround is to register an implementation with owned data:
 use owned fields and owned constructor inputs, such as `String` instead of `&str`.
 The capture must own its data too; returning an owned result alone is not enough.
 Adding `move` to a closure capturing a reference does not make its referent owned.

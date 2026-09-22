@@ -75,7 +75,7 @@ fn local_native_capture_errors_explain_the_working_rewrite() {
                     .success()
             );
         }
-        let remedy = "systasis cannot store this borrowed capture here; register a non-borrowing implementation.";
+        let remedy = "systasis cannot store this borrowed capture here; register an implementation with owned fields and captures.";
         assert_eq!(
             diagnostics.contains(remedy),
             capture_note,

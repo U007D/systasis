@@ -90,7 +90,7 @@ pub fn container(
 /// consuming `.build()` exposes the generated resolution methods.
 ///
 /// Systasis cannot yet represent some borrowed constructor inputs' lifetimes.
-/// Workaround: register a non-borrowing implementation with owned fields and captures.
+/// Workaround: register an implementation with owned fields and captures.
 /// Not all affected compiler errors include this guidance.
 #[proc_macro]
 pub fn systasis_container(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

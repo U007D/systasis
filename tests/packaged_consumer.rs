@@ -89,7 +89,7 @@ fn capture_diagnostic(consumer: &Path, target: &Path, patch: &str, std_enabled: 
             );
             assert!(diagnostics.contains("error[E0597]:"), "{diagnostics}");
             assert!(
-                diagnostics.contains("systasis cannot store this borrowed capture here; register a non-borrowing implementation."),
+                diagnostics.contains("systasis cannot store this borrowed capture here; register an implementation with owned fields and captures."),
                 "packaged source lost the remedy: {diagnostics}"
             );
         } else {
