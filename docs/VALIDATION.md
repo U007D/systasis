@@ -7,6 +7,46 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+Release verification at 98893fc, on installed rustc 1.97.0-nightly
+(4b0c9d76a, 2026-05-10), ran every workspace test target without exclusions:
+
+| Configuration | Passed | Failed | Intentionally ignored |
+| --- | ---: | ---: | ---: |
+| std, checked | 433 | 1 | 4 |
+| no_std, checked | 433 | 1 | 4 |
+| std, resolve_unchecked + experimental-hardware | 440 | 1 | 4 |
+| no_std, resolve_unchecked + experimental-hardware | 440 | 1 | 4 |
+
+The sole failing target is `native_capture_diagnostics`: rustc rejects the
+unsupported borrowed capture with E0597 but omits the source-note remedy. The
+test remains unchanged; full-suite acceptance is **not** green. Explicitly
+running the ignored packaged-consumer test also stops at the same missing-note
+assertion after its std consumer runs; that run does not establish no_std package
+completion. The other default-ignored checks are timing/codegen baselines and
+the extended parser mutation run, whose earlier evidence remains historical.
+
+Both optional-feature runs include passing embedded compile/link checks (not
+physical-board execution). All-target Clippy with both optional features,
+workspace Rustdoc with warnings denied, and all three application examples pass
+on std/no_std. The matrix includes twelve guide doctests per configuration.
+No toolchain update, dependency or unsafe-code change occurred; no Miri trigger.
+
+Reproduction, with the four wrapper variables cleared as described below:
+
+```text
+cargo test --workspace --no-fail-fast --offline --locked
+cargo test --workspace --no-default-features --no-fail-fast --offline --locked
+cargo test --workspace --features resolve_unchecked,experimental-hardware --no-fail-fast --offline --locked
+cargo test --workspace --no-default-features --features resolve_unchecked,experimental-hardware --no-fail-fast --offline --locked
+cargo test --test packaged_consumer --offline --locked -- --ignored --nocapture
+```
+
+Logs: `/private/tmp/systasis-release-validation.jItsZj/`. `*-checked-final.log`
+and `*-optional.log` are the final matrix runs; earlier logs retain intermediate
+failures. Fixes: 30c9f01 (macro-free child guard test), 84957b9 (requested native
+auto traits), 4d987a4 (required error traits in compiler checks), 98893fc (cfg
+diagnostic compatibility). Earlier failure entries below describe pre-fix runs.
+
 2026-09-22 cfg diagnostic compatibility: configured_scaling's positive
 256-condition program already passed. The negative generated/plain-Rust controls
 now recognize both E0537 invalid-predicate and E0539 malformed-cfg diagnostics,

@@ -16,7 +16,8 @@ impl<C> FactorySlot<C> {
 }
 
 // Called only for native aliases without enclosing generics. Keep the remedy
-// beside the bound: rustc displays this source excerpt for E0597, but not E0521.
+// beside the bound: some rustc versions display this excerpt for E0597, while
+// others omit it. The source note is not a compiler-independent diagnostic.
 /// Systasis cannot yet represent some borrowed constructor inputs' lifetimes.
 /// Workaround: register a non-borrowing implementation with owned fields and captures.
 /// Not all affected compiler errors include this guidance.
