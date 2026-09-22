@@ -3,7 +3,8 @@
 
 mod plain {
     #[systasis::container]
-    pub fn init_container() -> Result<SystasisContainer, Box<dyn std::error::Error + Send + 'static>> {
+    pub fn init_container() -> Result<SystasisContainer, Box<dyn std::error::Error + Send + 'static>>
+    {
         let container: SystasisContainer = systasis::systasis_container! {
             register_value!(42: u8 as Copy);
         }
