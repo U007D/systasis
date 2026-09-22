@@ -371,10 +371,15 @@ pub(crate) fn expand(
             .and_then(|a| a.args.first())
             .cloned()
             .unwrap_or(parse_quote!(_));
-        let indices = registrations
+        let registration_names = registrations
             .iter()
+            .map(|registration| registration.namespace.key(&registration.interface))
+            .collect::<Vec<_>>();
+        let indices = registration_names
+            .iter()
+            .cloned()
             .enumerate()
-            .map(|(i, r)| (r.namespace.key(&r.interface), i))
+            .map(|(index, name)| (name, index))
             .collect::<BTreeMap<_, _>>();
         let mut dependencies = Vec::new();
         let mut constructor_borrows = BTreeSet::new();
@@ -416,6 +421,7 @@ pub(crate) fn expand(
         for registration in &mut registrations {
             let mut lookup = TypeLookup {
                 indices: &indices,
+                names: &registration_names,
                 types: &original_types,
                 dynamic: &dynamic,
                 active: Vec::new(),
@@ -454,7 +460,7 @@ pub(crate) fn expand(
         let order = crate::graph::schedule(&dependencies).map_err(|cycle| {
             let names = cycle
                 .iter()
-                .map(|&i| registrations[i].namespace.key(&registrations[i].interface))
+                .map(|&index| registration_names[index].as_str())
                 .collect::<Vec<_>>();
             Error::new_spanned(
                 &registry,

@@ -403,6 +403,8 @@ fn main() -> Result<(), Error> {
 Final registrations determine dependencies: the last registration of a group in
 one namespace wins. Build processes dependency layers, preserving declaration
 order within each layer. Missing dependencies and cycles are compile errors.
+Both value- and type-query cycle errors show the closed registration path;
+registrations merely waiting on the cycle are omitted.
 Queries never fall back to types, traits or aliases outside the selected container.
 
 ## Trait groups and dynamic access

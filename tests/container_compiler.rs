@@ -579,7 +579,19 @@ fn container_diagnostics() {
             "",
             "register_value!(String::new(): registered_type!(IValue) as IValue);",
             "",
-            Some("registered type lookup cycle"),
+            Some("registered type lookup cycle: IValue -> IValue"),
+        ),
+        (
+            "type_cycle_excludes_blocked_dependent",
+            "",
+            "register_value!(String::new(): resolve_type_from!(IValue, blocked) as IValue);\n\
+             register_value!(String::new(): resolve_type_from!(IValue, first) as IValue in blocked);\n\
+             register_value!(String::new(): resolve_type_from!(IValue, second) as IValue in first);\n\
+             register_value!(String::new(): resolve_type_from!(IValue, first) as IValue in second);",
+            "",
+            Some(
+                "registered type lookup cycle: IValue in first -> IValue in second -> IValue in first",
+            ),
         ),
         (
             "value_cycle",
@@ -595,7 +607,9 @@ fn container_diagnostics() {
              register_value!(try_resolve_from!(IValue, second)?: String as IValue in first);\n\
              register_value!(try_resolve_from!(IValue, first)?: String as IValue in second);",
             "",
-            Some("registration dependency cycle: IValue in first -> IValue in second -> IValue in first"),
+            Some(
+                "registration dependency cycle: IValue in first -> IValue in second -> IValue in first",
+            ),
         ),
         (
             "wrong_interface",

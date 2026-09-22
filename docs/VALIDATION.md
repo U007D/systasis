@@ -7,6 +7,17 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22: type-query cycle diagnostics now identify the closed registration
+path, completing the R06 diagnostic requirement previously implemented only for
+runtime query cycles. Compiler cases check self-cycles and a two-registration
+cycle reached through blocked dependents; the preceding generic diagnostic failed
+the new expectation before the fix. The workspace library tests and the selected
+`container_compiler`, `initialization_order`, `concurrent_container`,
+`owned_container` and `namespaces` suites pass on std/no_std, as does targeted
+Clippy with warnings denied. No lookup semantics, runtime, dependencies, unsafe
+code or compiler features changed. The known full-suite compiler failures below
+remain outside this targeted verification.
+
 2026-09-22: `concurrent_container` verifies R04/R07 through generated methods on
 a Sync container holding a non-'static borrowed payload. Scoped threads verify
 compatible reads/clones, rejection of incompatible reads/writes/takes, independent

@@ -91,6 +91,7 @@ impl VisitMut for Queries<'_> {
 
 pub(crate) struct TypeLookup<'a> {
     pub(crate) indices: &'a BTreeMap<String, usize>,
+    pub(crate) names: &'a [String],
     pub(crate) types: &'a [Type],
     pub(crate) dynamic: &'a [Option<Type>],
     pub(crate) active: Vec<usize>,
@@ -135,8 +136,20 @@ impl VisitMut for TypeLookup<'_> {
                 *ty = parse_quote!((#target));
                 return;
             }
-            if self.active.contains(&index) {
-                self.error = Some(Error::new_spanned(query, "registered type lookup cycle"));
+            if let Some(start) = self.active.iter().position(|&active| active == index) {
+                // Only the repeated suffix is cyclic; earlier lookups may just
+                // depend on it. Repeat the closing registration to show the edge.
+                let cycle = self.active[start..]
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(index))
+                    .map(|index| self.names[index].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
+                self.error = Some(Error::new_spanned(
+                    query,
+                    format!("registered type lookup cycle: {cycle}"),
+                ));
                 return;
             }
             self.active.push(index);
