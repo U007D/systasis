@@ -45,14 +45,6 @@ mod owned_parent {
             child.try_resolve_i_value(),
             Err(Error::ValueAlreadyConsumed)
         ));
-        {
-            let guard: core::cell::Ref<'_, T> = container.try_resolve_i_selected_ref()?;
-            assert!(*guard == expected);
-            assert!(matches!(
-                container.try_resolve_i_selected(),
-                Err(Error::ValueAccessContention)
-            ));
-        }
         assert!(container.try_resolve_i_selected()? == expected);
         assert!(matches!(
             container.try_resolve_i_selected(),
@@ -72,8 +64,8 @@ mod copied_parent {
             register_container!(child: &copied_child::SystasisContainer<T>);
             register_value!(resolve_from!(IValue, child): resolve_type_from!(IValue, child) as ISelected);
         }.build();
-        let plain: &T = container.resolve_i_selected_ref();
-        assert!(*plain == expected);
+        let Ok(plain) = container.try_resolve_i_selected();
+        assert!(plain == expected);
         assert!(container.resolve_i_selected() == expected);
         assert!(container.resolve_i_selected() == expected);
         assert!(child.resolve_i_value() == expected);

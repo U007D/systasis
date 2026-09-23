@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 use systasis::container::Error;
+struct Value(String);
 
 mod imported {
     // Ordinary names resembling implementation roles remain available to callers.
@@ -12,12 +13,12 @@ mod imported {
 }
 
 mod local {
-    use super::{Error, imported};
+    use super::{Error, Value, imported};
 
     trait IValue {}
-    impl IValue for String {}
+    impl IValue for Value {}
     trait IUnused {}
-    impl IUnused for String {}
+    impl IUnused for Value {}
     trait IOutput {}
     impl IOutput for String {}
 
@@ -27,8 +28,8 @@ mod local {
         // Deliberately unannotated: initializer inputs keep ordinary inference.
         let mut events = Vec::new();
         let container = systasis::systasis_container! {
-            register_value!(String::from("actual"): String as IValue);
-            register_value!(String::from("unused"): String as IUnused);
+            register_value!(Value(String::from("actual")): Value as IValue);
+            register_value!(Value(String::from("unused")): Value as IUnused);
             register_value!({
                 use imported::*;
                 let should_take: IValue = false;
@@ -36,34 +37,34 @@ mod local {
                 if should_take {
                     drop(try_resolve!(IUnused)?);
                 }
-                try_resolve!(IValue)?
+                try_resolve!(IValue)?.0
             }: String as IOutput);
         }
         .build::<Error>()?;
         events.push("after");
         assert_eq!(events, ["outside", "after"]);
-        assert_eq!(container.try_resolve_i_output()?, "actual");
+        assert_eq!(container.resolve_i_output_clone(), "actual");
         assert!(matches!(
             container.try_resolve_i_value(),
             Err(Error::ValueAlreadyConsumed)
         ));
-        assert_eq!(container.try_resolve_i_unused()?, "unused");
+        assert_eq!(container.try_resolve_i_unused()?.0, "unused");
         Ok(())
     }
 }
 
 mod branching {
-    use super::{Error, imported};
+    use super::{Error, Value, imported};
 
     trait IValue {}
-    impl IValue for String {}
+    impl IValue for Value {}
     trait IOutput {}
     impl IOutput for String {}
 
     #[systasis::container]
     fn run(take_branch: bool) -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_value!(String::from("actual"): String as IValue);
+            register_value!(Value(String::from("actual")): Value as IValue);
             register_value!({
                 let input = String::from("retained");
                 'output: {
@@ -73,17 +74,17 @@ mod branching {
                         assert_eq!(slot_0, "outside");
                         if take_branch {
                             drop(input);
-                            break 'output try_resolve!(IValue)?;
+                            break 'output try_resolve!(IValue)?.0;
                         }
                     }
                     // Valid only if the move stays in the diverging branch.
                     assert_eq!(input, "retained");
-                    try_resolve!(IValue)?
+                    try_resolve!(IValue)?.0
                 }
             }: String as IOutput);
         }
         .build::<Error>()?;
-        assert_eq!(container.try_resolve_i_output()?, "actual");
+        assert_eq!(container.resolve_i_output_clone(), "actual");
         assert!(matches!(
             container.try_resolve_i_value(),
             Err(Error::ValueAlreadyConsumed)
@@ -100,13 +101,14 @@ mod branching {
 }
 
 mod leaf {
+    use super::Value;
     trait IValue {}
-    impl IValue for String {}
+    impl IValue for Value {}
 
     #[systasis::container]
     pub fn run(call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
-            register_value!(String::from("child"): String as IValue);
+            register_value!(Value(String::from("child")): Value as IValue);
         }
         .build();
         call(&container);
@@ -144,11 +146,11 @@ mod outer {
                 let unrelated: IValue = false;
                 assert!(!unrelated);
                 assert_eq!(slot_0, "outside");
-                try_resolve_from!(IValue, branch::primary)?
+                try_resolve_from!(IValue, branch::primary)?.0
             }: String as IOutput);
         }
         .build::<Error>()?;
-        assert_eq!(container.try_resolve_i_output()?, "child");
+        assert_eq!(container.resolve_i_output_clone(), "child");
         Ok(())
     }
 }

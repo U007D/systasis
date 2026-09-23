@@ -48,7 +48,7 @@ mod consumed_child {
             register_container!(primary: &child::SystasisContainer);
             register_value!({
                 // The dependency forces transfer before this initializer fails.
-                let _resource = try_resolve_ref!(IResource).map_err(Failure::Access)?;
+                let _resource = try_resolve!(IResource).map_err(Failure::Access)?;
                 Err::<usize, Failure>(Failure::Rejected)?
             }: usize as IOutput);
             register_value!(
@@ -152,25 +152,23 @@ mod owned_error {
     }
 }
 
-mod guarded_error {
+mod child_owned_error {
     use super::*;
 
-    enum GuardFailure<'a> {
+    enum ResourceFailure {
         Access(Error),
-        Rejected(systasis::Ref<'a, Resource>),
+        Rejected(Resource),
     }
 
     #[systasis::container]
-    fn fail<'a>(primary: &'a child::SystasisContainer) -> GuardFailure<'a> {
+    fn fail(primary: &child::SystasisContainer) -> ResourceFailure {
         let built = systasis::systasis_container! {
-            register_container!(primary: &'a child::SystasisContainer);
+            register_container!(primary: &child::SystasisContainer);
             register_value!({
-                let guard = try_resolve_ref_from!(IResource, primary).map_err(GuardFailure::Access)?;
-                Err::<usize, GuardFailure<'a>>(GuardFailure::Rejected(guard))?
+                let resource = try_resolve_from!(IResource, primary).map_err(ResourceFailure::Access)?;
+                Err::<usize, ResourceFailure>(ResourceFailure::Rejected(resource))?
             }: usize as IOutput);
-        }
-        .build::<GuardFailure<'a>>();
-
+        }.build::<ResourceFailure>();
         match built {
             Err(error) => error,
             Ok(_) => panic!("the initializer always fails"),
@@ -178,33 +176,17 @@ mod guarded_error {
     }
 
     #[test]
-    fn build_error_retains_child_guard_until_error_drop() {
+    fn build_error_owns_child_resource_until_error_drop() {
         let drops = Rc::new(Cell::new(0));
         child::with_resource(Rc::clone(&drops), |primary| {
             let error = fail(primary);
             match &error {
-                GuardFailure::Rejected(guard) => assert!(Rc::ptr_eq(&guard.drops, &drops)),
-                GuardFailure::Access(error) => panic!("resource must be available: {error}"),
+                ResourceFailure::Rejected(resource) => assert!(Rc::ptr_eq(&resource.drops, &drops)),
+                ResourceFailure::Access(error) => panic!("resource must be available: {error}"),
             }
-            assert!(matches!(
-                primary.try_resolve_i_resource(),
-                Err(Error::ValueAccessContention)
-            ));
-            assert!(matches!(
-                primary.try_resolve_i_resource_ref_mut(),
-                Err(Error::ValueAccessContention)
-            ));
+            assert!(matches!(primary.try_resolve_i_resource(), Err(Error::ValueAlreadyConsumed)));
             assert_eq!(drops.get(), 0);
-
             drop(error);
-            drop(primary.try_resolve_i_resource_ref_mut().unwrap());
-            let resource = primary.try_resolve_i_resource().unwrap();
-            assert_eq!(
-                drops.get(),
-                0,
-                "releasing the guard does not consume its value"
-            );
-            drop(resource);
             assert_eq!(drops.get(), 1);
         });
         assert_eq!(drops.get(), 1);

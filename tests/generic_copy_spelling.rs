@@ -9,7 +9,7 @@ mod parenthesized_registration {
     use super::IValue;
 
     fn inspect<T: Copy>(container: &SystasisContainer<T>) -> T {
-        let _: &T = container.resolve_i_value_ref();
+        let Ok(_value) = container.try_resolve_i_value();
         let _: T = container.resolve_i_value();
         container.resolve_i_value()
     }
@@ -56,7 +56,7 @@ mod nested_parentheses {
             register_value!(value: Wrapper<T> as IValue);
         }
         .build();
-        let _: &Wrapper<T> = container.resolve_i_value_ref();
+        let Ok(_value) = container.try_resolve_i_value();
         let _: Wrapper<T> = container.resolve_i_value();
         container.resolve_i_value()
     }

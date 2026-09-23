@@ -34,7 +34,8 @@ mod bounded {
         .build();
         assert_eq!(container.resolve_i_value(), value);
         assert_eq!(container.resolve_i_value(), value);
-        assert_eq!(*container.resolve_i_value_ref(), value);
+        let Ok(copied) = container.try_resolve_i_value();
+        assert_eq!(copied, value);
         super::named_parameter(&container, value);
     }
 }
@@ -120,13 +121,11 @@ mod local {
             register_value!(value: T as IValue);
         }
         .build();
-        let guard: core::cell::Ref<'_, T> = container.try_resolve_i_value_ref().unwrap();
+        let _owned: T = container.try_resolve_i_value().unwrap();
         assert!(matches!(
             container.try_resolve_i_value(),
-            Err(Error::ValueAccessContention)
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(guard);
-        assert!(container.try_resolve_i_value().is_ok());
     }
 }
 
@@ -179,7 +178,7 @@ mod constructor_dependency {
             register_value!(resolve!(IValue): T as IStored);
         }
         .build::<Error>()?;
-        let _: T = container.try_resolve_i_stored()?;
+        let Ok(_stored) = container.try_resolve_i_stored_clone();
         let _: T = container.resolve_i_value();
         Ok(())
     }
@@ -205,7 +204,7 @@ fn generic_fresh_and_captured_constructors() {
     constructor_dependency::run::<String>().unwrap();
     fallible::run::<String, &'static str>(Ok(String::from("ok")));
     captured_reference::run("captured borrow");
-    returned_guard::run(String::from("guarded")).unwrap();
+    returned_owned::run(String::from("owned")).unwrap();
     generic_interfaces::run(42u32);
     generic_dyn::run(String::from("dynamic"));
 }
@@ -235,23 +234,21 @@ mod captured_reference {
     }
 }
 
-mod returned_guard {
+mod returned_owned {
     use super::*;
-    trait IGuard {}
-    impl<T> IGuard for systasis::Ref<'_, T> {}
+    trait IOutput {}
+    impl<T> IOutput for T {}
     #[systasis::container]
     pub fn run<T>(value: T) -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_value!(value: T as IValue);
-            register_type_with!(systasis::Ref<'_, T> as IGuard, try || -> Result<systasis::Ref<'_, T>, Error> { try_resolve_ref!(IValue) });
+            register_type_with!(T as IOutput, try || -> Result<T, Error> { try_resolve!(IValue) });
         }.build::<Error>()?;
-        let guard = container.try_resolve_i_guard()?;
+        let _owned = container.try_resolve_i_output()?;
         assert!(matches!(
-            container.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            container.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(guard);
-        assert!(container.try_resolve_i_value_ref_mut().is_ok());
         Ok(())
     }
 }
@@ -286,7 +283,8 @@ mod generic_dyn {
             register_value!(value: T as dyn IValue<T>);
         }
         .build();
-        let guard = container.try_resolve_i_value_dyn_ref().unwrap();
-        let _: &T = IValue::<T>::get(&*guard);
+        let value = container.try_resolve_i_value().unwrap();
+        let object: &dyn IValue<T> = &value;
+        let _: &T = object.get();
     }
 }

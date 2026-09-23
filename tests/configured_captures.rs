@@ -101,8 +101,8 @@ mod lifecycle {
         assert_eq!(container.resolve_i_value(), 1);
         assert_eq!(container.resolve_i_value(), 2);
         assert_eq!(drops.get(), 0);
-        let guard: core::cell::Ref<'_, String> = container.try_resolve_i_stored_ref().unwrap();
-        assert_eq!(&*guard, "stored");
+        let Ok(stored) = container.try_resolve_i_stored_clone();
+        assert_eq!(stored, "stored");
     }
 
     #[test]

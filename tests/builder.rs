@@ -149,7 +149,7 @@ mod failed {
         let builder = systasis::systasis_container! {
             register_value!(value: Tracked as IValue);
             register_value!({
-                let _guard = try_resolve_ref!(IValue).map_err(|_| Rejected)?;
+                let _owned = try_resolve!(IValue).map_err(|_| Rejected)?;
                 Err::<usize, Rejected>(Rejected)?
             }: usize as IFresh);
         };

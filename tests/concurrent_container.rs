@@ -51,10 +51,7 @@ fn scoped_threads_share_exactly_once_consumption_and_repeatable_values() {
             .map(|worker| worker.join().expect("resolver worker must succeed"))
             .collect::<Vec<_>>()
     });
-    let mut values = outcomes.into_iter().filter_map(|outcome| match outcome {
-        Ok(value) => Some(value),
-        Err(Error::ValueAccessContention | Error::ValueAlreadyConsumed) => None,
-    });
+    let mut values = outcomes.into_iter().filter_map(Result::ok);
     let mut taken = values.next().expect("one worker must acquire the value");
     assert!(values.next().is_none(), "a value must never transfer twice");
     assert_eq!(taken.name, name);

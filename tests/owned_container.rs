@@ -96,8 +96,8 @@ mod plain {
         .build();
         let Ok(container) = built;
         assert_eq!(container.resolve_i_value(), 7);
-        assert_eq!(*container.resolve_i_value_ref(), 7);
-        assert_eq!(container.resolve_i_value_clone(), 7);
+        let Ok(value) = container.try_resolve_i_value();
+        assert_eq!(value, 7);
     }
 }
 

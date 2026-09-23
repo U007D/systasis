@@ -10,8 +10,10 @@ trait IOutput {}
 impl IOutput for u32 {}
 
 mod unavailable {
+    struct Value(String);
     trait IValue {}
     impl IValue for String {}
+    impl IValue for Value {}
 
     #[systasis::container]
     #[test]
@@ -20,18 +22,12 @@ mod unavailable {
         let outside = String::from("outside");
         let _: &dyn IValue = &outside;
         let Ok(container) = systasis::systasis_container! {
-            register_value!(String::from("selected"): String as IValue);
+            register_value!(Value(String::from("selected")): Value as IValue);
             register_type_with!(String as IOutput, try || -> Result<String, Error> {
-                try_resolve!(IValue)
+                Ok(try_resolve!(IValue)?.0)
             });
         }
         .build();
-        let guard = container.try_resolve_i_value_ref().unwrap();
-        assert!(matches!(
-            container.try_resolve_i_output(),
-            Err(Error::ValueAccessContention)
-        ));
-        drop(guard);
         assert_eq!(container.try_resolve_i_output().unwrap(), "selected");
         assert!(matches!(
             container.try_resolve_i_output(),
@@ -118,7 +114,8 @@ mod outer {
                 let direct: resolve_type_from!(IValue, primary) = resolve_from!(IValue, primary);
                 let nested: resolve_type_from!(IValue, branch::primary) = resolve_from!(IValue, branch::primary);
                 let sibling = resolve_from!(IValue, branch::replica);
-                let dynamic = resolve_dyn_ref_from!(IValue, branch::replica).number();
+                let object: &resolve_type_from!(dyn IValue, branch::replica) = &sibling;
+                let dynamic = object.number();
                 direct + nested + sibling + dynamic
             }: u32 as IOutput);
         }.build();

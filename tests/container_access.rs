@@ -1,41 +1,31 @@
-//! Checked generated access retains locks and preserves cloning semantics.
+//! Stored Copy/Clone values are immutable; callers own every resolved result.
 #![forbid(unsafe_code)]
-
-use systasis::container::Error;
 
 macro_rules! scenario {
     ($module:ident, ($($requirements:tt)*)) => {
         mod $module {
-            use super::*;
             trait IValue {}
             impl IValue for String {}
             trait ILength {}
             impl ILength for usize {}
             #[systasis::container($($requirements)*)]
             #[test]
-            fn temporary_build_borrows_and_runtime_contention() -> Result<(), Error> {
-                let built = systasis::systasis_container! {
+            fn cloned_dependencies_do_not_modify_stored_values() {
+                let Ok(container) = systasis::systasis_container! {
                     register_value!({
-                        try_resolve_ref_mut!(IValue)?.push('!');
-                        try_resolve_ref!(IValue)?.len()
+                        let mut value = resolve_clone!(IValue);
+                        value.push('!');
+                        value.len()
                     }: usize as ILength);
                     register_value!(String::from("data"): String as IValue);
-                }.build::<Error>();
-                let container = built?;
+                }.build();
                 assert_eq!(container.resolve_i_length(), 5);
-                assert_eq!(container.try_resolve_i_value_clone()?, "data!");
-                let reader = container.try_resolve_i_value_ref()?;
-                assert!(matches!(container.try_resolve_i_value(), Err(Error::ValueAccessContention)));
-                assert!(matches!(container.try_resolve_i_value_ref_mut(), Err(Error::ValueAccessContention)));
-                drop(reader);
-                {
-                    let mut writer = container.try_resolve_i_value_ref_mut()?;
-                    assert!(matches!(container.try_resolve_i_value_clone(), Err(Error::ValueAccessContention)));
-                    writer.push('?');
-                }
-                assert_eq!(container.try_resolve_i_value()?, "data!?");
-                assert!(matches!(container.try_resolve_i_value_clone(), Err(Error::ValueAlreadyConsumed)));
-                Ok(())
+                let Ok(mut first) = container.try_resolve_i_value_clone();
+                first.push('?');
+                assert_eq!(first, "data?");
+                assert_eq!(container.resolve_i_value_clone(), "data");
+                let Ok(second) = container.try_resolve_i_value_clone();
+                assert_eq!(second, "data");
             }
         }
     };
@@ -84,7 +74,7 @@ mod explicit_copy_clone {
         .build();
         let _ = container.resolve_i_value();
         assert_eq!(CLONES.load(Ordering::Relaxed), 0);
-        let _ = container.resolve_i_value_clone();
-        assert_eq!(CLONES.load(Ordering::Relaxed), 1);
+        let Ok(_value) = container.try_resolve_i_value();
+        assert_eq!(CLONES.load(Ordering::Relaxed), 0);
     }
 }

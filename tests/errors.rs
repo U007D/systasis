@@ -48,12 +48,14 @@ mod shared_name {
     use systasis::{container, systasis_container};
 
     trait IValue {}
-    impl IValue for String {}
+    #[derive(Debug, PartialEq)]
+    struct Value(String);
+    impl IValue for Value {}
 
     #[container]
     fn make(value: String) -> Result<SystasisContainer, container::Error> {
         let builder = systasis_container! {
-            register_value!(value: String as IValue);
+            register_value!(Value(value): Value as IValue);
         };
         builder.build()
     }
@@ -61,14 +63,7 @@ mod shared_name {
     #[test]
     fn error_module_and_attribute_share_one_import() -> Result<(), container::Error> {
         let container = make(String::from("value"))?;
-        let guard = container.try_resolve_i_value_ref()?;
-        assert_eq!(&*guard, "value");
-        assert_eq!(
-            container.try_resolve_i_value(),
-            Err(container::Error::ValueAccessContention)
-        );
-        drop(guard);
-        assert_eq!(container.try_resolve_i_value()?, "value");
+        assert_eq!(container.try_resolve_i_value()?.0, "value");
         assert_eq!(
             container.try_resolve_i_value(),
             Err(container::Error::ValueAlreadyConsumed)
