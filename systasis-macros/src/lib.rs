@@ -86,9 +86,12 @@ pub fn container(
 /// through `Error::source()`. Infallible builds infer the never error type.
 ///
 /// Use `register_value!(expression: Type as Interface)` for a stored value,
-/// `register_type!(Type as Interface)` for a fresh `Default` value, and
+/// `register_type!(Type as Interface)` for a type mapping with fresh value
+/// resolution when `Type: Default`, and
 /// `register_type_with!(Type as Interface, move || expression)` for a repeatable
-/// constructor. Show captured bindings with explicit types; annotations may be
+/// constructor. Without `Default` or a constructor, only type lookup is available;
+/// value resolvers are omitted and attempts to call them fail at compile time.
+/// Show captured bindings with explicit types; annotations may be
 /// omitted where Rust can infer their types.
 /// `register_container!(name: &ChildType)` composes an independently owned child
 /// behind a named scope rather than importing its registrations into the parent.

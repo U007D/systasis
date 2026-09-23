@@ -79,6 +79,10 @@ mod generic {
     }
 }
 
+#[allow(
+    clippy::type_complexity,
+    reason = "child type queries expand into generated scope metadata projections"
+)]
 mod composition {
     use super::declared;
     use core::marker::PhantomData;

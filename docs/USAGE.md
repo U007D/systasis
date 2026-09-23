@@ -103,7 +103,8 @@ owned by the error itself. No partial container is exposed.
 
 `register_value!` evaluates its initializer once at build time.
 `register_type_with!` runs its constructor each time it is resolved;
-`register_type!` uses `Default::default()` to do the same.
+`register_type!` does the same through `Default::default()` when its type
+implements `Default`; otherwise it supplies type lookup only.
 
 Supply the stored value's type before `as`, for example
 `register_value!(String::new(): String as ILabel);`. Missing type information
@@ -260,11 +261,51 @@ fn main() -> Result<(), ParseIntError> {
 An annotated `Option<T>` constructor likewise returns `Option<T>`. Constructor
 errors are not wrapped in the container's stored-value access error.
 
+### Registering a type without constructing a value
+
+`register_type!(T as IT)` permits `resolve_type!(IT)` and `registered_type!(IT)`
+without `T: Default` or a constructor. This is useful when the type configures
+another registration, such as a channel's message type:
+
+```rust
+use std::sync::mpsc;
+
+struct Message(u8); // No Default implementation.
+trait IMessage {}
+impl IMessage for Message {}
+trait ISender {}
+impl<T> ISender for mpsc::Sender<T> {}
+trait IReceiver {}
+impl<T> IReceiver for mpsc::Receiver<T> {}
+
+#[systasis::container]
+fn main() {
+    let (tx, rx) = mpsc::channel();
+    let Ok(container) = systasis::systasis_container! {
+        register_type!(Message as IMessage);
+        register_value!(tx: mpsc::Sender<resolve_type!(IMessage)> as ISender);
+        register_value!(rx: mpsc::Receiver<resolve_type!(IMessage)> as IReceiver);
+    }.build();
+
+    let sender = container.try_resolve_i_sender().unwrap();
+    let receiver = container.try_resolve_i_receiver().unwrap();
+    assert!(sender.send(Message(42)).is_ok());
+    assert_eq!(receiver.recv().unwrap().0, 42);
+}
+```
+
+No `Message` is created by registration, building or type lookup. Because it has
+no constructor, this container has no callable `resolve_i_message()` method;
+attempting value resolution fails at compile time, not at runtime. To enable
+value resolution, implement `Default` or replace the registration with
+`register_type_with!` supplying a constructor. In generic code, default value
+resolution requires a `Default` bound; type lookup does not.
+
 ### Which resolvers are available?
 
 For a registration under `IValue`, `T` below is its concrete implementation type
 and `Error` is `systasis::container::Error`. A dash means no such method is
-generated. The guard types shown are for synchronized storage; `require(!Sync)`
+available. The guard types shown are for synchronized storage; `require(!Sync)`
 uses the corresponding `core::cell` guards.
 
 | Registration | By value | Shared borrow | Mutable borrow |
@@ -272,6 +313,7 @@ uses the corresponding `core::cell` guards.
 | Stored Copy | `resolve_i_value() -> T` | `resolve_i_value_ref() -> &T` | — |
 | Stored consumable | `try_resolve_i_value() -> Result<T, Error>` | `try_resolve_i_value_ref() -> Result<Ref<'_, T>, Error>` | `try_resolve_i_value_ref_mut() -> Result<RefMut<'_, T>, Error>` |
 | Fresh Default or infallible custom | `resolve_i_value() -> T` | — | — |
+| Type registration without Default or a constructor | — | — | — |
 | Custom `try` returning `Result<T, E>` | `try_resolve_i_value() -> Result<T, E>` | — | — |
 | Custom `try` returning `Option<T>` | `try_resolve_i_value() -> Option<T>` | — | — |
 

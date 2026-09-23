@@ -7,6 +7,23 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 constructor-free type registration (`9fcbef3`): register_type! no
+longer requires Default at registration. Its value-resolver impl retains the
+Default bound, so unsupported calls fail at compile time. No runtime check,
+constructor fallback or new syntax was added. Tests cover the non-Default
+message/channel pattern, both macro forms, generic and cross-crate child type
+lookup, retained interface checking, and lazy Default/custom construction.
+Compile-fail controls verify E0599 for concrete/generic value methods and a
+registration-time value query when no constructor is available.
+
+Full optional-feature std/no_std suites each pass 479 tests, zero failures and
+four intentionally ignored, including fifteen guide doctests. std all-target
+Clippy and warnings-denied Rustdoc pass; formatting and diff checks pass.
+The child projection fixture permits Clippy's type_complexity lint locally
+because its type query expands into generated scope metadata. No runtime unsafe
+code, dependency, compiler feature or toolchain changed; Miri was not rerun.
+Logs: `/private/tmp/systasis-type-only-{std,no-std,clippy,doc}.log`.
+
 2026-09-22 public resolution-error path: `systasis::container::Error` replaces
 `systasis::app_container::Error`, with unchanged variants and behavior. A regression
 test uses one `use systasis::container` import for both the attribute macro and

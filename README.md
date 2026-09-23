@@ -13,8 +13,8 @@ stored-value cloning, resolution errors, and the full `Fallible` conversions.
 The storage support types are hidden implementation APIs, not a replacement
 for the generated registration macros.
 
-The generated path supports stored values, fresh Default and custom constructors, owned
-dependency injection, concrete registered-type lookup, overrides, dependency
+The generated path supports stored values, constructor-free type lookup,
+fresh Default and custom constructors, owned dependency injection, overrides, dependency
 layers, checked access, cloning, multi-trait groups, local namespaces, explicit dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
 The declaration form generates `SystasisContainer::build()` with no arguments
