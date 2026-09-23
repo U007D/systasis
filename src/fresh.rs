@@ -1,8 +1,8 @@
-//! Zero-state construction: the returned value is never stored in the container.
+//! Zero-state type lookup with optional Default construction.
 
 use core::marker::PhantomData;
 
-/// Zero-state descriptor for a fresh default-constructed value.
+/// Type descriptor; resolving a value additionally requires `T: Default`.
 pub struct FreshSlot<T>(PhantomData<fn() -> T>);
 
 impl<T> FreshSlot<T> {

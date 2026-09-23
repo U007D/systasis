@@ -846,12 +846,8 @@ fn expand_inner(
                 .make_where_clause()
                 .predicates
                 .push(parse_quote!(#ty: #interface));
-            if registration.fresh && registration.constructor.is_none() {
-                checked
-                    .make_where_clause()
-                    .predicates
-                    .push(parse_quote!(#ty: ::core::default::Default));
-            }
+            // Type lookup needs only the interface mapping. Default is required
+            // by the value-resolver impl, not by a constructor-free registration.
             let (checked_parameters, _, checked_where) = checked.split_for_impl();
             // Carry the caller's child references into this proof function:
             // their well-formed input types imply nested outlives relations
