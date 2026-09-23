@@ -51,12 +51,10 @@ pub extern "C" fn systasis_embedded_probe_entry() -> ! {
     let Ok(container) = systasis::systasis_container! {
         register_value!(Value(41): Value as IValue);
     }.build();
-    {
-        let mut guard = container.try_resolve_i_value_ref_mut().unwrap();
-        guard.0 += 1;
-        core::hint::black_box(guard.0);
-    }
-    core::hint::black_box(container.try_resolve_i_value().unwrap().0);
+    let mut value = container.try_resolve_i_value().unwrap();
+    value.0 += 1;
+    core::hint::black_box(value.0);
+    core::hint::black_box(container.try_resolve_i_value().is_err());
     loop { core::hint::spin_loop(); }
 }
 "#,

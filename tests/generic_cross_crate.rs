@@ -126,13 +126,13 @@ fn inspect_inferred(container: &generic_provider::inferred_value::SystasisContai
 }
 fn inspect_grouped<T: Copy>(container: &generic_provider::grouped::SystasisContainer<T>) {
     let _: T = container.resolve_i_value();
-    let _: &T = container.resolve_i_value_ref();
+    let Ok(_value) = container.try_resolve_i_value();
     let _: T = container.resolve_i_value();
 }
 fn inspect_array<T, const N: usize>(container: &generic_provider::arrays::SystasisContainer<T, N>)
 where [T; N]: Copy {
     let _: [T; N] = container.resolve_i_array();
-    let _: &[T; N] = container.resolve_i_array_ref();
+    let Ok(_array) = container.try_resolve_i_array();
 }
 fn inspect_borrow<'a, T: ?Sized>(container: &generic_provider::borrowed::SystasisContainer<'a, T>)
 where &'a T: Copy {
