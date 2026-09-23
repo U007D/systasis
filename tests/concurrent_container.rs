@@ -1,10 +1,10 @@
-//! R04/R07: generated resolvers share checked slot state across scoped threads.
+//! Generated resolvers copy and clone repeatedly, but transfer move-only values once.
 #![forbid(unsafe_code)]
 
-use std::{sync::mpsc, thread, time::Duration};
+use std::{sync::Barrier, thread};
 use systasis::container::Error;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 struct Database<'a> {
     name: &'a str,
     writes: usize,
@@ -13,108 +13,56 @@ trait IDatabase {}
 impl IDatabase for Database<'_> {}
 trait ILimit {}
 impl ILimit for usize {}
-
-// Hold the guard on this thread while the worker attempts incompatible access.
-// A blocking regression must fail the test, not deadlock the test process: release
-// the guard before unwinding or joining after the watchdog expires. The timeout
-// is a test watchdog, not a promised resolver latency or a scheduling assumption.
-fn while_held<G>(guard: G, check: impl FnOnce() + Send) {
-    thread::scope(|scope| {
-        let (done, completion) = mpsc::sync_channel(1);
-        let worker = scope.spawn(move || {
-            check();
-            let _ = done.send(());
-        });
-        let completed = completion.recv_timeout(Duration::from_secs(10));
-        drop(guard);
-        worker.join().expect("resolver checks must succeed");
-        completed.expect("resolver calls must finish while the conflicting guard is held");
-    });
-}
+trait ILabel {}
+impl ILabel for String {}
 
 #[systasis::container(require(Send, Sync))]
 #[test]
-fn scoped_threads_share_contention_mutation_and_consumption_state() -> Result<(), Error> {
+fn scoped_threads_share_exactly_once_consumption_and_repeatable_values() {
     let name: String = String::from("borrowed database name");
     let Ok(container) = systasis::systasis_container! {
         register_value!(Database { name: &name, writes: 0 }: Database<'_> as IDatabase);
         register_value!(7_usize: usize as ILimit);
+        register_value!(String::from("label"): String as ILabel);
     }
     .build();
 
-    let reader = container.try_resolve_i_database_ref()?;
-    while_held(reader, || {
-        let other_reader = container.try_resolve_i_database_ref().unwrap();
-        assert_eq!(other_reader.name, name);
-        assert_eq!(container.try_resolve_i_database_clone().unwrap().writes, 0);
-        assert!(matches!(
-            container.try_resolve_i_database(),
-            Err(Error::ValueAccessContention)
-        ));
-        assert!(matches!(
-            container.try_resolve_i_database_ref_mut(),
-            Err(Error::ValueAccessContention)
-        ));
-        assert_eq!(container.resolve_i_limit(), 7);
+    let start = Barrier::new(8);
+    let outcomes = thread::scope(|scope| {
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                scope.spawn(|| {
+                    start.wait();
+                    let outcome = container.try_resolve_i_database();
+                    for _ in 0..16 {
+                        let Ok(limit) = container.try_resolve_i_limit();
+                        assert_eq!(limit, 7);
+                        let Ok(mut label) = container.try_resolve_i_label_clone();
+                        label.push('!');
+                        assert_eq!(label, "label!");
+                        assert_eq!(container.resolve_i_label_clone(), "label");
+                    }
+                    outcome
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .map(|worker| worker.join().expect("resolver worker must succeed"))
+            .collect::<Vec<_>>()
     });
-
-    let writer = container.try_resolve_i_database_ref_mut()?;
-    while_held(writer, || {
-        assert!(matches!(
-            container.try_resolve_i_database_ref(),
-            Err(Error::ValueAccessContention)
-        ));
-        assert!(matches!(
-            container.try_resolve_i_database_ref_mut(),
-            Err(Error::ValueAccessContention)
-        ));
-        assert!(matches!(
-            container.try_resolve_i_database_clone(),
-            Err(Error::ValueAccessContention)
-        ));
-        assert!(matches!(
-            container.try_resolve_i_database(),
-            Err(Error::ValueAccessContention)
-        ));
-        assert_eq!(container.resolve_i_limit(), 7);
+    let mut values = outcomes.into_iter().filter_map(|outcome| match outcome {
+        Ok(value) => Some(value),
+        Err(Error::ValueAccessContention | Error::ValueAlreadyConsumed) => None,
     });
-
-    // A guard obtained here can be moved to another thread, used and dropped.
-    let mut writer = container.try_resolve_i_database_ref_mut()?;
-    thread::scope(|scope| {
-        scope.spawn(move || writer.writes += 1).join().unwrap();
-    });
-    assert_eq!(container.try_resolve_i_database_ref()?.writes, 1);
-
-    let taken = thread::scope(|scope| {
-        scope
-            .spawn(|| container.try_resolve_i_database())
-            .join()
-            .unwrap()
-    })?;
-    assert_eq!(
-        taken,
-        Database {
-            name: &name,
-            writes: 1
-        }
-    );
+    let mut taken = values.next().expect("one worker must acquire the value");
+    assert!(values.next().is_none(), "a value must never transfer twice");
+    assert_eq!(taken.name, name);
+    taken.writes += 1;
+    assert_eq!(taken.writes, 1);
     assert!(matches!(
         container.try_resolve_i_database(),
         Err(Error::ValueAlreadyConsumed)
     ));
-    assert!(matches!(
-        container.try_resolve_i_database_ref(),
-        Err(Error::ValueAlreadyConsumed)
-    ));
-    assert!(matches!(
-        container.try_resolve_i_database_ref_mut(),
-        Err(Error::ValueAlreadyConsumed)
-    ));
-    assert!(matches!(
-        container.try_resolve_i_database_clone(),
-        Err(Error::ValueAlreadyConsumed)
-    ));
     assert_eq!(container.resolve_i_limit(), 7);
-    Ok(())
 }

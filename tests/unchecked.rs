@@ -1,38 +1,31 @@
-//! Unchecked operations retain occupancy and nonblocking guard behavior.
+//! Unchecked owned transfers retain occupancy tracking and caller preconditions.
 #![cfg(feature = "resolve_unchecked")]
 
 use systasis::container::Error;
 
 trait IValue {}
-impl IValue for String {}
+struct Value(String);
+impl IValue for Value {}
+impl Value {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
 
 #[systasis::container]
 #[test]
-fn generated_unchecked_access_retains_nonblocking_guards() {
-    let value: String = "value".into();
+fn generated_unchecked_transfer_marks_the_value_consumed() {
+    let value: Value = Value("value".into());
     let Ok(container) = systasis::systasis_container! {
-        register_value!(value: String as IValue);
+        register_value!(value: Value as IValue);
     }
     .build();
     let scope = systasis::scoped::AsScope::<systasis::scoped::mask::Empty>::scope(&container);
-    // SAFETY: the freshly built value is present and no incompatible guard exists.
-    let read = unsafe { scope.resolve_i_value_ref_unchecked() };
-    assert_eq!(&*read, "value");
-    assert!(matches!(
-        container.try_resolve_i_value(),
-        Err(Error::ValueAccessContention)
-    ));
-    drop(read);
-    // SAFETY: the shared guard was released; the value remains present.
-    let mut write = unsafe { scope.resolve_i_value_ref_mut_unchecked() };
-    write.push('!');
-    assert!(matches!(
-        container.try_resolve_i_value_ref(),
-        Err(Error::ValueAccessContention)
-    ));
-    drop(write);
-    // SAFETY: all guards are released and nothing has consumed the value.
-    assert_eq!(unsafe { scope.resolve_i_value_unchecked() }, "value!");
+    // SAFETY: this thread has exclusive use of the freshly built container;
+    // the value is present and no acquisition is in progress.
+    let mut value = unsafe { scope.resolve_i_value_unchecked() };
+    value.0.push('!');
+    assert_eq!(value.0, "value!");
     assert!(matches!(
         container.try_resolve_i_value(),
         Err(Error::ValueAlreadyConsumed)
@@ -44,25 +37,21 @@ mod local {
 
     #[systasis::container(require(!Sync))]
     #[test]
-    fn local_unchecked_guards_keep_refcell_borrows() {
-        let value: String = "local".into();
+    fn local_named_unchecked_transfer_marks_the_value_consumed() {
+        let value: Value = Value("local".into());
         let Ok(container) = systasis::systasis_container! {
-            register_value!(value: String as IValue in primary);
+            register_value!(value: Value as IValue in primary);
         }
         .build();
-        // SAFETY: the value is present with no outstanding borrow.
-        let mut write = unsafe { container.resolve_i_value_ref_mut_unchecked_in_primary() };
-        write.push('!');
-        assert!(matches!(
-            container.try_resolve_i_value_ref_in_primary(),
-            Err(Error::ValueAccessContention)
-        ));
-        drop(write);
-        // SAFETY: the exclusive guard was released and the value is present.
+        // SAFETY: the freshly built value is present and no acquisition exists.
         assert_eq!(
-            unsafe { container.resolve_i_value_unchecked_in_primary() },
-            "local!"
+            unsafe { container.resolve_i_value_unchecked_in_primary() }.0,
+            "local"
         );
+        assert!(matches!(
+            container.try_resolve_i_value_in_primary(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
     }
 }
 
@@ -74,12 +63,12 @@ mod queries {
     #[systasis::container]
     #[test]
     fn unsafe_queries_preserve_caller_context_and_dependency_order() {
-        let value: String = "ordered".into();
+        let value: Value = Value("ordered".into());
         let Ok(container) = systasis::systasis_container! {
             // SAFETY: this initializer is the only accessor and the dependency
             // DAG initializes the value first.
             register_value!(unsafe { resolve_unchecked_from!(IValue, primary) }.len(): usize as ILength);
-            register_value!(value: String as IValue in primary);
+            register_value!(value: Value as IValue in primary);
         }.build();
         assert_eq!(container.resolve_i_length(), 7);
         assert!(matches!(
@@ -96,41 +85,38 @@ mod forbid_consumer {
     #[systasis::container]
     #[test]
     fn checked_consumers_can_enable_the_feature_with_forbid_unsafe() {
-        let value: String = "checked".into();
+        let value: Value = Value("checked".into());
         let Ok(container) = systasis::systasis_container! {
-            register_value!(value: String as IValue);
+            register_value!(value: Value as IValue);
         }
         .build();
-        assert_eq!(container.try_resolve_i_value().unwrap(), "checked");
+        assert_eq!(container.try_resolve_i_value().unwrap().0, "checked");
     }
 }
 
-mod returned_guard {
+mod constructor_transfer {
     use super::*;
-    trait IGuard {}
-    impl IGuard for systasis::Ref<'_, String> {}
+    trait ITransferred {}
+    impl ITransferred for Value {}
 
     #[systasis::container]
     #[test]
-    fn lazy_constructor_retains_the_unchecked_shared_guard() {
-        let value: String = "guarded".into();
+    fn lazy_constructor_can_transfer_an_available_value_unchecked() {
+        let value: Value = Value("transferred".into());
         let Ok(container) = systasis::systasis_container! {
-            register_value!(value: String as IValue);
-            register_type_with!(systasis::Ref<'_, String> as IGuard, || {
-                // SAFETY: owned access is excluded by this constructor borrow;
-                // this test releases every mutable guard before resolving it.
-                unsafe { resolve_ref_unchecked!(IValue) }
+            register_value!(value: Value as IValue);
+            register_type_with!(Value as ITransferred, || {
+                // SAFETY: this test invokes the constructor exactly once, with
+                // no competing access to the freshly built stored value.
+                unsafe { resolve_unchecked!(IValue) }
             });
         }
         .build();
-        let guard = container.resolve_i_guard();
-        assert_eq!(&*guard, "guarded");
+        let value = container.resolve_i_transferred();
+        assert_eq!(value.0, "transferred");
         assert!(matches!(
-            container.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            container.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(guard);
-        container.try_resolve_i_value_ref_mut().unwrap().push('!');
-        assert_eq!(&*container.resolve_i_guard(), "guarded!");
     }
 }

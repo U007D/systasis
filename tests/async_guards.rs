@@ -1,4 +1,4 @@
-//! Async guard ownership without an executor or additional dependencies.
+//! Async resolved-value ownership without an executor or additional dependencies.
 #![forbid(unsafe_code)]
 
 #[cfg(all(test, not(miri)))]
@@ -7,6 +7,10 @@ mod support;
 use std::{
     future::Future,
     pin::pin,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::{Context, Poll, Waker},
 };
 use systasis::container::Error;
@@ -20,70 +24,83 @@ fn pending(future: impl Future<Output = ()>, inspect_suspended: impl FnOnce()) {
         Poll::Pending
     ));
     inspect_suspended();
-    // Dropping the pinned owner cancels the future, including its held guard.
+    // Dropping the pinned owner cancels the future and drops its owned values.
 }
 
 fn is_send<T: Send>(_: &T) {}
-fn is_sync<T: Sync>(_: &T) {}
+
+struct Value(Arc<AtomicUsize>);
+impl Drop for Value {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 macro_rules! scenario {
-    ($module:ident, ($($policy:tt)*), $assert_future:expr) => {
+    ($module:ident, ($($policy:tt)*), $assert_borrowing_future:expr) => {
         mod $module {
             use super::*;
             trait IValue {}
-            impl IValue for String {}
+            impl IValue for Value {}
+            trait IText {}
+            impl IText for String {}
+
             #[systasis::container($($policy)*)]
             #[test]
-            #[allow(clippy::await_holding_refcell_ref, reason = "exercise deliberate suspension with local guards, then verify cancellation releases them")]
-            fn cancellation_releases_shared_and_exclusive_guards() -> Result<(), Error> {
+            fn resolved_values_are_send_and_cancellation_does_not_restore_them() {
+                let drops: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
                 let Ok(container) = systasis::systasis_container! {
-                    register_value!(String::from("value"): String as IValue);
+                    register_value!(Value(drops.clone()): Value as IValue);
+                    register_value!(String::from("value"): String as IText);
                 }.build();
                 is_send(&container);
-                let reader = container.try_resolve_i_value_ref()?;
-                let read_future = async move {
+                let value = container.try_resolve_i_value().unwrap();
+                let mut text = container.resolve_i_text_clone();
+                let future = async move {
                     std::future::pending::<()>().await;
-                    std::hint::black_box(&*reader);
+                    text.push('!');
+                    std::hint::black_box((value, text));
                 };
-                ($assert_future)(&read_future);
-                assert!(matches!(container.try_resolve_i_value_ref_mut(), Err(Error::ValueAccessContention)));
-                pending(read_future, || {
-                    assert!(matches!(container.try_resolve_i_value_ref_mut(), Err(Error::ValueAccessContention)));
+                is_send(&future);
+                pending(future, || {
+                    assert_eq!(drops.load(Ordering::SeqCst), 0);
+                    assert!(matches!(container.try_resolve_i_value(), Err(Error::ValueAlreadyConsumed)));
+                    assert_eq!(container.resolve_i_text_clone(), "value");
                 });
-                let mut writer = container.try_resolve_i_value_ref_mut()?;
-                writer.push('!');
-                let write_future = async move {
-                    std::future::pending::<()>().await;
-                    std::hint::black_box(&mut *writer);
-                };
-                ($assert_future)(&write_future);
-                assert!(matches!(container.try_resolve_i_value_ref(), Err(Error::ValueAccessContention)));
-                pending(write_future, || {
-                    assert!(matches!(container.try_resolve_i_value_ref(), Err(Error::ValueAccessContention)));
-                });
-                // These guards do not exist until the future is first polled.
-                let read_future = async {
-                    let reader = container.try_resolve_i_value_ref().unwrap();
-                    std::future::pending::<()>().await;
-                    std::hint::black_box(&*reader);
-                };
-                ($assert_future)(&read_future);
-                assert!(container.try_resolve_i_value_ref_mut().is_ok());
-                pending(read_future, || {
-                    assert!(matches!(container.try_resolve_i_value_ref_mut(), Err(Error::ValueAccessContention)));
-                });
-                let write_future = async {
-                    let mut writer = container.try_resolve_i_value_ref_mut().unwrap();
-                    std::future::pending::<()>().await;
-                    std::hint::black_box(&mut *writer);
-                };
-                ($assert_future)(&write_future);
-                assert!(container.try_resolve_i_value_ref().is_ok());
-                pending(write_future, || {
-                    assert!(matches!(container.try_resolve_i_value_ref(), Err(Error::ValueAccessContention)));
-                });
-                assert_eq!(container.try_resolve_i_value()?, "value!");
-                Ok(())
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+                assert!(matches!(container.try_resolve_i_value(), Err(Error::ValueAlreadyConsumed)));
+                let Ok(text) = container.try_resolve_i_text_clone();
+                assert_eq!(text, "value");
+            }
+
+            mod polling {
+                use super::*;
+                #[systasis::container($($policy)*)]
+                #[test]
+                fn resolution_inside_a_future_occurs_only_when_polled() {
+                    let drops: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+                    let Ok(container) = systasis::systasis_container! {
+                        register_value!(Value(drops.clone()): Value as IValue);
+                    }.build();
+                    let unpolled = async {
+                        let value = container.try_resolve_i_value().unwrap();
+                        std::future::pending::<()>().await;
+                        std::hint::black_box(value);
+                    };
+                    ($assert_borrowing_future)(&unpolled);
+                    drop(unpolled);
+                    assert_eq!(drops.load(Ordering::SeqCst), 0);
+                    let polled = async {
+                        let value = container.try_resolve_i_value().unwrap();
+                        std::future::pending::<()>().await;
+                        std::hint::black_box(value);
+                    };
+                    ($assert_borrowing_future)(&polled);
+                    pending(polled, || {
+                        assert!(matches!(container.try_resolve_i_value(), Err(Error::ValueAlreadyConsumed)));
+                    });
+                    assert_eq!(drops.load(Ordering::SeqCst), 1);
+                }
             }
         }
     };
@@ -91,40 +108,9 @@ macro_rules! scenario {
 scenario!(synchronized, (require(Send, Sync)), is_send);
 scenario!(local, (require(Send, !Sync)), |_: &_| {});
 
-mod released {
-    use super::*;
-    trait IValue {}
-    impl IValue for String {}
-
-    #[systasis::container(require(Send, Sync))]
-    #[test]
-    fn synchronized_container_reference_can_remain_after_guard_release() {
-        let Ok(container) = systasis::systasis_container! {
-            register_value!(String::from("value"): String as IValue);
-        }
-        .build();
-        is_send(&container);
-        is_sync(&container);
-        let future = async {
-            {
-                let mut writer = container.try_resolve_i_value_ref_mut().unwrap();
-                writer.push('!');
-            }
-            std::future::pending::<()>().await;
-            std::hint::black_box(&container);
-        };
-        is_send(&future);
-        pending(future, || {
-            assert_eq!(&*container.try_resolve_i_value_ref().unwrap(), "value!");
-            assert!(container.try_resolve_i_value_ref_mut().is_ok());
-        });
-        assert_eq!(container.try_resolve_i_value().unwrap(), "value!");
-    }
-}
-
 #[cfg(not(miri))]
 #[test]
-fn compiler_distinguishes_local_container_and_future_traits() {
+fn compiler_distinguishes_local_container_and_owned_future_traits() {
     use std::{fs, path::Path, process::Command};
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let backend = if cfg!(feature = "std") {
@@ -132,7 +118,7 @@ fn compiler_distinguishes_local_container_and_future_traits() {
     } else {
         "no-std"
     };
-    let target = root.join("target/async-guards").join(backend);
+    let target = root.join("target/async-values").join(backend);
     let mut build = Command::new(env!("CARGO"));
     build
         .current_dir(root)
@@ -163,32 +149,20 @@ fn main() {
     #[cfg(container_reference)]
     {
         let future = async {
-            { let guard = container.try_resolve_i_value_ref().unwrap(); std::hint::black_box(&*guard); }
+            let value = container.resolve_i_value_clone();
             std::future::pending::<()>().await;
-            std::hint::black_box(&container);
+            std::hint::black_box((value, &container));
         };
         is_send(&future);
     }
-    #[cfg(any(held_read, held_write))]
-    {
-        #[cfg(held_read)]
-        let guard = container.try_resolve_i_value_ref().unwrap();
-        #[cfg(held_write)]
-        let guard = container.try_resolve_i_value_ref_mut().unwrap();
-        let future = async move {
-            std::future::pending::<()>().await;
-            std::hint::black_box(&*guard);
-        };
-        is_send(&future);
-    }
-    // Neither the local guard nor &!Sync container enters this future.
-    let value = { container.try_resolve_i_value_ref().unwrap().clone() };
+    // An owned result does not retain a reference to the !Sync container.
+    let value = container.resolve_i_value_clone();
     let future = async move {
         std::future::pending::<()>().await;
         std::hint::black_box(value);
     };
     is_send(&future);
-    assert!(container.try_resolve_i_value_ref_mut().is_ok());
+    assert_eq!(container.resolve_i_value_clone(), "value");
 }
 "#,
     )
@@ -196,33 +170,12 @@ fn main() {
     for (case, fragments) in [
         ("baseline", &[][..]),
         (
-            "held_read",
-            &[
-                "future cannot be sent between threads safely",
-                "Send",
-                "cell::Ref<'_, String>",
-            ][..],
-        ),
-        (
-            "held_write",
-            &[
-                "future cannot be sent between threads safely",
-                "Send",
-                "cell::RefMut<'_, String>",
-            ][..],
-        ),
-        (
             "container_reference",
-            &[
-                "error[E0277]",
-                "used within this `async` block",
-                "Sync",
-                "RefCell",
-            ][..],
+            &["error[E0277]", "used within this `async` block", "Sync"][..],
         ),
         (
             "container_sync",
-            &["cannot be shared between threads safely", "Sync", "RefCell"][..],
+            &["cannot be shared between threads safely", "Sync"][..],
         ),
     ] {
         let mut command = artifacts.rustc();
@@ -251,8 +204,6 @@ fn main() {
             } else {
                 "is_send(&future);"
             };
-            // Require one actual error diagnostic, at the fixture's assertion,
-            // to explain every expected part of this rejection.
             let expected_error = diagnostics.split("\nerror").any(|block| {
                 let block = format!("error{}", block.strip_prefix("error").unwrap_or(block));
                 (block.starts_with("error:") || block.starts_with("error["))

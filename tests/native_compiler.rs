@@ -163,17 +163,12 @@ fn native_closure_public_api_and_rejection_controls() {
     ]
     .into_iter()
     .map(|(name, source, expected)| (name, source.to_owned(), expected))
-    .chain(["Send", "Sync"].map(|bound| {
+    .chain(core::iter::once_with(|| {
         let source = include_str!("native_child_context.rs").replace(
             "// LOCAL_GUARD_AUTO_TRAIT_REJECTION",
-            &format!("fn assert_bound<T: {bound}>(_: &T) {{}} assert_bound(&editor);"),
+            "fn assert_bound<T: Sync>(_: &T) {} assert_bound(&container);",
         );
-        let name = if bound == "Send" {
-            "local_child_guard_is_not_send"
-        } else {
-            "local_child_guard_is_not_sync"
-        };
-        (name, format!("{source}\nfn main() {{}}\n"), "E0277")
+        ("local_child_container_is_not_sync", format!("{source}\nfn main() {{}}\n"), "`Cell<()>` cannot be shared between threads safely")
     }))
     {
         let path = target.join(format!("{name}.rs"));
@@ -199,5 +194,15 @@ fn native_closure_public_api_and_rejection_controls() {
             diagnostics.contains(expected),
             "{name}: expected {expected}\n{diagnostics}"
         );
+        if name == "local_child_container_is_not_sync" {
+            assert!(
+                diagnostics.split("\nerror").any(|error| {
+                    error.contains("E0277")
+                        && error.contains(expected)
+                        && error.contains("assert_bound(&container)")
+                }),
+                "{name}: expected the Sync assertion to fail:\n{diagnostics}"
+            );
+        }
     }
 }

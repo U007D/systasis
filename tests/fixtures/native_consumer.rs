@@ -25,7 +25,8 @@ mod parent {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &Child);
             register_container!(replica: &Child);
-        }.build();
+        }
+        .build();
         assert_eq!(receive(container.primary()), "public");
         assert_eq!(container.replica().resolve_i_service().0, "public");
     }
@@ -35,34 +36,43 @@ mod borrowing_parent {
     use native_provider::borrowed_child::{SystasisContainer as Child, Value};
     use systasis::container::Error;
 
-    struct View<'a, 'env>(systasis::Ref<'a, Value<'env>>);
+    struct View<'env>(Value<'env>);
     trait IView {}
-    impl IView for View<'_, '_> {}
+    impl IView for View<'_> {}
 
-    fn receive<'call, 'env>(container: &'call SystasisContainer<'_, 'env>) -> View<'call, 'env> {
+    fn receive<'env>(container: &SystasisContainer<'_, 'env>) -> View<'env> {
         container.try_resolve_i_view().unwrap()
     }
 
-    fn scoped_receive<'a, 'env>(scope: &primary::SubContainer<'a, 'env>) -> systasis::Ref<'a, Value<'env>> {
-        scope.try_resolve_i_value_ref().unwrap()
+    fn scoped_receive<'a, 'env>(
+        scope: &primary::SubContainer<'a, 'env>,
+    ) -> Result<Value<'env>, Error> {
+        scope.try_resolve_i_value()
     }
 
     #[systasis::container(require(Send, Sync))]
     pub fn inspect<'env>(primary: &Child<'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &Child<'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
-                let value = try_resolve_ref_from!(IValue, primary)?;
+            register_type_with!(View<'env> as IView, try || -> Result<View<'env>, Error> {
+                let value = try_resolve_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
                 Ok(View(value))
             });
-        }.build();
+        }
+        .build();
         let view = receive(&container);
         assert_eq!(view.0.0, "borrowed child");
-        assert_eq!(scoped_receive(container.primary()).0, "borrowed child");
-        assert!(matches!(primary.try_resolve_i_value(), Err(Error::ValueAccessContention)));
-        drop(view);
-        assert_eq!(primary.try_resolve_i_value().unwrap().0, "borrowed child");
+        assert!(matches!(
+            scoped_receive(container.primary()),
+            Err(Error::ValueAlreadyConsumed)
+        ));
+        assert!(matches!(
+            primary.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
+        drop(container);
+        assert_eq!(view.0.0, "borrowed child");
     }
 }
 
@@ -70,34 +80,43 @@ mod nested_borrowing_parent {
     use native_provider::{borrowed_branch::SystasisContainer as Branch, borrowed_child::Value};
     use systasis::container::Error;
 
-    struct View<'a, 'env>(systasis::Ref<'a, Value<'env>>);
+    struct View<'env>(Value<'env>);
     trait IView {}
-    impl IView for View<'_, '_> {}
+    impl IView for View<'_> {}
 
-    fn receive<'call, 'a, 'env>(container: &'call SystasisContainer<'_, 'a, 'env>) -> View<'call, 'env> {
+    fn receive<'a, 'env>(container: &SystasisContainer<'_, 'a, 'env>) -> View<'env> {
         container.try_resolve_i_view().unwrap()
     }
 
-    fn scoped_receive<'b, 'a, 'env>(scope: &branch::SubContainer<'b, 'a, 'env>) -> systasis::Ref<'b, Value<'env>> {
-        scope.primary().try_resolve_i_value_ref().unwrap()
+    fn scoped_receive<'b, 'a, 'env>(
+        scope: &branch::SubContainer<'b, 'a, 'env>,
+    ) -> Result<Value<'env>, Error> {
+        scope.primary().try_resolve_i_value()
     }
 
     #[systasis::container(require(Send, Sync))]
     pub fn inspect<'a, 'env>(branch: &Branch<'a, 'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(branch: &Branch<'a, 'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
-                let value = try_resolve_ref_from!(IValue, branch::primary)?;
+            register_type_with!(View<'env> as IView, try || -> Result<View<'env>, Error> {
+                let value = try_resolve_from!(IValue, branch::primary)?;
                 assert!(!value.0.is_empty());
                 Ok(View(value))
             });
-        }.build();
+        }
+        .build();
         let view = receive(&container);
         assert_eq!(view.0.0, "nested borrowed child");
-        assert_eq!(scoped_receive(container.branch()).0, "nested borrowed child");
-        assert!(matches!(branch.primary().try_resolve_i_value(), Err(Error::ValueAccessContention)));
-        drop(view);
-        assert_eq!(branch.primary().try_resolve_i_value().unwrap().0, "nested borrowed child");
+        assert!(matches!(
+            scoped_receive(container.branch()),
+            Err(Error::ValueAlreadyConsumed)
+        ));
+        assert!(matches!(
+            branch.primary().try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
+        drop(container);
+        assert_eq!(view.0.0, "nested borrowed child");
     }
 }
 

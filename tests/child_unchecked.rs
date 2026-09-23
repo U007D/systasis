@@ -1,4 +1,4 @@
-//! Unchecked child forwarding retains acquisition guards across nested scopes.
+//! Unchecked child forwarding transfers values once across nested scopes.
 #![cfg(feature = "resolve_unchecked")]
 #![cfg_attr(miri, feature(never_type))]
 
@@ -6,12 +6,13 @@ use systasis::container::Error;
 
 mod leaf {
     pub trait IValue {}
-    impl IValue for String {}
+    pub struct Value(pub String);
+    impl IValue for Value {}
     #[systasis::container]
     pub fn run(call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
-            register_value!(String::from("value"): String as IValue);
-            register_value!(String::from("metric"): String as IValue in metrics);
+            register_value!(Value(String::from("value")): Value as IValue);
+            register_value!(Value(String::from("metric")): Value as IValue in metrics);
         }
         .build();
         call(&container);
@@ -42,27 +43,15 @@ mod outer {
         let container = systasis::systasis_container! {
             register_container!(branch: &crate::branch::SystasisContainer<'a>);
             register_value!({
-                // SAFETY: freshly built child is present with no mutable guard.
-                let read = unsafe { resolve_ref_unchecked_from!(IValue, branch::primary) };
-                let contended = try_resolve_ref_mut_from!(IValue, branch::primary);
-                assert!(matches!(contended, Err(Error::ValueAccessContention)));
-                drop(contended);
-                assert_eq!(&*read, "value");
-                drop(read);
-                // SAFETY: shared guard was dropped; no other borrower exists.
-                let mut write = unsafe { resolve_ref_mut_unchecked_from!(IValue, branch::primary) };
-                write.push('!');
-                let contended = try_resolve_ref_from!(IValue, branch::primary);
-                assert!(matches!(contended, Err(Error::ValueAccessContention)));
-                drop(contended);
-                drop(write);
-                // SAFETY: both guards were dropped; value remains present.
-                let owned = unsafe { resolve_unchecked_from!(IValue, branch::primary) };
-                assert_eq!(owned, "value!");
+                // SAFETY: the freshly built child value is present, and this
+                // single-threaded initialization has no competing acquisition.
+                let mut owned = unsafe { resolve_unchecked_from!(IValue, branch::primary) };
+                owned.0.push('!');
+                assert_eq!(owned.0, "value!");
                 // SAFETY: this independent namespace value has not been accessed.
                 let metric = unsafe { resolve_unchecked_from!(IValue, branch::primary::metrics) };
-                assert_eq!(metric, "metric");
-                owned.len()
+                assert_eq!(metric.0, "metric");
+                owned.0.len()
             }: usize as ILength);
         }
         .build::<Error>()?;
@@ -71,12 +60,19 @@ mod outer {
             container.branch().primary().try_resolve_i_value(),
             Err(Error::ValueAlreadyConsumed)
         ));
+        assert!(matches!(
+            container
+                .branch()
+                .primary()
+                .try_resolve_i_value_in_metrics(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
         Ok(())
     }
 }
 
 #[test]
-fn nested_unchecked_queries_hold_guards_and_release_before_consumption() {
+fn nested_unchecked_queries_consume_only_the_selected_registrations() {
     leaf::run(|primary| {
         branch::run(primary, |branch| outer::run(branch).unwrap());
     });
