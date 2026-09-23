@@ -49,36 +49,40 @@ mod inferred {
     }
 }
 
-mod inferred_capture_with_guard {
+mod inferred_capture_with_owned_dependency {
     use systasis::container::Error;
 
-    struct View<'a>(systasis::RefMut<'a, String>, usize);
+    struct Text(String);
+    struct View(Text, usize);
     trait IView {}
-    impl IView for View<'_> {}
+    impl IView for View {}
     trait IText {}
-    impl IText for String {}
+    impl IText for Text {}
 
     #[systasis::container(require(Send, Sync))]
     #[test]
-    fn checked_native_capture_preserves_returned_guard_lifetime() -> Result<(), Error> {
+    fn checked_native_capture_preserves_owned_dependency_transfer() -> Result<(), Error> {
         // An inferred capture selects native storage without a caller macro.
         let label = String::from("label");
         let Ok(container) = systasis::systasis_container! {
-            register_value!(String::from("before"): String as IText);
-            register_type_with!(View<'_> as IView, try move || -> Result<View<'_>, Error> {
-                Ok(View(try_resolve_ref_mut!(IText)?, label.len()))
+            register_value!(Text(String::from("before")): Text as IText);
+            register_type_with!(View as IView, try move || -> Result<View, Error> {
+                Ok(View(try_resolve!(IText)?, label.len()))
             });
         }
         .build();
         let mut view = container.try_resolve_i_view()?;
         assert_eq!(view.1, 5);
         assert!(matches!(
-            container.try_resolve_i_text_ref(),
-            Err(Error::ValueAccessContention)
+            container.try_resolve_i_text(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        view.0.push_str("-after");
-        drop(view);
-        assert_eq!(&*container.try_resolve_i_view()?.0, "before-after");
+        view.0.0.push_str("-after");
+        assert_eq!(view.0.0, "before-after");
+        assert!(matches!(
+            container.try_resolve_i_view(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
         Ok(())
     }
 }

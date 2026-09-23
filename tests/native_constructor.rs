@@ -56,72 +56,71 @@ mod inferred_capture {
     }
 }
 
-mod returned_guard {
-    use systasis::container::Error;
-    struct View<'a>(systasis::Ref<'a, String>);
+mod cloned_output {
+    struct View(String);
     trait IView {}
-    impl IView for View<'_> {}
+    impl IView for View {}
     trait IValue {}
     impl IValue for String {}
 
     #[systasis::container]
     #[test]
-    fn macro_constructor_retains_dependency_guard() -> Result<(), Error> {
+    fn macro_constructor_returns_an_independent_clone() {
         let Ok(container) = systasis::systasis_container! {
-            register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
-                let guard = try_resolve_ref!(IValue)?;
-                assert_eq!(&*guard, "value");
-                Ok(View(guard))
+            register_type_with!(View as IView, || {
+                let value = resolve_clone!(IValue);
+                assert_eq!(value, "value");
+                View(value)
             });
             register_value!(String::from("value"): String as IValue);
         }
         .build();
-        let view = container.try_resolve_i_view()?;
-        assert!(matches!(
-            container.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
-        ));
-        assert_eq!(&*view.0, "value");
-        drop(view);
-        assert!(container.try_resolve_i_value_ref_mut().is_ok());
-        Ok(())
+        let mut view = container.resolve_i_view();
+        view.0.push('!');
+        assert_eq!(view.0, "value!");
+        assert_eq!(container.resolve_i_value_clone(), "value");
+        assert_eq!(container.resolve_i_view().0, "value");
     }
 }
 
-mod returned_write_guard {
+mod transferred_reference {
     use systasis::container::Error;
-    struct View<'a>(systasis::RefMut<'a, String>);
+    struct View<'a>(&'a mut String);
     trait IView {}
     impl IView for View<'_> {}
     trait IValue {}
-    impl IValue for String {}
+    impl IValue for &mut String {}
 
     #[systasis::container]
-    #[test]
-    fn native_constructor_retains_exclusive_guard_until_output_drops() -> Result<(), Error> {
+    fn check<'a>(value: &'a mut String) -> Result<(), Error> {
         let Ok(container) = systasis::systasis_container! {
-            register_value!(String::from("before"): String as IValue);
-            register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
-                let guard = try_resolve_ref_mut!(IValue)?;
-                assert!(!guard.is_empty());
-                Ok(View(guard))
+            register_value!(value: &'a mut String as IValue);
+            register_type_with!(View<'a> as IView, try || -> Result<View<'a>, Error> {
+                let value = try_resolve!(IValue)?;
+                assert!(!value.is_empty());
+                Ok(View(value))
             });
         }
         .build();
-        let mut view = container.try_resolve_i_view()?;
+        let view = container.try_resolve_i_view()?;
         assert!(matches!(
-            container.try_resolve_i_value_ref(),
-            Err(Error::ValueAccessContention)
+            container.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
         assert!(matches!(
             container.try_resolve_i_view(),
-            Err(Error::ValueAccessContention)
+            Err(Error::ValueAlreadyConsumed)
         ));
         view.0.push_str("-after");
-        drop(view);
-        assert_eq!(&*container.try_resolve_i_value_ref()?, "before-after");
-        assert_eq!(&*container.try_resolve_i_view()?.0, "before-after");
+        assert_eq!(view.0, "before-after");
         Ok(())
+    }
+
+    #[test]
+    fn native_constructor_transfers_stored_mutable_reference_once() {
+        let mut value = String::from("before");
+        check(&mut value).unwrap();
+        assert_eq!(value, "before-after");
     }
 }
 

@@ -5,9 +5,9 @@ use systasis::container::Error;
 struct Borrowed<'a>(&'a str);
 trait IValue {}
 impl IValue for Borrowed<'_> {}
-struct View<'a, 'env>(systasis::Ref<'a, Borrowed<'env>>);
+struct View<'env>(Borrowed<'env>);
 trait IView {}
-impl IView for View<'_, '_> {}
+impl IView for View<'_> {}
 mod leaf {
     use super::*;
     #[systasis::container]
@@ -25,8 +25,8 @@ mod single {
     fn check<'env>(primary: &leaf::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &leaf::SystasisContainer<'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
-                let value = try_resolve_ref_from!(IValue, primary)?;
+            register_type_with!(View<'env> as IView, try || -> Result<View<'env>, Error> {
+                let value = try_resolve_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
                 Ok(View(value))
             });
@@ -35,14 +35,12 @@ mod single {
         let view = container.try_resolve_i_view().unwrap();
         assert_eq!(view.0.0, "borrowed");
         assert!(matches!(
-            primary.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            primary.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(view);
-        assert!(primary.try_resolve_i_value_ref_mut().is_ok());
     }
     #[test]
-    fn invariant_child_payload_keeps_its_nonstatic_lifetime() {
+    fn transferred_child_payload_keeps_its_nonstatic_lifetime() {
         let value = String::from("borrowed");
         leaf::run(value.as_str(), check);
     }
@@ -50,12 +48,9 @@ mod single {
 
 mod multiple {
     use super::*;
-    struct Pair<'a, 'left, 'right>(
-        systasis::Ref<'a, Borrowed<'left>>,
-        systasis::Ref<'a, Borrowed<'right>>,
-    );
+    struct Pair<'left, 'right>(Borrowed<'left>, Borrowed<'right>);
     trait IPair {}
-    impl IPair for Pair<'_, '_, '_> {}
+    impl IPair for Pair<'_, '_> {}
     #[systasis::container]
     fn check<'left, 'right>(
         primary: &leaf::SystasisContainer<'left>,
@@ -64,9 +59,9 @@ mod multiple {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &leaf::SystasisContainer<'left>);
             register_container!(replica: &leaf::SystasisContainer<'right>);
-            register_type_with!(Pair<'_, 'left, 'right> as IPair, try || -> Result<Pair<'_, 'left, 'right>, Error> {
-                let first = try_resolve_ref_from!(IValue, primary)?;
-                let second = try_resolve_ref_from!(IValue, replica)?;
+            register_type_with!(Pair<'left, 'right> as IPair, try || -> Result<Pair<'left, 'right>, Error> {
+                let first = try_resolve_from!(IValue, primary)?;
+                let second = try_resolve_from!(IValue, replica)?;
                 assert_eq!(first.0, second.0);
                 Ok(Pair(first, second))
             });
@@ -75,19 +70,16 @@ mod multiple {
         let pair = container.try_resolve_i_pair().unwrap();
         assert_eq!(pair.0.0, pair.1.0);
         assert!(matches!(
-            primary.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            primary.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
         assert!(matches!(
-            replica.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            replica.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(pair);
-        assert!(primary.try_resolve_i_value_ref_mut().is_ok());
-        assert!(replica.try_resolve_i_value_ref_mut().is_ok());
     }
     #[test]
-    fn two_independently_owned_children_retain_both_guards() {
+    fn two_independently_owned_children_transfer_both_payloads() {
         let left = String::from("both");
         leaf::run(&left, |primary| {
             let right = String::from("both");
@@ -103,8 +95,8 @@ mod explicit_child_lifetime {
     fn check<'a, 'env>(primary: &'a leaf::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &'a leaf::SystasisContainer<'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
-                let value = try_resolve_ref_from!(IValue, primary)?;
+            register_type_with!(View<'env> as IView, try || -> Result<View<'env>, Error> {
+                let value = try_resolve_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
                 Ok(View(value))
             });
@@ -124,9 +116,9 @@ mod nested {
     use systasis::container::Error;
     trait IValue {}
     impl IValue for String {}
-    struct View<'a>(systasis::Ref<'a, String>);
+    struct View(String);
     trait IView {}
-    impl IView for View<'_> {}
+    impl IView for View {}
     mod leaf {
         use super::*;
         #[systasis::container]
@@ -156,24 +148,21 @@ mod nested {
     fn check<'a>(branch: &middle::SystasisContainer<'a>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(branch: &middle::SystasisContainer<'a>);
-            register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
-                let value = try_resolve_ref_from!(IValue, branch::primary)?;
+            register_type_with!(View as IView, try || -> Result<View, Error> {
+                let value = resolve_clone_from!(IValue, branch::primary);
                 assert!(!value.is_empty());
                 Ok(View(value))
             });
         }
         .build();
-        let view = container.try_resolve_i_view().unwrap();
-        assert_eq!(&*view.0, "nested");
-        assert!(matches!(
-            branch.primary().try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
-        ));
-        drop(view);
-        assert!(branch.primary().try_resolve_i_value_ref_mut().is_ok());
+        let mut view = container.try_resolve_i_view().unwrap();
+        assert_eq!(view.0, "nested");
+        view.0.push('!');
+        assert_eq!(branch.primary().resolve_i_value_clone(), "nested");
+        assert_eq!(container.try_resolve_i_view().unwrap().0, "nested");
     }
     #[test]
-    fn nested_child_context_retains_guard_after_temporary_descriptor_drops() {
+    fn nested_child_context_clones_after_temporary_descriptor_drops() {
         let value = String::from("nested");
         leaf::run(value, |primary| middle::run(primary, check));
     }
@@ -182,16 +171,16 @@ mod nested {
 mod exclusive {
     use super::*;
 
-    struct Editor<'a, 'env>(systasis::RefMut<'a, Borrowed<'env>>);
+    struct Editor<'env>(Borrowed<'env>);
     trait IEditor {}
-    impl IEditor for Editor<'_, '_> {}
+    impl IEditor for Editor<'_> {}
 
     #[systasis::container(require(Send, Sync))]
     fn check<'env>(primary: &leaf::SystasisContainer<'env>, replacement: &'env str) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &leaf::SystasisContainer<'env>);
-            register_type_with!(Editor<'_, 'env> as IEditor, try || -> Result<Editor<'_, 'env>, Error> {
-                let value = try_resolve_ref_mut_from!(IValue, primary)?;
+            register_type_with!(Editor<'env> as IEditor, try || -> Result<Editor<'env>, Error> {
+                let value = try_resolve_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
                 Ok(Editor(value))
             });
@@ -199,17 +188,17 @@ mod exclusive {
         .build();
         let mut editor = container.try_resolve_i_editor().unwrap();
         assert!(matches!(
-            primary.try_resolve_i_value_ref(),
-            Err(Error::ValueAccessContention)
+            primary.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
         editor.0.0 = replacement;
-        // The synchronized guard may be dropped on a different thread.
-        std::thread::scope(|scope| scope.spawn(move || drop(editor)).join().unwrap());
-        assert_eq!(primary.try_resolve_i_value_ref().unwrap().0, replacement);
+        // The transferred payload retains its lifetime when sent to another thread.
+        let observed = std::thread::scope(|scope| scope.spawn(move || editor.0.0).join().unwrap());
+        assert_eq!(observed, replacement);
     }
 
     #[test]
-    fn native_child_write_guard_preserves_mutation_and_send() {
+    fn native_child_transfer_preserves_mutation_and_send() {
         let initial = String::from("before");
         let replacement = String::from("after");
         leaf::run(&initial, |primary| check(primary, &replacement));
@@ -219,9 +208,9 @@ mod exclusive {
 mod local {
     use super::*;
 
-    struct Editor<'a, 'env>(core::cell::RefMut<'a, Borrowed<'env>>);
+    struct Editor<'env>(Borrowed<'env>);
     trait IEditor {}
-    impl IEditor for Editor<'_, '_> {}
+    impl IEditor for Editor<'_> {}
 
     mod leaf {
         use super::*;
@@ -240,8 +229,8 @@ mod local {
     fn check<'env>(primary: &leaf::SystasisContainer<'env>, replacement: &'env str) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &leaf::SystasisContainer<'env>);
-            register_type_with!(Editor<'_, 'env> as IEditor, try || -> Result<Editor<'_, 'env>, Error> {
-                let value = try_resolve_ref_mut_from!(IValue, primary)?;
+            register_type_with!(Editor<'env> as IEditor, try || -> Result<Editor<'env>, Error> {
+                let value = try_resolve_from!(IValue, primary)?;
                 assert!(!value.0.is_empty());
                 Ok(Editor(value))
             });
@@ -250,16 +239,19 @@ mod local {
         let mut editor = container.try_resolve_i_editor().unwrap();
         // LOCAL_GUARD_AUTO_TRAIT_REJECTION
         assert!(matches!(
-            primary.try_resolve_i_value_ref(),
-            Err(Error::ValueAccessContention)
+            primary.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
         editor.0.0 = replacement;
-        drop(editor);
-        assert_eq!(primary.try_resolve_i_value_ref().unwrap().0, replacement);
+        assert_eq!(editor.0.0, replacement);
+        assert!(matches!(
+            container.try_resolve_i_editor(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
     }
 
     #[test]
-    fn native_child_uses_its_local_guard_policy() {
+    fn native_child_uses_its_local_transfer_policy() {
         let initial = String::from("before");
         let replacement = String::from("after");
         leaf::run(&initial, |primary| check(primary, &replacement));
@@ -269,18 +261,18 @@ mod local {
 mod transitive {
     use super::*;
 
-    struct Wrapped<'a, 'env>(View<'a, 'env>);
+    struct Wrapped<'env>(View<'env>);
     trait IWrapped {}
-    impl IWrapped for Wrapped<'_, '_> {}
+    impl IWrapped for Wrapped<'_> {}
 
     #[systasis::container]
     fn check<'env>(primary: &leaf::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &leaf::SystasisContainer<'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
-                Ok(View(try_resolve_ref_from!(IValue, primary)?))
+            register_type_with!(View<'env> as IView, try || -> Result<View<'env>, Error> {
+                Ok(View(try_resolve_from!(IValue, primary)?))
             });
-            register_type_with!(Wrapped<'_, 'env> as IWrapped, try || -> Result<Wrapped<'_, 'env>, Error> {
+            register_type_with!(Wrapped<'env> as IWrapped, try || -> Result<Wrapped<'env>, Error> {
                 let view = try_resolve!(IView)?;
                 assert!(!view.0.0.is_empty());
                 Ok(Wrapped(view))
@@ -290,11 +282,9 @@ mod transitive {
         let wrapped = container.try_resolve_i_wrapped().unwrap();
         assert_eq!(wrapped.0.0.0, "transitive");
         assert!(matches!(
-            primary.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            primary.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(wrapped);
-        assert!(primary.try_resolve_i_value_ref_mut().is_ok());
     }
 
     #[test]
@@ -327,8 +317,8 @@ mod nested_borrowed {
     fn check<'a, 'env>(branch: &middle::SystasisContainer<'a, 'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(branch: &middle::SystasisContainer<'a, 'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, Error> {
-                let value = try_resolve_ref_from!(IValue, branch::primary)?;
+            register_type_with!(View<'env> as IView, try || -> Result<View<'env>, Error> {
+                let value = try_resolve_from!(IValue, branch::primary)?;
                 assert!(!value.0.is_empty());
                 Ok(View(value))
             });
@@ -337,11 +327,9 @@ mod nested_borrowed {
         let view = container.try_resolve_i_view().unwrap();
         assert_eq!(view.0.0, "nested borrow");
         assert!(matches!(
-            branch.primary().try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            branch.primary().try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(view);
-        assert!(branch.primary().try_resolve_i_value_ref_mut().is_ok());
     }
 
     #[test]

@@ -13,9 +13,9 @@ impl IData for Private {
 struct Payload<'env, T>(&'env str, T);
 trait IValue {}
 impl<T> IValue for Payload<'_, T> {}
-struct View<'a, 'env, T>(systasis::Ref<'a, Payload<'env, T>>);
+struct View<'env, T>(Payload<'env, T>);
 trait IView {}
-impl<T> IView for View<'_, '_, T> {}
+impl<T> IView for View<'_, T> {}
 mod leaf {
     use super::*;
     #[systasis::container]
@@ -36,25 +36,25 @@ macro_rules! ordered_case {
         mod $module {
             use super::*;
             trait IFirst {}
-            impl<T> IFirst for View<'_, '_, T> {}
+            impl<T> IFirst for View<'_, T> {}
             #[systasis::container]
             fn run<'a, 'env, T:IData>(primary: &'a leaf::SystasisContainer<'env,T>) {
                 let Ok(container) = systasis::systasis_container! {
                     register_container!(primary: &'a leaf::SystasisContainer<'env,T>);
-                    register_type_with!(View<'a,'env,T> as IView, try || -> Result<View<'a,'env,T>,Error> {
+                    register_type_with!(View<'env,T> as IView, try || -> Result<View<'env,T>,Error> {
                         let first=try_resolve!(IFirst)?;
                         assert_eq!(first.0.0,"data");
                         Ok(first)
                     });
-                    register_type_with!(View<'a,'env,T> as IFirst, try || -> Result<View<'a,'env,T>,Error> { $inner });
+                    register_type_with!(View<'env,T> as IFirst, try || -> Result<View<'env,T>,Error> { $inner });
                 }.build();
                 let view=container.try_resolve_i_view().unwrap();
-                assert!(matches!(primary.try_resolve_i_value_ref_mut(),Err(Error::ValueAccessContention)));
-                drop(view);
-                assert!(primary.try_resolve_i_value_ref_mut().is_ok());
+                assert_eq!(view.0.1.text(), "data");
+                assert!(matches!(primary.try_resolve_i_value(),Err(Error::ValueAlreadyConsumed)));
+                assert!(matches!(container.try_resolve_i_view(), Err(Error::ValueAlreadyConsumed)));
             }
             #[test]
-            fn reordered_factories_retain_child_guard() {
+            fn reordered_factories_transfer_child_payload() {
                 let label=String::from("data");
                 leaf::run(&label,Private(label.clone()),run);
             }
@@ -63,10 +63,10 @@ macro_rules! ordered_case {
 }
 ordered_case!(
     reconstructed_to_native,
-    try_resolve_ref_from!(IValue, primary).map(View)
+    try_resolve_from!(IValue, primary).map(View)
 );
 ordered_case!(native_to_native, {
-    let value = try_resolve_ref_from!(IValue, primary)?;
+    let value = try_resolve_from!(IValue, primary)?;
     assert_eq!(value.0, "data");
     Ok(View(value))
 });
@@ -76,21 +76,19 @@ mod explicit {
     fn run<'a, 'env, T: IData>(primary: &'a leaf::SystasisContainer<'env, T>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &'a leaf::SystasisContainer<'env,T>);
-            register_type_with!(View<'a,'env,T> as IView, try || -> Result<View<'a,'env,T>,Error> {
-                let value = try_resolve_ref_from!(IValue,primary)?;
+            register_type_with!(View<'env,T> as IView, try || -> Result<View<'env,T>,Error> {
+                let value = try_resolve_from!(IValue,primary)?;
                 assert_eq!(value.0,value.1.text());
                 Ok(View(value))
             });
         }
         .build();
-        let view: View<'a, 'env, T> = container.try_resolve_i_view().unwrap();
+        let view: View<'env, T> = container.try_resolve_i_view().unwrap();
         assert_eq!(view.0.0, "data");
         assert!(matches!(
-            primary.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            primary.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(view);
-        assert!(primary.try_resolve_i_value_ref_mut().is_ok());
     }
     #[test]
     fn private_generic_payload_explicit_backing_output() {

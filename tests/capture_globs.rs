@@ -45,36 +45,32 @@ mod siblings {
     }
 }
 
-mod guarded {
+mod cloned_output {
     use super::imported;
     use systasis::container::Error;
-    struct View<'a>(systasis::Ref<'a, String>);
+    struct View(String);
     trait IView {}
-    impl IView for View<'_> {}
+    impl IView for View {}
     trait IValue {}
     impl IValue for String {}
     #[systasis::container]
     #[test]
-    fn fallible_glob_constructor_retains_returned_guard() -> Result<(), Error> {
+    fn fallible_glob_constructor_returns_an_independent_clone() -> Result<(), Error> {
         let Ok(container) = systasis::systasis_container! {
-            register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
+            register_type_with!(View as IView, try || -> Result<View, Error> {
                 use imported::*;
                 let _ = answer();
                 let _authored_slot = __systasis_slot_1;
-                Ok(View(try_resolve_ref!(IValue)?))
+                Ok(View(resolve_clone!(IValue)))
             });
             register_value!(String::from("value"): String as IValue);
         }
         .build();
-        let view = container.try_resolve_i_view()?;
-        assert_eq!(&*view.0, "value");
-        assert!(matches!(
-            container.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
-        ));
-        drop(view);
-        container.try_resolve_i_value_ref_mut()?.push('!');
-        assert_eq!(&*container.try_resolve_i_view()?.0, "value!");
+        let mut view = container.try_resolve_i_view()?;
+        assert_eq!(view.0, "value");
+        view.0.push('!');
+        assert_eq!(view.0, "value!");
+        assert_eq!(container.try_resolve_i_view()?.0, "value");
         Ok(())
     }
 }
@@ -119,7 +115,7 @@ mod child_hygiene {
                 register_type_with!(usize as ILength, try || -> Result<usize, Error> {
                     use super::imported::*;
                     let _authored = __systasis_children;
-                    Ok(try_resolve_ref_from!(IDatabase, primary)?.len())
+                    Ok(resolve_clone_from!(IDatabase, primary).len())
                 });
                 register_type_with!(usize as IIndirect, try || -> Result<usize, Error> {
                     use super::imported::*;
@@ -169,9 +165,9 @@ mod unused_context_generics {
     struct Number(u32);
     trait INumber {}
     impl INumber for Number {}
-    struct View<'a>(systasis::Ref<'a, Number>);
+    struct View(Number);
     trait IView {}
-    impl IView for View<'_> {}
+    impl IView for View {}
     trait IText {}
     impl IText for &str {}
     #[systasis::container]
@@ -181,8 +177,8 @@ mod unused_context_generics {
     ) -> Result<&'long str, Error> {
         let Ok(container) = systasis::systasis_container! {
             register_value!(Number(17): Number as INumber);
-            register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
-                Ok(View(try_resolve_ref!(INumber)?))
+            register_type_with!(View as IView, try || -> Result<View, Error> {
+                Ok(View(try_resolve!(INumber)?))
             });
             register_type_with!(&'long str as IText, || text);
         }
@@ -192,7 +188,7 @@ mod unused_context_generics {
         Ok(container.resolve_i_text())
     }
     #[test]
-    fn unrelated_generic_markers_do_not_change_guard_or_capture_outputs() {
+    fn unrelated_generic_markers_do_not_change_owned_or_capture_outputs() {
         let text = String::from("long");
         let returned = run::<&str>(PhantomData, &text).unwrap();
         assert_eq!(returned, "long");

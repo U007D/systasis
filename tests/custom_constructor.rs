@@ -131,31 +131,34 @@ mod borrowed_output {
     }
 }
 
-mod returned_guard {
+mod transferred_output {
     use super::Error;
-    struct View<'a>(systasis::Ref<'a, String>);
+    struct Value(String);
+    struct View(Value);
     trait IView {}
-    impl IView for View<'_> {}
+    impl IView for View {}
     trait IValue {}
-    impl IValue for String {}
+    impl IValue for Value {}
     #[systasis::container]
     #[test]
-    fn returned_guard_keeps_dependency_borrowed() -> Result<(), Error> {
+    fn returned_value_owns_consumed_dependency() -> Result<(), Error> {
         let Ok(container) = systasis::systasis_container! {
-            register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
-                Ok(View(try_resolve_ref!(IValue)?))
+            register_type_with!(View as IView, try || -> Result<View, Error> {
+                Ok(View(try_resolve!(IValue)?))
             });
-            register_value!(String::from("value"): String as IValue);
+            register_value!(Value(String::from("value")): Value as IValue);
         }
         .build();
         let view = container.try_resolve_i_view()?;
-        assert_eq!(&*view.0, "value");
+        assert_eq!(view.0.0, "value");
         assert!(matches!(
-            container.try_resolve_i_value_ref_mut(),
-            Err(Error::ValueAccessContention)
+            container.try_resolve_i_value(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(view);
-        assert_eq!(&*container.try_resolve_i_value_ref_mut()?, "value");
+        assert!(matches!(
+            container.try_resolve_i_view(),
+            Err(Error::ValueAlreadyConsumed)
+        ));
         Ok(())
     }
 }
