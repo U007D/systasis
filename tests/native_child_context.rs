@@ -158,7 +158,7 @@ mod nested {
         let mut view = container.try_resolve_i_view().unwrap();
         assert_eq!(view.0, "nested");
         view.0.push('!');
-        assert_eq!(branch.primary().resolve_i_value_clone(), "nested");
+        assert_eq!(branch.primary().resolve_clone_i_value(), "nested");
         assert_eq!(container.try_resolve_i_view().unwrap().0, "nested");
     }
     #[test]

@@ -41,13 +41,13 @@ mod parent {
         }
         .build::<Error>()?;
         assert_eq!(container.try_resolve_i_length()?, 7);
-        let mut cloned = container.primary().resolve_i_value_clone();
+        let mut cloned = container.primary().resolve_clone_i_value();
         assert_eq!(cloned, "primary");
         cloned.push('!');
         assert_eq!(cloned, "primary!");
         assert_eq!(container.try_resolve_i_length()?, 7);
         assert_eq!(container.primary().try_resolve_i_size()?, 7);
-        assert_eq!(container.replica().resolve_i_value_clone(), "replica");
+        assert_eq!(container.replica().resolve_clone_i_value(), "replica");
         Ok(())
     }
 }
@@ -84,7 +84,7 @@ fn child_context_preserves_clone_access_visibility_and_backing_lifetime() {
     for (native, (name, access, rejection)) in [
         (
             "clone",
-            "container.primary().resolve_i_value_clone()",
+            "container.primary().resolve_clone_i_value()",
             None,
         ),
         (
@@ -94,12 +94,12 @@ fn child_context_preserves_clone_access_visibility_and_backing_lifetime() {
         ),
         (
             "sibling_clone",
-            "container.replica().resolve_i_value_clone()",
+            "container.replica().resolve_clone_i_value()",
             None,
         ),
         (
             "context_clone",
-            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); context.descriptor().resolve_i_value_clone() }",
+            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); context.descriptor().resolve_clone_i_value() }",
             None,
         ),
         (

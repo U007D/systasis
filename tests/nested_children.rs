@@ -63,16 +63,16 @@ mod outer {
         .build::<Error>()?;
         assert_eq!(receive(container.branch())?, 7);
         assert_eq!(container.try_resolve_i_observed()?, 7);
-        let mut cloned = container.branch().primary().resolve_i_value_clone();
+        let mut cloned = container.branch().primary().resolve_clone_i_value();
         assert_eq!(cloned, "primary");
         cloned.push('!');
         assert_eq!(cloned, "primary!");
         assert_eq!(receive(container.branch())?, 7);
         assert_eq!(container.try_resolve_i_observed()?, 7);
         assert_eq!(container.branch().primary().try_resolve_i_size()?, 7);
-        assert_eq!(container.resolve_i_copied_clone(), "replica");
+        assert_eq!(container.resolve_clone_i_copied(), "replica");
         assert_eq!(
-            container.branch().replica().resolve_i_value_clone(),
+            container.branch().replica().resolve_clone_i_value(),
             "replica"
         );
         Ok(())

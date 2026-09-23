@@ -20,11 +20,11 @@ macro_rules! scenario {
                     register_value!(String::from("data"): String as IValue);
                 }.build();
                 assert_eq!(container.resolve_i_length(), 5);
-                let Ok(mut first) = container.try_resolve_i_value_clone();
+                let Ok(mut first) = container.try_resolve_clone_i_value();
                 first.push('?');
                 assert_eq!(first, "data?");
-                assert_eq!(container.resolve_i_value_clone(), "data");
-                let Ok(second) = container.try_resolve_i_value_clone();
+                assert_eq!(container.resolve_clone_i_value(), "data");
+                let Ok(second) = container.try_resolve_clone_i_value();
                 assert_eq!(second, "data");
             }
         }

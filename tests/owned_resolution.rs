@@ -37,9 +37,9 @@ mod values {
         assert_eq!(container.resolve_i_copy().0, 7);
         let Ok(copied) = container.try_resolve_i_copy();
         assert_eq!(copied.0, 7);
-        let mut first = container.resolve_i_clone_clone();
+        let mut first = container.resolve_clone_i_clone();
         first.0.push('!');
-        let Ok(second) = container.try_resolve_i_clone_clone();
+        let Ok(second) = container.try_resolve_clone_i_clone();
         assert_eq!(second.0, "hello");
     }
 
@@ -108,8 +108,8 @@ mod generic_clone {
 
     #[test]
     fn clone_bound_selects_the_same_api_for_copy_and_noncopy_instantiations() {
-        assert_eq!(init(7_u8).resolve_i_value_clone(), 7);
-        let Ok(value) = init(String::from("value")).try_resolve_i_value_clone();
+        assert_eq!(init(7_u8).resolve_clone_i_value(), 7);
+        let Ok(value) = init(String::from("value")).try_resolve_clone_i_value();
         assert_eq!(value, "value");
     }
 }
@@ -161,10 +161,10 @@ mod parent {
             register_value!({ let Ok(value) = try_resolve!(Copy); value }: u8 as Copy in copied);
         }
         .build();
-        assert_eq!(container.resolve_i_text_clone(), "child");
-        assert_eq!(container.resolve_i_text_clone_in_copied(), "child");
+        assert_eq!(container.resolve_clone_i_text(), "child");
+        assert_eq!(container.resolve_clone_i_text_in_copied(), "child");
         assert_eq!(container.resolve_copy_in_copied(), 5);
-        let Ok(text) = container.primary().try_resolve_i_text_clone_in_named();
+        let Ok(text) = container.primary().try_resolve_clone_i_text_in_named();
         assert_eq!(text, "child");
         let Ok(number) = container.primary().try_resolve_copy();
         assert_eq!(number, 5);

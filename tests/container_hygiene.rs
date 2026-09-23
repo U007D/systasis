@@ -29,7 +29,7 @@ mod caller_local {
         }
         .build::<systasis::container::Error>();
 
-        assert_eq!(built.unwrap().resolve_i_value_clone(), "caller input");
+        assert_eq!(built.unwrap().resolve_clone_i_value(), "caller input");
     }
 }
 
@@ -47,7 +47,7 @@ mod caller_result_alias {
         }
         .build::<systasis::container::Error>();
 
-        assert_eq!(built?.resolve_i_value_clone(), "value");
+        assert_eq!(built?.resolve_clone_i_value(), "value");
         Ok(())
     }
 }
@@ -64,7 +64,7 @@ mod annotated_coercion {
         }
         .build::<systasis::container::Error>();
 
-        let value: Box<[u8]> = built.unwrap().resolve_i_value_clone();
+        let value: Box<[u8]> = built.unwrap().resolve_clone_i_value();
         assert_eq!(&*value, &[1]);
     }
 }

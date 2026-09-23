@@ -145,7 +145,7 @@ mod dyn_group {
         }
         .build::<Error>()?;
         assert_eq!(container.resolve_i_size(), 3);
-        let value = container.resolve_i_length_i_read_clone_in_data();
+        let value = container.resolve_clone_i_length_i_read_in_data();
         let object: &dyn IRead = &value;
         assert_eq!(object.text(), "dyn");
         Ok(())

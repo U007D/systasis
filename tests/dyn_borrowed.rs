@@ -29,7 +29,7 @@ fn dyn_references_do_not_require_static_implementation_data()
     }
     .build::<systasis::container::Error>()?;
     assert_eq!(container.resolve_i_length(), 8);
-    let owned = container.resolve_i_logger_clone();
+    let owned = container.resolve_clone_i_logger();
     let logger: &dyn ILogger = &owned;
     assert_eq!(logger.text(), input);
     Ok(())

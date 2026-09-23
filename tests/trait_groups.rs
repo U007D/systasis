@@ -44,12 +44,12 @@ mod distinct {
             register_value!(String::from("individual"): String as IReader);
         }
         .build::<Error>()?;
-        let mut group = container.resolve_i_reader_i_writer_clone();
+        let mut group = container.resolve_clone_i_reader_i_writer();
         group.push('!');
         assert_eq!(group, "group!");
-        let Ok(group_again) = container.try_resolve_i_reader_i_writer_clone();
+        let Ok(group_again) = container.try_resolve_clone_i_reader_i_writer();
         assert_eq!(group_again, "group");
-        assert_eq!(container.resolve_i_reader_clone(), "individual");
+        assert_eq!(container.resolve_clone_i_reader(), "individual");
         Ok(())
     }
 }
@@ -94,7 +94,7 @@ mod constructors {
             register_value!(resolve!(IWriter + IReader): resolve_type!(IReader + IWriter) as IOutput);
             register_type_with!(String as IReader + IWriter, move || config.clone());
         }.build::<Error>()?;
-        assert_eq!(container.resolve_i_output_clone(), "fresh");
+        assert_eq!(container.resolve_clone_i_output(), "fresh");
         assert_eq!(container.resolve_i_reader_i_writer(), "fresh");
         assert_eq!(container.resolve_i_reader_i_writer(), "fresh");
         Ok(())
@@ -129,7 +129,7 @@ mod constructor_dependency {
         .build::<Error>()?;
         assert_eq!(container.try_resolve_i_output()?, "borrowed");
         assert_eq!(container.try_resolve_i_output()?, "borrowed");
-        let mut clone = container.resolve_i_reader_i_writer_clone();
+        let mut clone = container.resolve_clone_i_reader_i_writer();
         clone.push('!');
         assert_eq!(clone, "borrowed!");
         assert_eq!(container.try_resolve_i_output()?, "borrowed");

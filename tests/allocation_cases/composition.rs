@@ -56,15 +56,15 @@ macro_rules! scenario {
                         }: u32 as IObserved);
                     }.build::<Error>()?;
                     assert_eq!(container.resolve_i_observed(), 11);
-                    let mut packet = container.branch().primary().resolve_i_packet_clone();
+                    let mut packet = container.branch().primary().resolve_clone_i_packet();
                     assert_eq!(packet.0, [11; 4]);
                     packet.0[0] = 12;
                     let object: &dyn leaf::IPacket = &packet;
                     assert_eq!(object.first(), 12);
-                    let Ok(another) = container.branch().primary().try_resolve_i_packet_clone();
+                    let Ok(another) = container.branch().primary().try_resolve_clone_i_packet();
                     assert_eq!(another.0, [11; 4]);
                     drop((packet, another));
-                    let Ok(cloned) = container.try_resolve_i_copied_clone();
+                    let Ok(cloned) = container.try_resolve_clone_i_copied();
                     assert_eq!(cloned.0, [11; 4]);
                     drop(cloned);
                     // Both copied storage and the untouched replica drop with their owners.
@@ -94,7 +94,7 @@ macro_rules! scenario {
                         let mut view = core::hint::black_box(&container).try_resolve_i_view()?;
                         assert_eq!(view.0.0, [11; 4]);
                         view.0.0[0] = 12;
-                        assert_eq!(branch.primary().resolve_i_packet_clone().0, [11; 4]);
+                        assert_eq!(branch.primary().resolve_clone_i_packet().0, [11; 4]);
                         drop(view);
                     }
                     Ok(())

@@ -491,8 +491,8 @@ fn operation(
             "TryExclusive",
             false,
         ),
-        (format!("resolve_{snake}_clone"), "CloneValue", false),
-        (format!("try_resolve_{snake}_clone"), "TryCloneValue", false),
+        (format!("resolve_clone_{snake}"), "CloneValue", false),
+        (format!("try_resolve_clone_{snake}"), "TryCloneValue", false),
         (format!("resolve_{snake}_dyn_ref"), "DynShared", false),
         (
             format!("try_resolve_{snake}_dyn_ref"),

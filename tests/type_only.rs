@@ -28,7 +28,7 @@ mod channels {
     #[test]
     fn non_default_message_types_configure_channel_endpoints() {
         let container = init();
-        let tx = container.resolve_i_message_sender_clone();
+        let tx = container.resolve_clone_i_message_sender();
         let rx = container.try_resolve_i_message_receiver().unwrap();
         tx.send(Message(42)).unwrap();
         assert_eq!(rx.recv().unwrap(), Message(42));

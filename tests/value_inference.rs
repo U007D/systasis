@@ -24,10 +24,10 @@ mod annotated_expression {
         }
         .build();
 
-        let Ok(path): Result<PathBuf, _> = container.try_resolve_i_config_path_clone();
+        let Ok(path): Result<PathBuf, _> = container.try_resolve_clone_i_config_path();
         assert_eq!(path, PathBuf::from("/etc/app"));
         assert_eq!(
-            container.resolve_i_config_path_clone(),
+            container.resolve_clone_i_config_path(),
             PathBuf::from("/etc/app")
         );
         Ok(())
@@ -54,9 +54,9 @@ mod locals {
 
         assert_eq!(count(&container), 5);
         assert_eq!(count(&container), 5);
-        let Ok(first) = container.try_resolve_i_text_clone();
+        let Ok(first) = container.try_resolve_clone_i_text();
         assert_eq!(first, "value");
-        assert_eq!(container.resolve_i_text_clone(), "value");
+        assert_eq!(container.resolve_clone_i_text(), "value");
         Ok(())
     }
 }
@@ -121,7 +121,7 @@ mod final_override {
             register_value!(text as IText);
         }
         .build();
-        assert_eq!(container.resolve_i_text_clone(), "winner");
+        assert_eq!(container.resolve_clone_i_text(), "winner");
     }
 }
 
@@ -146,10 +146,10 @@ mod group {
         }
         .build();
         assert_eq!(
-            container.resolve_i_length_i_text_clone_in_test().length(),
+            container.resolve_clone_i_length_i_text_in_test().length(),
             5
         );
-        assert_eq!(container.resolve_i_length_i_text_clone_in_test(), "group");
+        assert_eq!(container.resolve_clone_i_length_i_text_in_test(), "group");
         assert_eq!(container.resolve_i_count(), 5);
         Ok(())
     }

@@ -58,7 +58,7 @@ macro_rules! queries {
                 }.build::<Error>()?;
                 assert_eq!(container.resolve_i_length(), 7);
                 assert_eq!(container.try_resolve_i_again()?, 7);
-                let mut owned = container.resolve_i_logger_clone();
+                let mut owned = container.resolve_clone_i_logger();
                 owned.push('!');
                 assert_eq!(owned, "message!");
                 assert_eq!(container.try_resolve_i_again()?, 7);

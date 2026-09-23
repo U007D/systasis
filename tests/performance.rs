@@ -63,7 +63,7 @@ macro_rules! cloning {
                 let Ok(container) = systasis::systasis_container! {
                     register_value!(Value(black_box(0)): Value as IValue);
                 }.build();
-                timed(|_| black_box(&container).resolve_i_value_clone().0)
+                timed(|_| black_box(&container).resolve_clone_i_value().0)
             }
             pub fn handwritten() -> (Duration, u64) {
                 let slot = ReadSlot::new(Value(black_box(0)));

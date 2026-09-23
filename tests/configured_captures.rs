@@ -101,7 +101,7 @@ mod lifecycle {
         assert_eq!(container.resolve_i_value(), 1);
         assert_eq!(container.resolve_i_value(), 2);
         assert_eq!(drops.get(), 0);
-        let Ok(stored) = container.try_resolve_i_stored_clone();
+        let Ok(stored) = container.try_resolve_clone_i_stored();
         assert_eq!(stored, "stored");
     }
 

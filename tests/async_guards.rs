@@ -55,7 +55,7 @@ macro_rules! scenario {
                 }.build();
                 is_send(&container);
                 let value = container.try_resolve_i_value().unwrap();
-                let mut text = container.resolve_i_text_clone();
+                let mut text = container.resolve_clone_i_text();
                 let future = async move {
                     std::future::pending::<()>().await;
                     text.push('!');
@@ -65,11 +65,11 @@ macro_rules! scenario {
                 pending(future, || {
                     assert_eq!(drops.load(Ordering::SeqCst), 0);
                     assert!(matches!(container.try_resolve_i_value(), Err(Error::ValueAlreadyConsumed)));
-                    assert_eq!(container.resolve_i_text_clone(), "value");
+                    assert_eq!(container.resolve_clone_i_text(), "value");
                 });
                 assert_eq!(drops.load(Ordering::SeqCst), 1);
                 assert!(matches!(container.try_resolve_i_value(), Err(Error::ValueAlreadyConsumed)));
-                let Ok(text) = container.try_resolve_i_text_clone();
+                let Ok(text) = container.try_resolve_clone_i_text();
                 assert_eq!(text, "value");
             }
 
@@ -149,20 +149,20 @@ fn main() {
     #[cfg(container_reference)]
     {
         let future = async {
-            let value = container.resolve_i_value_clone();
+            let value = container.resolve_clone_i_value();
             std::future::pending::<()>().await;
             std::hint::black_box((value, &container));
         };
         is_send(&future);
     }
     // An owned result does not retain a reference to the !Sync container.
-    let value = container.resolve_i_value_clone();
+    let value = container.resolve_clone_i_value();
     let future = async move {
         std::future::pending::<()>().await;
         std::hint::black_box(value);
     };
     is_send(&future);
-    assert_eq!(container.resolve_i_value_clone(), "value");
+    assert_eq!(container.resolve_clone_i_value(), "value");
 }
 "#,
     )

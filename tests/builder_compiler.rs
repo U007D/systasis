@@ -202,7 +202,7 @@ fn configure() {
     let Ok(container) = systasis::systasis_container! {
         register_value!(String::from("value"): String as IText);
     }.build();
-    let value = container.resolve_i_text_clone();
+    let value = container.resolve_clone_i_text();
     drop(container);
     assert_eq!(value, "value");
 }

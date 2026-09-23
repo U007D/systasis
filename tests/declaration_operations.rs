@@ -14,13 +14,13 @@ mod stored {
     #[test]
     fn cloning_preserves_the_stored_value() {
         let Ok(container) = SystasisContainer::build();
-        let mut value = container.resolve_i_value_clone();
+        let mut value = container.resolve_clone_i_value();
         assert_eq!(value.0, 7);
         value.0 = 8;
         assert_eq!(value.0, 8);
-        let Ok(clone) = container.try_resolve_i_value_clone();
+        let Ok(clone) = container.try_resolve_clone_i_value();
         assert_eq!(clone.0, 7);
-        assert_eq!(container.resolve_i_value_clone().0, 7);
+        assert_eq!(container.resolve_clone_i_value().0, 7);
     }
 }
 

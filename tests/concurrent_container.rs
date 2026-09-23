@@ -37,10 +37,10 @@ fn scoped_threads_share_exactly_once_consumption_and_repeatable_values() {
                     for _ in 0..16 {
                         let Ok(limit) = container.try_resolve_i_limit();
                         assert_eq!(limit, 7);
-                        let Ok(mut label) = container.try_resolve_i_label_clone();
+                        let Ok(mut label) = container.try_resolve_clone_i_label();
                         label.push('!');
                         assert_eq!(label, "label!");
-                        assert_eq!(container.resolve_i_label_clone(), "label");
+                        assert_eq!(container.resolve_clone_i_label(), "label");
                     }
                     outcome
                 })

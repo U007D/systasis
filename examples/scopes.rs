@@ -15,7 +15,7 @@ mod application {
 
     // This function receives the database scope, not the application container.
     fn database_length(database: &primary::SubContainer<'_>) -> usize {
-        database.resolve_i_database_clone().len()
+        database.resolve_clone_i_database().len()
     }
 
     #[systasis::container]
@@ -32,7 +32,7 @@ mod application {
 
         assert_eq!(database_length(container.primary()), 11);
         assert_eq!(container.try_resolve_i_length()?, 11);
-        let mut cloned = container.primary().resolve_i_database_clone();
+        let mut cloned = container.primary().resolve_clone_i_database();
         cloned.push('!');
         assert_eq!(cloned, "application!");
         assert_eq!(database_length(container.primary()), 11);

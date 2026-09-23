@@ -17,7 +17,7 @@ fn sync_combined_target_can_be_read_on_another_scoped_thread() {
         register_value!(String::from("threaded"): String as dyn ILogger + core::marker::Sync);
     }
     .build();
-    let owned = container.resolve_i_logger_sync_clone();
+    let owned = container.resolve_clone_i_logger_sync();
     let target: &(dyn ILogger + Sync) = &owned;
     std::thread::scope(|scope| {
         scope
@@ -25,6 +25,6 @@ fn sync_combined_target_can_be_read_on_another_scoped_thread() {
             .join()
             .unwrap();
     });
-    let Ok(another) = container.try_resolve_i_logger_sync_clone();
+    let Ok(another) = container.try_resolve_clone_i_logger_sync();
     assert_eq!(another, "threaded");
 }

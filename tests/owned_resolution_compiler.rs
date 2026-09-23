@@ -36,13 +36,13 @@ fn resolver_method_sets_match_the_stored_value_policy() {
         ),
         (
             "copy_clone",
-            "container.resolve_copy_clone();",
-            "no method named `resolve_copy_clone`",
+            "container.resolve_clone_copy();",
+            "no method named `resolve_clone_copy`",
         ),
         (
             "copy_try_clone",
-            "container.try_resolve_copy_clone();",
-            "no method named `try_resolve_copy_clone`",
+            "container.try_resolve_clone_copy();",
+            "no method named `try_resolve_clone_copy`",
         ),
         (
             "clone_take",
@@ -66,8 +66,8 @@ fn resolver_method_sets_match_the_stored_value_policy() {
         ),
         (
             "move_clone",
-            "container.try_resolve_i_owned_clone();",
-            "no method named `try_resolve_i_owned_clone`",
+            "container.try_resolve_clone_i_owned();",
+            "no method named `try_resolve_clone_i_owned`",
         ),
     ] {
         let source = format!(

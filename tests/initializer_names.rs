@@ -43,7 +43,7 @@ mod local {
         .build::<Error>()?;
         events.push("after");
         assert_eq!(events, ["outside", "after"]);
-        assert_eq!(container.resolve_i_output_clone(), "actual");
+        assert_eq!(container.resolve_clone_i_output(), "actual");
         assert!(matches!(
             container.try_resolve_i_value(),
             Err(Error::ValueAlreadyConsumed)
@@ -84,7 +84,7 @@ mod branching {
             }: String as IOutput);
         }
         .build::<Error>()?;
-        assert_eq!(container.resolve_i_output_clone(), "actual");
+        assert_eq!(container.resolve_clone_i_output(), "actual");
         assert!(matches!(
             container.try_resolve_i_value(),
             Err(Error::ValueAlreadyConsumed)
@@ -150,7 +150,7 @@ mod outer {
             }: String as IOutput);
         }
         .build::<Error>()?;
-        assert_eq!(container.resolve_i_output_clone(), "child");
+        assert_eq!(container.resolve_clone_i_output(), "child");
         Ok(())
     }
 }

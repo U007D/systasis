@@ -926,8 +926,8 @@ fn expand_inner(
             ));
             let take = format_ident!("try_resolve_{snake}");
             let copy = format_ident!("resolve_{snake}");
-            let clone = format_ident!("resolve_{snake}_clone");
-            let try_clone = format_ident!("try_resolve_{snake}_clone");
+            let clone = format_ident!("resolve_clone_{snake}");
+            let try_clone = format_ident!("try_resolve_clone_{snake}");
             if let Some(factory) = factories.get(&i) {
                 let helper = format_ident!("__systasis_construct_{i}");
                 let context = format_ident!("__systasis_ConstructorContext{i}");

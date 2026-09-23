@@ -45,13 +45,13 @@ macro_rules! scenario {
                 let container = systasis::systasis_container! {
                     register_value!(String::from("group"): String as dyn IWriter + IReader<Item = usize>);
                 }.build::<Error>()?;
-                let mut owned = container.resolve_i_reader_i_writer_clone();
+                let mut owned = container.resolve_clone_i_reader_i_writer();
                 let reader: &dyn IReader<Item = usize> = &owned;
                 let writer: &dyn IWriter = &owned;
                 assert_eq!(reader.read(), 5);
                 assert_eq!(writer.length(), 5);
                 owned.push('!');
-                let Ok(another) = container.try_resolve_i_reader_i_writer_clone();
+                let Ok(another) = container.try_resolve_clone_i_reader_i_writer();
                 assert_eq!(another, "group");
                 Ok(())
             }
@@ -140,7 +140,7 @@ mod borrowed_generics {
             });
             register_value!(Value(input): Value<'a, T> as dyn ICount<T, N> + IBorrow<'a, Item = &'a T>);
         }.build::<Error>()?;
-        let value = container.resolve_i_borrow_i_count_clone();
+        let value = container.resolve_clone_i_borrow_i_count();
         let borrowed: &dyn IBorrow<'a, Item = &'a T> = &value;
         let count: &dyn ICount<T, N> = &value;
         assert!(borrowed.item() == input);

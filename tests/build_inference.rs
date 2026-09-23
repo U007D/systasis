@@ -89,7 +89,7 @@ mod propagated {
             );
         }
         .build::<&'static str>()?;
-        Ok(container.resolve_i_value_clone())
+        Ok(container.resolve_clone_i_value())
     }
 
     #[test]
@@ -111,6 +111,6 @@ mod chained {
         }
         .build::<()>())
         .expect("infallible initialization");
-        assert_eq!(container.resolve_i_value_clone(), "ready");
+        assert_eq!(container.resolve_clone_i_value(), "ready");
     }
 }

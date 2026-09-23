@@ -49,9 +49,9 @@ mod outer {
         }.build::<Error>()?;
         assert_eq!(container.resolve_i_length(), 7);
         assert_eq!(container.resolve_i_default(), 7);
-        assert_eq!(container.resolve_i_copied_clone(), "metrics");
+        assert_eq!(container.resolve_clone_i_copied(), "metrics");
         assert_eq!(container.try_resolve_i_later()?, 7);
-        let mut cloned = container.primary().resolve_i_value_clone_in_metrics();
+        let mut cloned = container.primary().resolve_clone_i_value_in_metrics();
         cloned.push('!');
         assert_eq!(cloned, "metrics!");
         assert_eq!(container.try_resolve_i_later()?, 7);

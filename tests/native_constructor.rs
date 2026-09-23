@@ -78,7 +78,7 @@ mod cloned_output {
         let mut view = container.resolve_i_view();
         view.0.push('!');
         assert_eq!(view.0, "value!");
-        assert_eq!(container.resolve_i_value_clone(), "value");
+        assert_eq!(container.resolve_clone_i_value(), "value");
         assert_eq!(container.resolve_i_view().0, "value");
     }
 }

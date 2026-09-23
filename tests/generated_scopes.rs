@@ -22,13 +22,13 @@ fn descriptor_clones_without_exposing_backing_storage() {
     .build();
     let mut value = {
         let scope = AsScope::<Empty>::scope(&container);
-        scope.resolve_i_value_clone()
+        scope.resolve_clone_i_value()
     };
     assert_eq!(value, "scoped");
     value.push('!');
     assert_eq!(value, "scoped!");
     let scope = AsScope::<Empty>::scope(&container);
-    let Ok(clone) = scope.try_resolve_i_value_clone();
+    let Ok(clone) = scope.try_resolve_clone_i_value();
     assert_eq!(clone, "scoped");
 }
 
@@ -44,10 +44,10 @@ mod restricted {
         .build();
         type Restrictions = Mask<__systasis_injected::__systasis_RestrictionKey0, Empty>;
         let scope = AsScope::<Restrictions>::scope(&container);
-        let mut value = scope.resolve_i_value_clone();
+        let mut value = scope.resolve_clone_i_value();
         value.push('!');
         assert_eq!(value, "reserved-name-only!");
-        let Ok(clone) = scope.try_resolve_i_value_clone();
+        let Ok(clone) = scope.try_resolve_clone_i_value();
         assert_eq!(clone, "reserved-name-only");
     }
 }

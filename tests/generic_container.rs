@@ -178,7 +178,7 @@ mod constructor_dependency {
             register_value!(resolve!(IValue): T as IStored);
         }
         .build::<Error>()?;
-        let Ok(_stored) = container.try_resolve_i_stored_clone();
+        let Ok(_stored) = container.try_resolve_clone_i_stored();
         let _: T = container.resolve_i_value();
         Ok(())
     }
