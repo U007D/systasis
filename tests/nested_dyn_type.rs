@@ -46,8 +46,8 @@ mod outer {
         let container = systasis::systasis_container! {
             register_container!(branch: &middle::SystasisContainer<'a>);
             register_value!({
-                let guard = try_resolve_dyn_ref_from!(IValue, branch::primary)?;
-                let value: &resolve_type_from!(dyn IValue, branch::primary) = &*guard;
+                let owned = try_resolve_from!(IValue, branch::primary)?;
+                let value: &resolve_type_from!(dyn IValue, branch::primary) = &owned;
                 value.value()
             }: u32 as IObserved);
         }
@@ -112,8 +112,8 @@ mod borrowed_payload {
             let container = systasis::systasis_container! {
                 register_container!(branch: &middle::SystasisContainer<'a, 'data>);
                 register_value!({
-                    let guard = try_resolve_dyn_ref_from!(IValue<Number = u32>, branch::primary)?;
-                    let value: &resolve_type_from!(dyn IValue<Number = u32>, branch::primary) = &*guard;
+                    let owned = try_resolve_from!(IValue<Number = u32>, branch::primary)?;
+                    let value: &resolve_type_from!(dyn IValue<Number = u32>, branch::primary) = &owned;
                     value.value()
                 }: u32 as IObserved);
             }.build::<Error>()?;

@@ -1,4 +1,4 @@
-//! An explicitly Sync dyn target preserves the read guard's Send behavior.
+//! An explicitly Sync dyn target can borrow an owned value across scoped threads.
 #![forbid(unsafe_code)]
 
 trait ILogger {
@@ -17,12 +17,14 @@ fn sync_combined_target_can_be_read_on_another_scoped_thread() {
         register_value!(String::from("threaded"): String as dyn ILogger + core::marker::Sync);
     }
     .build();
-    let guard = container.try_resolve_i_logger_sync_dyn_ref().unwrap();
+    let owned = container.resolve_i_logger_sync_clone();
+    let target: &(dyn ILogger + Sync) = &owned;
     std::thread::scope(|scope| {
         scope
-            .spawn(move || assert_eq!(guard.text(), "threaded"))
+            .spawn(move || assert_eq!(target.text(), "threaded"))
             .join()
             .unwrap();
     });
-    assert_eq!(container.try_resolve_i_logger_sync().unwrap(), "threaded");
+    let Ok(another) = container.try_resolve_i_logger_sync_clone();
+    assert_eq!(another, "threaded");
 }

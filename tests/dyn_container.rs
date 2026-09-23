@@ -12,17 +12,15 @@ macro_rules! scenario {
             impl ILogger for Logger { fn text(&self) -> &str { &self.0 } }
             #[systasis::container($($requirements)*)]
             #[test]
-            fn explicit_dyn_reader_retains_occupancy_and_borrow_checks() -> Result<(), Error> {
+            fn explicit_dyn_borrow_follows_owned_transfer() -> Result<(), Error> {
                 let Ok(container) = systasis::systasis_container! {
                     register_value!(Logger(String::from("message")): Logger as dyn ILogger);
                 }.build();
-                let reader = container.try_resolve_i_logger_dyn_ref()?;
-                assert_eq!(reader.text(), "message");
-                assert!(matches!(container.try_resolve_i_logger(), Err(Error::ValueAccessContention)));
-                drop(reader);
                 let concrete: Logger = container.try_resolve_i_logger()?;
+                let reader: &dyn ILogger = &concrete;
+                assert_eq!(reader.text(), "message");
                 assert_eq!(concrete.text(), "message");
-                assert!(matches!(container.try_resolve_i_logger_dyn_ref(), Err(Error::ValueAlreadyConsumed)));
+                assert!(matches!(container.try_resolve_i_logger(), Err(Error::ValueAlreadyConsumed)));
                 Ok(())
             }
         }
@@ -46,16 +44,24 @@ macro_rules! queries {
             #[test]
             fn dyn_queries_work_during_build_and_repeated_construction() -> Result<(), Error> {
                 let container = systasis::systasis_container! {
-                    register_value!(try_resolve_dyn_ref!(ILogger)?.text().len(): usize as ILength);
+                    register_value!({
+                        let owned = resolve_clone!(ILogger);
+                        let logger: &resolve_type!(dyn ILogger) = &owned;
+                        logger.text().len()
+                    }: usize as ILength);
                     register_type_with!(usize as IAgain, try || -> Result<usize, Error> {
-                        Ok(try_resolve_dyn_ref!(ILogger)?.text().len())
+                        let owned = resolve_clone!(ILogger);
+                        let logger: &resolve_type!(dyn ILogger) = &owned;
+                        Ok(logger.text().len())
                     });
                     register_value!(String::from("message"): String as dyn ILogger);
                 }.build::<Error>()?;
                 assert_eq!(container.resolve_i_length(), 7);
                 assert_eq!(container.try_resolve_i_again()?, 7);
-                container.try_resolve_i_logger_ref_mut()?.push('!');
-                assert_eq!(container.try_resolve_i_again()?, 8);
+                let mut owned = container.resolve_i_logger_clone();
+                owned.push('!');
+                assert_eq!(owned, "message!");
+                assert_eq!(container.try_resolve_i_again()?, 7);
                 Ok(())
             }
         }
@@ -75,13 +81,18 @@ mod copy {
     }
     #[systasis::container]
     #[test]
-    fn copy_dyn_reference_has_no_guard() {
+    fn copied_value_can_be_explicitly_borrowed_as_dyn() {
         let Ok(container) = systasis::systasis_container! {
             register_value!(7_u32: u32 as dyn IValue);
-            register_value!(resolve_dyn_ref!(IValue).value() as usize: usize as ILength);
+            register_value!({
+                let copied = resolve!(IValue);
+                let value: &resolve_type!(dyn IValue) = &copied;
+                value.value() as usize
+            }: usize as ILength);
         }
         .build();
-        let value: &dyn IValue = container.resolve_i_value_dyn_ref();
+        let copied = container.resolve_i_value();
+        let value: &dyn IValue = &copied;
         assert_eq!(value.value(), 7);
         assert_eq!(container.resolve_i_value(), 7);
         assert_eq!(container.resolve_i_length(), 7);

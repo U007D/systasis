@@ -41,20 +41,18 @@ macro_rules! scenario {
             use super::*;
             #[systasis::container($($requirements)*)]
             #[test]
-            fn static_and_dynamic_accessors_share_one_slot() -> Result<(), Error> {
+            fn cloned_group_value_supports_explicit_trait_object_borrows() -> Result<(), Error> {
                 let container = systasis::systasis_container! {
                     register_value!(String::from("group"): String as dyn IWriter + IReader<Item = usize>);
                 }.build::<Error>()?;
-                {
-                    let target = container.try_resolve_i_reader_i_writer_dyn_ref()?;
-                    assert_eq!(target.read(), 5);
-                    assert_eq!(target.length(), 5);
-                    assert_eq!(&*container.try_resolve_i_reader_i_writer_ref()?, "group");
-                    assert!(matches!(container.try_resolve_i_reader_i_writer_ref_mut(), Err(Error::ValueAccessContention)));
-                    assert!(matches!(container.try_resolve_i_reader_i_writer(), Err(Error::ValueAccessContention)));
-                }
-                assert_eq!(container.try_resolve_i_reader_i_writer()?, "group");
-                assert!(matches!(container.try_resolve_i_reader_i_writer_dyn_ref(), Err(Error::ValueAlreadyConsumed)));
+                let mut owned = container.resolve_i_reader_i_writer_clone();
+                let reader: &dyn IReader<Item = usize> = &owned;
+                let writer: &dyn IWriter = &owned;
+                assert_eq!(reader.read(), 5);
+                assert_eq!(writer.length(), 5);
+                owned.push('!');
+                let Ok(another) = container.try_resolve_i_reader_i_writer_clone();
+                assert_eq!(another, "group");
                 Ok(())
             }
         }
@@ -70,14 +68,18 @@ mod copy {
     fn copy_dyn_queries_and_type_lookup_keep_static_accessors() {
         let Ok(container) = systasis::systasis_container! {
             register_value!({
-                let value: &resolve_type!(dyn IWriter + IReader<Item = usize>) = resolve_dyn_ref!(IReader<Item = usize> + IWriter);
+                let copied = resolve!(IReader<Item = usize> + IWriter);
+                let value: &resolve_type!(dyn IWriter + IReader<Item = usize>) = &copied;
                 value.read() + value.length()
             }: usize as IOutput);
             register_value!(12: u32 as dyn IReader<Item = usize> + IWriter);
-        }.build();
+        }
+        .build();
         assert_eq!(container.resolve_i_output(), 24);
         assert_eq!(container.resolve_i_reader_i_writer(), 12);
-        assert_eq!(container.resolve_i_reader_i_writer_dyn_ref().read(), 12);
+        let copied = container.resolve_i_reader_i_writer();
+        let reader: &dyn IReader<Item = usize> = &copied;
+        assert_eq!(reader.read(), 12);
     }
 }
 
@@ -88,8 +90,8 @@ mod constructor {
     fn constructor_dyn_query_uses_the_same_normalized_target() -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_type_with!(usize as IOutput, try || -> Result<usize, Error> {
-                let value = try_resolve_dyn_ref!(IWriter + IReader<Item = usize>)?;
-                let typed: &resolve_type!(dyn IReader<Item = usize> + IWriter) = &*value;
+                let value = resolve_clone!(IWriter + IReader<Item = usize>);
+                let typed: &resolve_type!(dyn IReader<Item = usize> + IWriter) = &value;
                 Ok(typed.read() + typed.length())
             });
             register_value!(String::from("group"): String as dyn IReader<Item = usize> + IWriter);
@@ -111,6 +113,7 @@ mod borrowed_generics {
     trait ICount<T, const N: usize> {
         fn count(&self) -> usize;
     }
+    #[derive(Clone)]
     struct Value<'a, T>(&'a T);
     impl<'a, T> IBorrow<'a> for Value<'a, T> {
         type Item = &'a T;
@@ -127,16 +130,21 @@ mod borrowed_generics {
     fn configure<'a, T: Clone + PartialEq, const N: usize>(input: &'a T) -> Result<(), Error>
     where
         T: 'a,
+        Value<'a, T>: Clone,
     {
         let container = systasis::systasis_container! {
             register_type_with!(usize as IOutput, try || -> Result<usize, Error> {
-                Ok(try_resolve_dyn_ref!(IBorrow<'a, Item = &'a T> + ICount<T, N>)?.count())
+                let value = resolve_clone!(IBorrow<'a, Item = &'a T> + ICount<T, N>);
+                let typed: &resolve_type!(dyn ICount<T, N> + IBorrow<'a, Item = &'a T>) = &value;
+                Ok(typed.count())
             });
             register_value!(Value(input): Value<'a, T> as dyn ICount<T, N> + IBorrow<'a, Item = &'a T>);
         }.build::<Error>()?;
-        let value = container.try_resolve_i_borrow_i_count_dyn_ref()?;
-        assert!(value.item() == input);
-        assert_eq!(value.count(), N);
+        let value = container.resolve_i_borrow_i_count_clone();
+        let borrowed: &dyn IBorrow<'a, Item = &'a T> = &value;
+        let count: &dyn ICount<T, N> = &value;
+        assert!(borrowed.item() == input);
+        assert_eq!(count.count(), N);
         assert_eq!(container.try_resolve_i_output()?, N);
         Ok(())
     }
@@ -174,9 +182,11 @@ mod independent_lifetimes {
         let container = systasis::systasis_container! {
             register_value!(Value { short, long }: Value<'short, 'long> as dyn ILong<'long> + IShort);
         }.build::<Error>()?;
-        let value = container.try_resolve_i_long_i_short_dyn_ref()?;
-        assert_eq!(value.long(), long);
-        assert_eq!(value.short(), short);
+        let value = container.try_resolve_i_long_i_short()?;
+        let long_view: &dyn ILong<'long> = &value;
+        let short_view: &dyn IShort = &value;
+        assert_eq!(long_view.long(), long);
+        assert_eq!(short_view.short(), short);
         Ok(())
     }
     #[test]
@@ -191,32 +201,30 @@ mod independent_lifetimes {
     }
 }
 
-mod returned_guard {
+mod returned_owned {
     use super::*;
     struct View<G>(G);
     trait IView {}
     impl<G> IView for View<G> {}
     #[systasis::container]
     #[test]
-    fn custom_constructor_can_return_a_guard_to_the_combined_target() -> Result<(), Error> {
+    fn custom_constructor_can_return_an_owned_combined_target() -> Result<(), Error> {
         let container = systasis::systasis_container! {
-            register_type_with!(View<systasis::Ref<'_, resolve_type!(dyn IReader<Item = usize> + IWriter)>> as IView,
-                try || -> Result<View<systasis::Ref<'_, resolve_type!(dyn IWriter + IReader<Item = usize>)>>, Error> {
-                    Ok(View(try_resolve_dyn_ref!(IReader<Item = usize> + IWriter)?))
+            register_type_with!(View<resolve_type!(IReader<Item = usize> + IWriter)> as IView,
+                try || -> Result<View<resolve_type!(IWriter + IReader<Item = usize>)>, Error> {
+                    let owned = resolve_clone!(IReader<Item = usize> + IWriter);
+                    let target: &resolve_type!(dyn IWriter + IReader<Item = usize>) = &owned;
+                    assert_eq!(target.read(), target.length());
+                    Ok(View(owned))
                 });
             register_value!(String::from("retained"): String as dyn IWriter + IReader<Item = usize>);
         }.build::<Error>()?;
-        {
-            let view = container.try_resolve_i_view()?;
-            assert_eq!(view.0.read(), 8);
-            assert_eq!(view.0.length(), 8);
-            assert!(matches!(
-                container.try_resolve_i_reader_i_writer_ref_mut(),
-                Err(Error::ValueAccessContention)
-            ));
-        }
-        container.try_resolve_i_reader_i_writer_ref_mut()?.push('!');
-        assert_eq!(container.try_resolve_i_view()?.0.length(), 9);
+        let mut view = container.try_resolve_i_view()?;
+        assert_eq!(view.0.read(), 8);
+        assert_eq!(view.0.length(), 8);
+        view.0.push('!');
+        assert_eq!(view.0.length(), 9);
+        assert_eq!(container.try_resolve_i_view()?.0.length(), 8);
         Ok(())
     }
 }

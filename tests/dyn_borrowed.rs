@@ -1,9 +1,10 @@
-//! Dyn access must preserve non-static data in a registered implementation.
+//! Explicit dyn borrows preserve non-static data in a resolved implementation.
 #![forbid(unsafe_code)]
 
 trait ILogger {
     fn text(&self) -> &str;
 }
+#[derive(Clone)]
 struct Logger<'a>(&'a str);
 impl ILogger for Logger<'_> {
     fn text(&self) -> &str {
@@ -21,13 +22,15 @@ fn dyn_references_do_not_require_static_implementation_data()
     let container = systasis::systasis_container! {
         register_value!(Logger(&input): Logger<'_> as dyn ILogger);
         register_value!({
-            let guard = try_resolve_dyn_ref!(ILogger)?;
-            let logger: &resolve_type!(dyn ILogger) = &*guard;
+            let owned = resolve_clone!(ILogger);
+            let logger: &resolve_type!(dyn ILogger) = &owned;
             logger.text().len()
         }: usize as ILength);
     }
     .build::<systasis::container::Error>()?;
     assert_eq!(container.resolve_i_length(), 8);
-    assert_eq!(container.try_resolve_i_logger_dyn_ref()?.text(), input);
+    let owned = container.resolve_i_logger_clone();
+    let logger: &dyn ILogger = &owned;
+    assert_eq!(logger.text(), input);
     Ok(())
 }
