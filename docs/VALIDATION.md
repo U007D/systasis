@@ -7,6 +7,47 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-23 owned-only resolver policy: Copy storage offers repeatable resolve/try;
+Clone-only storage offers repeatable clone/try-clone without consuming access;
+other stored values transfer once through try-resolve. Infallible try results use
+the actual never error. Stored &T copies and stored &mut T transfers once,
+without lending from the container. All generated borrowed, dyn-reference and
+borrowed-unchecked accessors/macros are removed. Earlier guard-based generated
+API results below are historical, not the current method contract.
+
+Verification uses installed `rustc 1.97.0-nightly (4b0c9d76a 2026-05-10)`, without
+updating the toolchain. Full `cargo test --workspace --features resolve_unchecked
+--offline --locked --no-fail-fast` passes 496 tests, zero failures, four ignored;
+the same command with `--no-default-features` has identical totals. Sixteen usage
+guide doctests are included. Feature-off focused acceptance and compiler drivers
+also pass on both backends. Cargo wrapper environment variables were cleared.
+
+`owned_resolution` and its Rust compiler driver verify method presence/absence,
+Copy-versus-Clone behavior, declaration-site generic bounds, never-error query
+aliases and named child paths. `initializer_coercions` verifies shared/mutable
+trait-object branch coercions and mutable slice unsizing. The initializer's
+contextual FnOnce bound preserves the declared type's coercion context while
+allowing stored mutable references. Transferred references survive container
+destruction while remaining bounded by the external referent's lifetime.
+
+Migrated tests retain initialization ordering, captures, scope naming/privacy,
+native constructor outputs, cross-crate use, immediate failure cleanup, exact
+destruction, concurrent exactly-once transfer, async cancellation and allocation
+checks. `child_clones`, `child_factory_transfers` and `child_mutable_reference`
+replace guard-specific composition tests. Low-level backend guard/reservation
+tests remain coverage for unchanged unsafe internals, not generated APIs.
+
+Warnings-denied all-target Clippy and Rustdoc pass on std/no_std. Extracted-package
+std/no_std consumers pass; this is local validation, not publication. Updated
+release performance baselines pass correctness/checksum assertions on both
+backends; timing observations are not universal performance guarantees. Formatting
+and diff checks pass. Logs: `/private/tmp/systasis-owned-final-{std,nostd}.log`,
+`systasis-owned-final-clippy-{std,nostd}.log`, `systasis-owned-package.log`,
+`systasis-owned-performance{,-nostd}.log` and `systasis-owned-rustdoc{,-nostd}.log`.
+No dependency, unsafe storage mechanism or compiler feature changed; no new Miri
+run was triggered. Physical-board validation and previously deferred input forms
+remain outside this change.
+
 2026-09-22 constructor-free type registration (`9fcbef3`): register_type! no
 longer requires Default at registration. Its value-resolver impl retains the
 Default bound, so unsupported calls fail at compile time. No runtime check,
@@ -331,14 +372,14 @@ The initial-release operations have implementations and representative tests:
 | Contract group | Implemented operation | Representative evidence |
 | --- | --- | --- |
 | R01 | Concrete named container and consuming builder | `builder`, `builder_compiler`, `generic_cross_crate` |
-| R02 | Stored Copy/consumable values and generic bound policy | `container_access`, `generic_container`, `policy` |
+| R02 | Stored Copy/Clone/move-only values and generic bound policy | `owned_resolution`, `container_access`, `generic_container`, `policy` |
 | R03 | Default/custom constructors, owned captures and returned borrows | `fresh_container`, `custom_constructor`, `capture_patterns` |
-| R04 | Nonblocking ownership/shared/mutable access and guard lifetimes | `concurrent_container`, `storage`, `compiler`, `unsynchronized` |
-| R05 | Named/nested child scopes and aliases | `child_aliases`, `nested_children`, `child_borrows` |
+| R04 | Nonblocking ownership transfer and stored-reference lifetimes | `concurrent_container`, `owned_resolution`, `initializer_coercions`, `storage` |
+| R05 | Named/nested child scopes and aliases | `child_aliases`, `nested_children`, `child_clones`, `child_mutable_reference` |
 | R06 | Final overrides, dependency layers and build lifecycle | `initialization_order`, `owned_container`, `builder`, `container_compiler`; macro `graph` unit tests |
-| R07 | Natural/requested auto traits, local tracking and async guards | `concurrent_container`, `container_compiler`, `generic_container`, `async_guards` |
-| R08 | Explicit stored-value cloning | `container_access`, `storage` |
-| R09 | Opt-in single/group dyn access and type queries | `dyn_container`, `dyn_groups`, `dyn_type_query` |
+| R07 | Natural/requested auto traits, local tracking and async owned values | `concurrent_container`, `container_compiler`, `generic_container`, `async_guards` |
+| R08 | Infallible Clone-only resolution; Copy never calls Clone | `owned_resolution`, `container_access`, `storage` |
+| R09 | Opt-in single/group dyn type queries and explicit caller coercions | `dyn_container`, `dyn_groups`, `dyn_type_query` |
 | R10 | Exact fallible constructor returns and Fallible conversions | `custom_constructor`, `fallible` |
 | R11 | Build error selection/inference and failure effects | `build_inference`, `failure_effects`, `builder` |
 | R12 | Feature-gated synchronized unchecked access | `unchecked`, `child_unchecked`, `compiler` |
