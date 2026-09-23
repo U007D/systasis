@@ -35,6 +35,16 @@ fn resolver_method_sets_match_the_stored_value_policy() {
             "no method named `try_resolve_copy_ref`",
         ),
         (
+            "copy_clone",
+            "container.resolve_copy_clone();",
+            "no method named `resolve_copy_clone`",
+        ),
+        (
+            "copy_try_clone",
+            "container.try_resolve_copy_clone();",
+            "no method named `try_resolve_copy_clone`",
+        ),
+        (
             "clone_take",
             "container.try_resolve_i_text();",
             "no method named `try_resolve_i_text`",

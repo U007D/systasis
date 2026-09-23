@@ -154,11 +154,16 @@ mod parent {
     fn check(primary: &child::SystasisContainer) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &child::SystasisContainer);
-            register_value!(resolve_clone_from!(IText, primary::named):
+            register_value!({ let Ok(text) = try_resolve_clone_from!(IText, primary::named); text }:
                 resolve_type_from!(IText, primary::named) as IText);
+            register_value!({ let Ok(value) = try_resolve_from!(Copy, primary); value }: u8 as Copy);
+            register_value!({ let Ok(text) = try_resolve_clone!(IText); text }: String as IText in copied);
+            register_value!({ let Ok(value) = try_resolve!(Copy); value }: u8 as Copy in copied);
         }
         .build();
         assert_eq!(container.resolve_i_text_clone(), "child");
+        assert_eq!(container.resolve_i_text_clone_in_copied(), "child");
+        assert_eq!(container.resolve_copy_in_copied(), 5);
         let Ok(text) = container.primary().try_resolve_i_text_clone_in_named();
         assert_eq!(text, "child");
         let Ok(number) = container.primary().try_resolve_copy();
