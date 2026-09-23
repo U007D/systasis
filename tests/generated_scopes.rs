@@ -45,7 +45,7 @@ mod restricted {
             register_value!(value: String as IValue);
         }
         .build();
-        type Restrictions = Mask<__systasis_injected::__SystasisRestrictionKey0, Empty>;
+        type Restrictions = Mask<__systasis_injected::__systasis_RestrictionKey0, Empty>;
         let scope = AsScope::<Restrictions>::scope(&container);
         scope.try_resolve_i_value_ref_mut()?.push('!');
         assert_eq!(&*scope.try_resolve_i_value_ref()?, "reserved-name-only!");

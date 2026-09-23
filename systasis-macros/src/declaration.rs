@@ -12,10 +12,10 @@ impl VisitMut for ModuleReferences {
             && let Some(first) = path.segments.first_mut()
             && first.ident == "__systasis_injected"
         {
-            first.ident = syn::Ident::new("self", first.ident.span());
+            path.segments = path.segments.iter().skip(1).cloned().collect();
         }
         if path.is_ident("SystasisContainer") {
-            *path = parse_quote!(Container);
+            *path = parse_quote!(__systasis_Container);
         }
     }
 }
@@ -47,7 +47,6 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
     let mut initializer = initializer.ok_or_else(|| {
         syn::Error::new_spanned(&definitions, "declaration initializer was not generated")
     })?;
-    crate::rebase::Rebase::default().visit_item_fn_mut(&mut initializer);
     ModuleReferences.visit_item_fn_mut(&mut initializer);
     let kind = errors.kind();
     let error_definitions = errors.definitions();
@@ -72,8 +71,7 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
         .stmts
         .push(syn::Stmt::Expr(parse_quote!(kind), None));
     initializer.attrs = vec![parse_quote!(#[define_opaque(__systasis_declaration::NativeError)])];
-    initializer.sig.output =
-        parse_quote!(-> ::core::result::Result<Container, __systasis_declaration::NativeError>);
+    initializer.sig.output = parse_quote!(-> ::core::result::Result<__systasis_Container, __systasis_declaration::NativeError>);
     initializer.block.stmts.push(parse_quote!(
         let _: ::core::marker::PhantomData<__systasis_declaration::NativeError> =
             __systasis_declaration::ErrorKind::marker(&kind);
@@ -82,6 +80,8 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
         .block
         .stmts
         .push(syn::Stmt::Expr(parse_quote!(container), None));
+    // Keep only generic error machinery in this module. Initializers remain in
+    // the invocation scope so they can name the caller's block-local types.
     let helpers: syn::File = syn::parse2(quote! {
         // A function's divergent return type is stable syntax. Projecting it
         // names the real never type without an additional language feature.
@@ -133,7 +133,7 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
         use __systasis_declaration::ActualError as _;
         #kind_initializer
         #initializer
-        impl Container {
+        impl __systasis_Container {
             pub fn build() -> ::core::result::Result<Self, __systasis_declaration::Error> {
                 __systasis_build().map_err(
                     <__systasis_declaration::Choice as __systasis_declaration::ErrorSelection<__systasis_declaration::NativeError>>::convert
@@ -154,18 +154,70 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
                 "container module was not generated",
             )
         })?;
+    // The attribute form places implementation details in a sibling module;
+    // declarations must also work inside blocks, whose local types a module
+    // cannot import. Keep their items here, using reserved __systasis_* names.
     ModuleReferences.visit_item_mod_mut(module);
-    module
+    let (_, mut implementation) = module
         .content
-        .as_mut()
-        .ok_or_else(|| syn::Error::new(module.ident.span(), "container module is empty"))?
-        .1
-        .extend(helpers.items);
+        .take()
+        .ok_or_else(|| syn::Error::new(module.ident.span(), "container module is empty"))?;
+    implementation.retain(|item| !matches!(item, syn::Item::Use(import) if matches!(&import.tree,
+        syn::UseTree::Path(path) if path.ident == "super" && matches!(&*path.tree, syn::UseTree::Glob(_)))));
+    for item in &mut implementation {
+        let visibility = match item {
+            syn::Item::Const(item) => Some(&mut item.vis),
+            syn::Item::Fn(item) => Some(&mut item.vis),
+            syn::Item::Struct(item) => Some(&mut item.vis),
+            syn::Item::Type(item) => Some(&mut item.vis),
+            _ => None,
+        };
+        if let Some(visibility) = visibility
+            && matches!(&*visibility, syn::Visibility::Restricted(v) if v.path.is_ident("super"))
+        {
+            *visibility = syn::Visibility::Inherited;
+        }
+        if let syn::Item::Struct(item) = item {
+            for field in &mut item.fields {
+                if matches!(&field.vis, syn::Visibility::Restricted(v) if v.path.is_ident("super"))
+                {
+                    field.vis = syn::Visibility::Inherited;
+                }
+            }
+        }
+    }
+    implementation.extend(helpers.items);
+    definitions.items.retain(
+        |item| !matches!(item, syn::Item::Mod(module) if module.ident == "__systasis_injected"),
+    );
+    for item in &mut definitions.items {
+        if let syn::Item::Type(alias) = item {
+            ModuleReferences.visit_type_mut(&mut alias.ty);
+        }
+        if let syn::Item::Mod(module) = item
+            && let Some((_, items)) = &mut module.content
+        {
+            for item in items {
+                if let syn::Item::Use(import) = item
+                    && let syn::UseTree::Path(parent) = &mut import.tree
+                    && let syn::UseTree::Path(generated) = &mut *parent.tree
+                    && generated.ident == "__systasis_injected"
+                {
+                    parent.tree = generated.tree.clone();
+                }
+            }
+        }
+    }
+    // Re-export instead of adding an alias: a new block-local opaque alias use
+    // would make the enclosing function participate in its defining scope.
     Ok(quote! {
+        #(
+            #[doc(hidden)]
+            #[allow(non_snake_case, non_camel_case_types, non_upper_case_globals, unused_imports, dead_code)]
+            #implementation
+        )*
         #definitions
-        // A block-local type alias makes its enclosing function an implicit
-        // defining use of NativeError. A re-export exposes the same name
-        // without adding that unconstrained defining use.
-        pub use __systasis_injected::__systasis_declaration::Error as SystasisContainerError;
+        /// The inferred initialization error; `source()` exposes the original error.
+        pub use __systasis_declaration::Error as SystasisContainerError;
     })
 }

@@ -31,7 +31,7 @@ pub(crate) fn generate(
         };
     }
 
-    let name = format_ident!("__SystasisDyn{index}", span = Span::mixed_site());
+    let name = format_ident!("__systasis_Dyn{index}", span = Span::mixed_site());
     // Avoid colliding with an explicitly authored enclosing generic parameter.
     let value = value_parameter(generics);
     let (parameters, arguments, constraints) = generics.split_for_impl();
@@ -54,7 +54,7 @@ pub(crate) fn generate(
 
 pub(crate) fn value_parameter(generics: &Generics) -> syn::Ident {
     (0..)
-        .map(|suffix| format_ident!("__SystasisDynValue{suffix}", span = Span::mixed_site()))
+        .map(|suffix| format_ident!("__systasis_DynValue{suffix}", span = Span::mixed_site()))
         .find(|candidate| {
             !generics.params.iter().any(|parameter| match parameter {
                 GenericParam::Type(parameter) => parameter.ident == *candidate,
@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(items.items.len(), 2);
         assert_eq!(
             target.ty.to_token_stream().to_string(),
-            quote!(dyn __SystasisDyn3<'a, T, N> + 'view).to_string()
+            quote!(dyn __systasis_Dyn3<'a, T, N> + 'view).to_string()
         );
         let syn::Item::Trait(combined) = &items.items[0] else {
             panic!("expected combined trait");
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn blanket_parameter_avoids_existing_parameter_names() {
         let function: syn::ItemFn = parse_quote!(
-            fn configure<__SystasisDynValue0>() {}
+            fn configure<__systasis_DynValue0>() {}
         );
         let target = generate(
             0,
@@ -148,7 +148,7 @@ mod tests {
             target
                 .declarations
                 .to_string()
-                .contains("__SystasisDynValue1")
+                .contains("__systasis_DynValue1")
         );
     }
 }

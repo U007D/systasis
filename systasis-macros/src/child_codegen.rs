@@ -26,7 +26,7 @@ pub(crate) fn stored_children(
             quote!(#name)
         }
     });
-    let target = quote!(__StoredChildren<#(#identity_arguments,)* #identity>);
+    let target = quote!(__systasis_StoredChildren<#(#identity_arguments,)* #identity>);
     // The identity preserves private payload spelling in the implementing type.
     // The separate direct marker makes otherwise unrelated generics used.
     // New parameters use the reserved prefix because authored parameters are
@@ -37,38 +37,38 @@ pub(crate) fn stored_children(
         .push(syn::parse_quote!(__systasis_stored_identity));
     let (parameters, _, predicates) = generics.split_for_impl();
     let mut emitted = vec![quote!(
-        pub struct __StoredChildren #parameters #predicates {
+        pub struct __systasis_StoredChildren #parameters #predicates {
             pub(super) inner: #tuple,
             pub(super) marker: ::core::marker::PhantomData<(#marker, fn() -> __systasis_stored_identity)>,
         }
     )];
     for (name, parameters, associated, gat) in [
         (
-            "__ChildRegistrationPolicy",
+            "__systasis_ChildRegistrationPolicy",
             quote!(__systasis_child_key, __systasis_rest, __systasis_key, const __systasis_LOCAL: bool),
             "Policy",
             false,
         ),
         (
-            "__ChildBorrowed",
+            "__systasis_ChildBorrowed",
             quote!(__systasis_child_key, __systasis_rest, __systasis_key),
             "Mask",
             false,
         ),
         (
-            "__ChildRegistered",
+            "__systasis_ChildRegistered",
             quote!(__systasis_child_key, __systasis_rest, __systasis_key),
             "Value",
             true,
         ),
         (
-            "__ChildDynRegistered",
+            "__systasis_ChildDynRegistered",
             quote!(__systasis_child_key, __systasis_rest, __systasis_key),
             "Target",
             true,
         ),
         (
-            "__ChildOutput",
+            "__systasis_ChildOutput",
             quote!(
                 __systasis_child_key,
                 __systasis_rest,
@@ -79,7 +79,7 @@ pub(crate) fn stored_children(
             true,
         ),
         (
-            "__ScopeChildren",
+            "__systasis_ScopeChildren",
             quote!(__systasis_restrictions),
             "Output",
             false,
@@ -104,7 +104,7 @@ pub(crate) fn stored_children(
         } else {
             quote!(type #associated = <#tuple as #trait_type>::#associated;)
         };
-        let method = (name == "__ScopeChildren").then(|| quote!(
+        let method = (name == "__systasis_ScopeChildren").then(|| quote!(
             fn restricted(&self) -> Self::Output { <#tuple as #trait_type>::restricted(&self.inner) }
         ));
         emitted.push(quote!(
@@ -150,7 +150,7 @@ pub(crate) fn namespaces(
             let operation = operation.then(|| quote!(, __Operation));
             emitted.push(quote!(
                 impl<#(#parameters,)* __Key #operation> ::systasis::scoped::#public<#there, __Key #operation>
-                    for Generated<#(#parameters),*>
+                    for __systasis_Generated<#(#parameters),*>
                 where Self: ::systasis::scoped::#public<#here, __Key #operation> {
                     type #associated<'a> = <Self as ::systasis::scoped::#public<#here, __Key #operation>>::#associated<'a> where Self: 'a;
                 }
@@ -158,11 +158,11 @@ pub(crate) fn namespaces(
         }
         emitted.push(quote!(
             impl<#(#parameters,)* __Key, const __LOCAL: bool>
-                ::systasis::scoped::RegistrationPolicy<#there, __Key, __LOCAL> for Generated<#(#parameters),*>
+                ::systasis::scoped::RegistrationPolicy<#there, __Key, __LOCAL> for __systasis_Generated<#(#parameters),*>
             where Self: ::systasis::scoped::RegistrationPolicy<#here, __Key, __LOCAL> {
                 type Policy = <Self as ::systasis::scoped::RegistrationPolicy<#here, __Key, __LOCAL>>::Policy;
             }
-            impl<#(#parameters,)* __Key> ::systasis::scoped::Borrowed<#there, __Key> for Generated<#(#parameters),*>
+            impl<#(#parameters,)* __Key> ::systasis::scoped::Borrowed<#there, __Key> for __systasis_Generated<#(#parameters),*>
             where Self: ::systasis::scoped::Borrowed<#here, __Key> {
                 type Mask = <Self as ::systasis::scoped::Borrowed<#here, __Key>>::Mask;
             }
@@ -187,7 +187,7 @@ pub(crate) fn namespaces(
             emitted.push(quote!(
                 impl<'__backing, __Container: ?Sized, __Restrictions, __Children, __Key, __Operation>
                     ::systasis::scoped::#operation<'__backing, #there, __Key, __Operation>
-                    for __SystasisScope<'__backing, __Container, __Restrictions, __Children>
+                    for __systasis_Scope<'__backing, __Container, __Restrictions, __Children>
                 where Self: ::systasis::scoped::#operation<'__backing, #here, __Key, __Operation> {
                     type Output = <Self as ::systasis::scoped::#operation<'__backing, #here, __Key, __Operation>>::Output;
                     #safety fn resolve(&self) -> Self::Output { #call }
@@ -210,7 +210,8 @@ pub(crate) fn forwarding(
         .collect::<Vec<_>>();
     let mut emitted = Vec::new();
     emitted.push(quote!(
-        pub trait __ChildRegistrationPolicy<__ChildKey, __Rest, __Key, const __LOCAL: bool> {
+        pub trait __systasis_ChildRegistrationPolicy<__ChildKey, __Rest, __Key, const __LOCAL: bool>
+        {
             type Policy;
         }
         impl<
@@ -222,7 +223,7 @@ pub(crate) fn forwarding(
             __Key,
             const __LOCAL: bool,
         > ::systasis::scoped::RegistrationPolicy<__Path, __Key, __LOCAL>
-            for __SystasisScope<'__backing, __Container, __Restrictions, __Children>
+            for __systasis_Scope<'__backing, __Container, __Restrictions, __Children>
         where
             __Container: ::systasis::scoped::RegistrationPolicy<__Path, __Key, __LOCAL>,
         {
@@ -232,12 +233,12 @@ pub(crate) fn forwarding(
                 __LOCAL,
             >>::Policy;
         }
-        pub trait __ChildBorrowed<__ChildKey, __Rest, __Key> {
+        pub trait __systasis_ChildBorrowed<__ChildKey, __Rest, __Key> {
             type Mask;
         }
         impl<'__backing, __Container: ?Sized, __Restrictions, __Children, __Path, __Key>
             ::systasis::scoped::Borrowed<__Path, __Key>
-            for __SystasisScope<'__backing, __Container, __Restrictions, __Children>
+            for __systasis_Scope<'__backing, __Container, __Restrictions, __Children>
         where
             __Container: ::systasis::scoped::Borrowed<__Path, __Key>,
         {
@@ -249,34 +250,39 @@ pub(crate) fn forwarding(
         let child_parameter = &child_parameters[index];
         emitted.push(quote!(
             impl<#(#child_parameters,)* __Rest, __Key, const __LOCAL: bool>
-                __ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL> for (#(#child_parameters,)*)
+                __systasis_ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL> for (#(#child_parameters,)*)
             where #child_parameter: ::systasis::scoped::RegistrationPolicy<__Rest, __Key, __LOCAL> {
                 type Policy = <#child_parameter as ::systasis::scoped::RegistrationPolicy<__Rest, __Key, __LOCAL>>::Policy;
             }
             impl<#(#parameters,)* __Rest, __Key, const __LOCAL: bool>
                 ::systasis::scoped::RegistrationPolicy<::systasis::scoped::There<#child_key, __Rest>, __Key, __LOCAL>
-                for Generated<#(#parameters),*>
-            where #tuple_parameter: __ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL> {
-                type Policy = <#tuple_parameter as __ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL>>::Policy;
+                for __systasis_Generated<#(#parameters),*>
+            where #tuple_parameter: __systasis_ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL> {
+                type Policy = <#tuple_parameter as __systasis_ChildRegistrationPolicy<#child_key, __Rest, __Key, __LOCAL>>::Policy;
             }
-            impl<#(#child_parameters,)* __Rest, __Key> __ChildBorrowed<#child_key, __Rest, __Key>
+            impl<#(#child_parameters,)* __Rest, __Key> __systasis_ChildBorrowed<#child_key, __Rest, __Key>
                 for (#(#child_parameters,)*)
             where #child_parameter: ::systasis::scoped::Borrowed<__Rest, __Key> {
                 type Mask = <#child_parameter as ::systasis::scoped::Borrowed<__Rest, __Key>>::Mask;
             }
             impl<#(#parameters,)* __Rest, __Key>
                 ::systasis::scoped::Borrowed<::systasis::scoped::There<#child_key, __Rest>, __Key>
-                for Generated<#(#parameters),*>
-            where #tuple_parameter: __ChildBorrowed<#child_key, __Rest, __Key> {
+                for __systasis_Generated<#(#parameters),*>
+            where #tuple_parameter: __systasis_ChildBorrowed<#child_key, __Rest, __Key> {
                 type Mask = ::systasis::scoped::mask::Nested<#child_key,
-                    <#tuple_parameter as __ChildBorrowed<#child_key, __Rest, __Key>>::Mask>;
+                    <#tuple_parameter as __systasis_ChildBorrowed<#child_key, __Rest, __Key>>::Mask>;
             }
         ));
     }
     for (public, helper, associated, extra) in [
-        ("Registered", "__ChildRegistered", "Value", false),
-        ("DynRegistered", "__ChildDynRegistered", "Target", false),
-        ("Output", "__ChildOutput", "Value", true),
+        ("Registered", "__systasis_ChildRegistered", "Value", false),
+        (
+            "DynRegistered",
+            "__systasis_ChildDynRegistered",
+            "Target",
+            false,
+        ),
+        ("Output", "__systasis_ChildOutput", "Value", true),
     ] {
         let public = format_ident!("{public}");
         let helper = format_ident!("{helper}");
@@ -297,7 +303,7 @@ pub(crate) fn forwarding(
             }
             impl<'__backing, __Container: ?Sized + '__backing, __Restrictions, __Children, __Path, __Key #operation>
                 ::systasis::scoped::#public<__Path, __Key #operation>
-                for __SystasisScope<'__backing, __Container, __Restrictions, __Children>
+                for __systasis_Scope<'__backing, __Container, __Restrictions, __Children>
             where __Container: ::systasis::scoped::#public<__Path, __Key #operation> {
                 type #associated<'a> = <__Container as ::systasis::scoped::#public<__Path, __Key #operation>>::#associated<#target_lifetime> where Self: 'a;
             }
@@ -313,16 +319,16 @@ pub(crate) fn forwarding(
                 }
                 impl<#(#parameters,)* __Rest, __Key #operation>
                     ::systasis::scoped::#public<::systasis::scoped::There<#child_key, __Rest>, __Key #operation>
-                    for Generated<#(#parameters),*>
+                    for __systasis_Generated<#(#parameters),*>
                 where #tuple_parameter: #helper<#child_key, __Rest, __Key #operation> {
                     type #associated<'a> = <#tuple_parameter as #helper<#child_key, __Rest, __Key #operation>>::#associated<'a> where Self: 'a;
                 }
             ));
         }
     }
-    let mut operations = vec![("Resolve", "__ChildResolve", false)];
+    let mut operations = vec![("Resolve", "__systasis_ChildResolve", false)];
     if cfg!(feature = "resolve_unchecked") {
-        operations.push(("UnsafeResolve", "__ChildUnsafeResolve", true));
+        operations.push(("UnsafeResolve", "__systasis_ChildUnsafeResolve", true));
     }
     for (public, helper, unchecked) in operations {
         let public = format_ident!("{public}");
@@ -362,7 +368,7 @@ pub(crate) fn forwarding(
                 }
                 impl<'__backing, __Container: ?Sized, __Restrictions, __Children, __Rest, __Key, __Operation>
                     ::systasis::scoped::#public<'__backing, ::systasis::scoped::There<#child_key, __Rest>, __Key, __Operation>
-                    for __SystasisScope<'__backing, __Container, __Restrictions, __Children>
+                    for __systasis_Scope<'__backing, __Container, __Restrictions, __Children>
                 where __Children: #helper<'__backing, #child_key, __Rest, __Key, __Operation> {
                     type Output = <__Children as #helper<'__backing, #child_key, __Rest, __Key, __Operation>>::Output;
                     #safety fn resolve(&self) -> Self::Output { #scope_call }

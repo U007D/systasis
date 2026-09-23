@@ -30,6 +30,18 @@ fn declaration_inside_block() {
 }
 
 #[test]
+fn declaration_uses_types_defined_in_its_block() {
+    struct Value(u8);
+    trait IValue {}
+    impl IValue for Value {}
+    systasis::systasis_container! {
+        register_value!(Value(42): Value as IValue);
+    }
+    let Ok(container) = SystasisContainer::build();
+    assert_eq!(container.try_resolve_i_value().unwrap().0, 42);
+}
+
+#[test]
 fn fallible_declaration_inside_block() {
     systasis::systasis_container! {
         register_value!("invalid".parse::<u8>()?: u8 as Copy);
@@ -151,6 +163,10 @@ mod cleanup {
     }
 }
 
+#[allow(
+    clippy::needless_question_mark,
+    reason = "exercise propagation inside nested and lazy constructors"
+)]
 mod handled_error {
     trait IValue {}
     trait IFresh {}

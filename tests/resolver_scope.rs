@@ -209,8 +209,8 @@ fn main() {{ leaf::run(outer); }}
             // rustc versions abbreviate this same failed scope bound differently.
             assert!(
                 [
-                    "the trait bound `__SystasisScope<'_, ..., ...>: Resolve<'_, ..., ..., ...>` is not satisfied",
-                    "the trait bound `__SystasisScope<'_, _, Empty>: Resolve<'_, Here, _, Owned>` is not satisfied",
+                    "the trait bound `__systasis_Scope<'_, ..., ...>: Resolve<'_, ..., ..., ...>` is not satisfied",
+                    "the trait bound `__systasis_Scope<'_, _, Empty>: Resolve<'_, Here, _, Owned>` is not satisfied",
                 ].iter().any(|bound| stderr.contains(bound)),
                 "{stderr}"
             );

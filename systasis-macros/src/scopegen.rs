@@ -142,42 +142,42 @@ pub(crate) fn descriptor(
             quote!(pub fn #name(&self) -> &#ty { &self.children.#position })
         });
     quote!(
-        pub trait __ScopeChildren<__Restrictions> {
+        pub trait __systasis_ScopeChildren<__Restrictions> {
             type Output;
             fn restricted(&self) -> Self::Output;
         }
-        impl<__Restrictions, #(#child_parameters),*> __ScopeChildren<__Restrictions> for (#(#child_parameters,)*)
+        impl<__Restrictions, #(#child_parameters),*> __systasis_ScopeChildren<__Restrictions> for (#(#child_parameters,)*)
         where #(#mask_bounds,)* #(#child_bounds,)* {
             type Output = (#(#outputs,)*);
             fn restricted(&self) -> Self::Output { #restricted_body }
         }
-        pub struct __SystasisScope<'__backing, __Container: ?Sized, __Restrictions, __Children = ()> {
+        pub struct __systasis_Scope<'__backing, __Container: ?Sized, __Restrictions, __Children = ()> {
             backing: &'__backing __Container,
             restrictions: ::core::marker::PhantomData<fn() -> __Restrictions>,
             children: __Children,
         }
         impl<'__backing: '__call, '__call, __Container: ?Sized, __Restrictions, __Children>
             ::systasis::scoped::BorrowContext<'__call, __Container, __Restrictions>
-            for __SystasisScope<'__backing, __Container, __Restrictions, __Children> {
+            for __systasis_Scope<'__backing, __Container, __Restrictions, __Children> {
             fn borrow_context(&self) -> ::systasis::scoped::BorrowedContext<'__call, __Container, __Restrictions> {
                 ::systasis::scoped::BorrowedContext::new(self.backing)
             }
         }
-        impl<#(#parameters,)* __Restrictions> ::systasis::scoped::AsScope<__Restrictions> for Generated<#(#parameters),*>
-        where #child_parameter: __ScopeChildren<__Restrictions> {
-            type Scope<'__backing> = __SystasisScope<'__backing, Self, __Restrictions, <#child_parameter as __ScopeChildren<__Restrictions>>::Output> where Self: '__backing;
+        impl<#(#parameters,)* __Restrictions> ::systasis::scoped::AsScope<__Restrictions> for __systasis_Generated<#(#parameters),*>
+        where #child_parameter: __systasis_ScopeChildren<__Restrictions> {
+            type Scope<'__backing> = __systasis_Scope<'__backing, Self, __Restrictions, <#child_parameter as __systasis_ScopeChildren<__Restrictions>>::Output> where Self: '__backing;
             fn scope(&self) -> Self::Scope<'_> {
-                __SystasisScope { backing: self, restrictions: ::core::marker::PhantomData, children: self._children.restricted() }
+                __systasis_Scope { backing: self, restrictions: ::core::marker::PhantomData, children: self._children.restricted() }
             }
         }
-        impl<'__backing, #(#parameters,)* __Restrictions, __More, __Children> ::systasis::scoped::ReScope<__More> for __SystasisScope<'__backing, Generated<#(#parameters),*>, __Restrictions, __Children>
-        where #child_parameter: __ScopeChildren<::systasis::scoped::mask::Union<__Restrictions, __More>> {
-            type Scope = <Generated<#(#parameters),*> as ::systasis::scoped::AsScope<::systasis::scoped::mask::Union<__Restrictions, __More>>>::Scope<'__backing>;
+        impl<'__backing, #(#parameters,)* __Restrictions, __More, __Children> ::systasis::scoped::ReScope<__More> for __systasis_Scope<'__backing, __systasis_Generated<#(#parameters),*>, __Restrictions, __Children>
+        where #child_parameter: __systasis_ScopeChildren<::systasis::scoped::mask::Union<__Restrictions, __More>> {
+            type Scope = <__systasis_Generated<#(#parameters),*> as ::systasis::scoped::AsScope<::systasis::scoped::mask::Union<__Restrictions, __More>>>::Scope<'__backing>;
             fn rescope(&self) -> Self::Scope {
                 ::systasis::scoped::AsScope::<::systasis::scoped::mask::Union<__Restrictions, __More>>::scope(self.backing)
             }
         }
-        impl<'__backing, __Container: ?Sized, __Restrictions, #(#child_parameters),*> __SystasisScope<'__backing, __Container, __Restrictions, (#(#child_parameters,)*)> {
+        impl<'__backing, __Container: ?Sized, __Restrictions, #(#child_parameters),*> __systasis_Scope<'__backing, __Container, __Restrictions, (#(#child_parameters,)*)> {
             #(#accessors)*
         }
     )
@@ -204,7 +204,7 @@ pub(crate) fn value_metadata(
     }
     .visit_type_mut(&mut declared);
     let borrow_metadata = quote!(
-        impl<#(#parameters),*> ::systasis::scoped::Borrowed<#path, #key> for Generated<#(#parameters),*> {
+        impl<#(#parameters),*> ::systasis::scoped::Borrowed<#path, #key> for __systasis_Generated<#(#parameters),*> {
             type Mask = ::systasis::scoped::mask::Mask<#restriction, ::systasis::scoped::mask::Empty>;
         }
     );
@@ -221,21 +221,21 @@ pub(crate) fn value_metadata(
             .push(parse_quote!(#policy: ::systasis::scoped::RebindPolicy<#local>));
         let (parameters, _, constraints) = policy_generics.split_for_impl();
         quote!(
-            impl #parameters ::systasis::scoped::RegistrationPolicy<#path, #key, #local> for Generated<#(#selected),*> #constraints {
+            impl #parameters ::systasis::scoped::RegistrationPolicy<#path, #key, #local> for __systasis_Generated<#(#selected),*> #constraints {
                 type Policy = <#policy as ::systasis::scoped::RebindPolicy<#local>>::Policy;
             }
         )
     } else {
         let slot = &parameters[index];
         quote!(
-            impl<#(#parameters,)* const __SystasisLocal: bool> ::systasis::scoped::RegistrationPolicy<#path, #key, __SystasisLocal> for Generated<#(#parameters),*>
-            where #slot: ::systasis::scoped::SlotPolicy<__SystasisLocal> {
-                type Policy = <#slot as ::systasis::scoped::SlotPolicy<__SystasisLocal>>::Policy;
+            impl<#(#parameters,)* const __systasis_Local: bool> ::systasis::scoped::RegistrationPolicy<#path, #key, __systasis_Local> for __systasis_Generated<#(#parameters),*>
+            where #slot: ::systasis::scoped::SlotPolicy<__systasis_Local> {
+                type Policy = <#slot as ::systasis::scoped::SlotPolicy<__systasis_Local>>::Policy;
             }
         )
     };
     let registration = if entry.registration.constructor.is_some() {
-        let root = parse_quote!(Generated<#(#selected),*>);
+        let root = parse_quote!(__systasis_Generated<#(#selected),*>);
         let metadata = metadata_at(
             generics,
             &root,
@@ -247,14 +247,14 @@ pub(crate) fn value_metadata(
         );
         quote!(
             #metadata
-            impl #generic_parameters ::systasis::scoped::Registered<#path, #key> for Generated<#(#selected),*> #constraints {
+            impl #generic_parameters ::systasis::scoped::Registered<#path, #key> for __systasis_Generated<#(#selected),*> #constraints {
                 type Value<#lifetime> = <Self as ::systasis::scoped::MetadataAt<#lifetime, #path, #key, ::systasis::scoped::RegisteredValue>>::Value where Self: #lifetime;
             }
         )
     } else {
         let slot = &parameters[index];
         quote!(
-            impl<#(#parameters),*> ::systasis::scoped::Registered<#path, #key> for Generated<#(#parameters),*>
+            impl<#(#parameters),*> ::systasis::scoped::Registered<#path, #key> for __systasis_Generated<#(#parameters),*>
             where #slot: ::systasis::scoped::SlotValue {
                 type Value<#lifetime> = <#slot as ::systasis::scoped::SlotValue>::Value where Self: #lifetime;
             }
@@ -263,11 +263,11 @@ pub(crate) fn value_metadata(
     let dynamic = dynamic.map(|target| {
         let mut target = target.clone();
         OutputLifetime { replacement: lifetime.clone(), method_lifetimes: BTreeSet::new() }.visit_type_mut(&mut target);
-        let root = parse_quote!(Generated<#(#selected),*>);
+        let root = parse_quote!(__systasis_Generated<#(#selected),*>);
         let metadata = metadata_at(generics, &root, entry, quote!(::systasis::scoped::DynamicTarget), &lifetime, &target, true);
         quote!(
             #metadata
-            impl #generic_parameters ::systasis::scoped::DynRegistered<#path, #key> for Generated<#(#selected),*> #constraints {
+            impl #generic_parameters ::systasis::scoped::DynRegistered<#path, #key> for __systasis_Generated<#(#selected),*> #constraints {
                 type Target<#lifetime> = <Self as ::systasis::scoped::MetadataAt<#lifetime, #path, #key, ::systasis::scoped::DynamicTarget>>::Value where Self: #lifetime;
             }
         )
@@ -588,7 +588,7 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                 let mut scoped = merged.clone();
                 scoped.params.insert(0, parse_quote!(#backing));
                 let restrictions = (0..)
-                    .map(|suffix| format_ident!("__SystasisRestrictions{suffix}"))
+                    .map(|suffix| format_ident!("__systasis_Restrictions{suffix}"))
                     .find(|candidate| {
                         !scoped.params.iter().any(|parameter| match parameter {
                             GenericParam::Type(parameter) => parameter.ident == *candidate,
@@ -619,9 +619,9 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                     let key = &call.key;
                     let operation = &call.operation;
                     let dispatch = if call.unchecked {
-                        format_ident!("__ChildUnsafeResolve")
+                        format_ident!("__systasis_ChildUnsafeResolve")
                     } else {
-                        format_ident!("__ChildResolve")
+                        format_ident!("__systasis_ChildResolve")
                     };
                     scoped.make_where_clause().predicates.push(parse_quote!(#scope_children: #dispatch<#backing, #child, #path, #key, ::systasis::scoped::op::#operation>));
                 }
@@ -642,7 +642,7 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                     quote!(self.backing.#name())
                 };
                 emitted.push(quote!(
-                    impl #scope_parameters __SystasisScope<#backing, #root, #restrictions, #scope_children> #scope_where {
+                    impl #scope_parameters __systasis_Scope<#backing, #root, #restrictions, #scope_children> #scope_where {
                         #(#docs)*
                         pub #safety fn #name(&self) -> #output { #call }
                     }
@@ -663,7 +663,7 @@ pub(crate) fn resolvers(implementations: &[TokenStream], entry: &Entry<'_>) -> R
                         format_ident!("Resolve")
                     };
                     emitted.push(quote!(
-                        impl #dispatch_parameters ::systasis::scoped::#dispatch<#backing, #path, #key, ::systasis::scoped::op::#operation> for __SystasisScope<#backing, #root, #restrictions, #scope_children> #dispatch_where {
+                        impl #dispatch_parameters ::systasis::scoped::#dispatch<#backing, #path, #key, ::systasis::scoped::op::#operation> for __systasis_Scope<#backing, #root, #restrictions, #scope_children> #dispatch_where {
                             type Output = #result;
                             #safety fn resolve(&self) -> Self::Output { <#output as ::systasis::scoped::Identity>::into_identity(#call) }
                         }

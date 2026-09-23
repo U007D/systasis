@@ -152,106 +152,106 @@ impl Bindings {
             return quote!();
         }
         let implementations = self.tuple_projections.iter().map(|&(arity, index)| {
-            let projection = format_ident!("__SystasisCaptureTuple{arity}_{index}");
+            let projection = format_ident!("__systasis_CaptureTuple{arity}_{index}");
             let elements = (0..arity).map(|i| format_ident!("__Element{i}")).collect::<Vec<_>>();
             let selected = &elements[index];
             quote! {
-                pub trait #projection<__Mode = __CaptureOwned> { type Output; }
-                impl<#(#elements,)* __Mode: __CaptureWrap<#selected>> #projection<__Mode> for (#(#elements,)*) {
-                    type Output = <__Mode as __CaptureWrap<#selected>>::Output;
+                pub trait #projection<__Mode = __systasis_CaptureOwned> { type Output; }
+                impl<#(#elements,)* __Mode: __systasis_CaptureWrap<#selected>> #projection<__Mode> for (#(#elements,)*) {
+                    type Output = <__Mode as __systasis_CaptureWrap<#selected>>::Output;
                 }
                 impl<'a, __Target: ?Sized, __Mode> #projection<__Mode> for &'a __Target
-                where __Target: #projection<__CaptureShared<'a>> {
-                    type Output = <__Target as #projection<__CaptureShared<'a>>>::Output;
+                where __Target: #projection<__systasis_CaptureShared<'a>> {
+                    type Output = <__Target as #projection<__systasis_CaptureShared<'a>>>::Output;
                 }
-                impl<'a, __Target: ?Sized, __Mode: __CaptureThroughMut<'a>> #projection<__Mode> for &'a mut __Target
-                where __Target: #projection<<__Mode as __CaptureThroughMut<'a>>::Mode> {
-                    type Output = <__Target as #projection<<__Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+                impl<'a, __Target: ?Sized, __Mode: __systasis_CaptureThroughMut<'a>> #projection<__Mode> for &'a mut __Target
+                where __Target: #projection<<__Mode as __systasis_CaptureThroughMut<'a>>::Mode> {
+                    type Output = <__Target as #projection<<__Mode as __systasis_CaptureThroughMut<'a>>::Mode>>::Output;
                 }
             }
         });
         let sequence = self.sequence_projections.then(|| quote! {
-            pub trait __SystasisCaptureElement<Mode = __CaptureOwned> { type Output; }
-            impl<T, const N: usize, Mode: __CaptureWrap<T>> __SystasisCaptureElement<Mode> for [T; N] {
-                type Output = <Mode as __CaptureWrap<T>>::Output;
+            pub trait __systasis_CaptureElement<Mode = __systasis_CaptureOwned> { type Output; }
+            impl<T, const N: usize, Mode: __systasis_CaptureWrap<T>> __systasis_CaptureElement<Mode> for [T; N] {
+                type Output = <Mode as __systasis_CaptureWrap<T>>::Output;
             }
-            impl<T, Mode: __CaptureWrap<T>> __SystasisCaptureElement<Mode> for [T] {
-                type Output = <Mode as __CaptureWrap<T>>::Output;
+            impl<T, Mode: __systasis_CaptureWrap<T>> __systasis_CaptureElement<Mode> for [T] {
+                type Output = <Mode as __systasis_CaptureWrap<T>>::Output;
             }
-            impl<'a, T: ?Sized, Mode> __SystasisCaptureElement<Mode> for &'a T
-            where T: __SystasisCaptureElement<__CaptureShared<'a>> {
-                type Output = <T as __SystasisCaptureElement<__CaptureShared<'a>>>::Output;
+            impl<'a, T: ?Sized, Mode> __systasis_CaptureElement<Mode> for &'a T
+            where T: __systasis_CaptureElement<__systasis_CaptureShared<'a>> {
+                type Output = <T as __systasis_CaptureElement<__systasis_CaptureShared<'a>>>::Output;
             }
-            impl<'a, T: ?Sized, Mode: __CaptureThroughMut<'a>> __SystasisCaptureElement<Mode> for &'a mut T
-            where T: __SystasisCaptureElement<<Mode as __CaptureThroughMut<'a>>::Mode> {
-                type Output = <T as __SystasisCaptureElement<<Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+            impl<'a, T: ?Sized, Mode: __systasis_CaptureThroughMut<'a>> __systasis_CaptureElement<Mode> for &'a mut T
+            where T: __systasis_CaptureElement<<Mode as __systasis_CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __systasis_CaptureElement<<Mode as __systasis_CaptureThroughMut<'a>>::Mode>>::Output;
             }
-            pub trait __SystasisCaptureLength<const K: usize> { const REMAINING: usize; }
-            impl<T, const N: usize, const K: usize> __SystasisCaptureLength<K> for [T; N] { const REMAINING: usize = N - K; }
+            pub trait __systasis_CaptureLength<const K: usize> { const REMAINING: usize; }
+            impl<T, const N: usize, const K: usize> __systasis_CaptureLength<K> for [T; N] { const REMAINING: usize = N - K; }
             // Slice tail projection ignores the const argument; its type is [T].
-            impl<T, const K: usize> __SystasisCaptureLength<K> for [T] { const REMAINING: usize = 0; }
-            impl<T: ?Sized + __SystasisCaptureLength<K>, const K: usize> __SystasisCaptureLength<K> for &T { const REMAINING: usize = T::REMAINING; }
-            impl<T: ?Sized + __SystasisCaptureLength<K>, const K: usize> __SystasisCaptureLength<K> for &mut T { const REMAINING: usize = T::REMAINING; }
-            pub trait __SystasisCaptureArrayTail<const R: usize, Mode = __CaptureOwned> { type Output; }
-            impl<T, const N: usize, const R: usize, Mode: __CaptureWrap<[T; R]>> __SystasisCaptureArrayTail<R, Mode> for [T; N] {
-                type Output = <Mode as __CaptureWrap<[T; R]>>::Output;
+            impl<T, const K: usize> __systasis_CaptureLength<K> for [T] { const REMAINING: usize = 0; }
+            impl<T: ?Sized + __systasis_CaptureLength<K>, const K: usize> __systasis_CaptureLength<K> for &T { const REMAINING: usize = T::REMAINING; }
+            impl<T: ?Sized + __systasis_CaptureLength<K>, const K: usize> __systasis_CaptureLength<K> for &mut T { const REMAINING: usize = T::REMAINING; }
+            pub trait __systasis_CaptureArrayTail<const R: usize, Mode = __systasis_CaptureOwned> { type Output; }
+            impl<T, const N: usize, const R: usize, Mode: __systasis_CaptureWrap<[T; R]>> __systasis_CaptureArrayTail<R, Mode> for [T; N] {
+                type Output = <Mode as __systasis_CaptureWrap<[T; R]>>::Output;
             }
-            impl<T, const R: usize, Mode: __CaptureSliceWrap<T>> __SystasisCaptureArrayTail<R, Mode> for [T] {
-                type Output = <Mode as __CaptureSliceWrap<T>>::Output;
+            impl<T, const R: usize, Mode: __systasis_CaptureSliceWrap<T>> __systasis_CaptureArrayTail<R, Mode> for [T] {
+                type Output = <Mode as __systasis_CaptureSliceWrap<T>>::Output;
             }
-            impl<'a, T: ?Sized, const R: usize, Mode> __SystasisCaptureArrayTail<R, Mode> for &'a T
-            where T: __SystasisCaptureArrayTail<R, __CaptureShared<'a>> {
-                type Output = <T as __SystasisCaptureArrayTail<R, __CaptureShared<'a>>>::Output;
+            impl<'a, T: ?Sized, const R: usize, Mode> __systasis_CaptureArrayTail<R, Mode> for &'a T
+            where T: __systasis_CaptureArrayTail<R, __systasis_CaptureShared<'a>> {
+                type Output = <T as __systasis_CaptureArrayTail<R, __systasis_CaptureShared<'a>>>::Output;
             }
-            impl<'a, T: ?Sized, const R: usize, Mode: __CaptureThroughMut<'a>> __SystasisCaptureArrayTail<R, Mode> for &'a mut T
-            where T: __SystasisCaptureArrayTail<R, <Mode as __CaptureThroughMut<'a>>::Mode> {
-                type Output = <T as __SystasisCaptureArrayTail<R, <Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+            impl<'a, T: ?Sized, const R: usize, Mode: __systasis_CaptureThroughMut<'a>> __systasis_CaptureArrayTail<R, Mode> for &'a mut T
+            where T: __systasis_CaptureArrayTail<R, <Mode as __systasis_CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __systasis_CaptureArrayTail<R, <Mode as __systasis_CaptureThroughMut<'a>>::Mode>>::Output;
             }
             // With no fixed elements, a rest binding retains the original
             // array length or slice type. No generic const subtraction is needed.
-            pub trait __SystasisCaptureWholeSequence<Mode = __CaptureOwned> { type Output; }
-            impl<T, const N: usize, Mode: __CaptureWrap<[T; N]>> __SystasisCaptureWholeSequence<Mode> for [T; N] {
-                type Output = <Mode as __CaptureWrap<[T; N]>>::Output;
+            pub trait __systasis_CaptureWholeSequence<Mode = __systasis_CaptureOwned> { type Output; }
+            impl<T, const N: usize, Mode: __systasis_CaptureWrap<[T; N]>> __systasis_CaptureWholeSequence<Mode> for [T; N] {
+                type Output = <Mode as __systasis_CaptureWrap<[T; N]>>::Output;
             }
-            impl<T, Mode: __CaptureSliceWrap<T>> __SystasisCaptureWholeSequence<Mode> for [T] {
-                type Output = <Mode as __CaptureSliceWrap<T>>::Output;
+            impl<T, Mode: __systasis_CaptureSliceWrap<T>> __systasis_CaptureWholeSequence<Mode> for [T] {
+                type Output = <Mode as __systasis_CaptureSliceWrap<T>>::Output;
             }
-            impl<'a, T: ?Sized, Mode> __SystasisCaptureWholeSequence<Mode> for &'a T
-            where T: __SystasisCaptureWholeSequence<__CaptureShared<'a>> {
-                type Output = <T as __SystasisCaptureWholeSequence<__CaptureShared<'a>>>::Output;
+            impl<'a, T: ?Sized, Mode> __systasis_CaptureWholeSequence<Mode> for &'a T
+            where T: __systasis_CaptureWholeSequence<__systasis_CaptureShared<'a>> {
+                type Output = <T as __systasis_CaptureWholeSequence<__systasis_CaptureShared<'a>>>::Output;
             }
-            impl<'a, T: ?Sized, Mode: __CaptureThroughMut<'a>> __SystasisCaptureWholeSequence<Mode> for &'a mut T
-            where T: __SystasisCaptureWholeSequence<<Mode as __CaptureThroughMut<'a>>::Mode> {
-                type Output = <T as __SystasisCaptureWholeSequence<<Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+            impl<'a, T: ?Sized, Mode: __systasis_CaptureThroughMut<'a>> __systasis_CaptureWholeSequence<Mode> for &'a mut T
+            where T: __systasis_CaptureWholeSequence<<Mode as __systasis_CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __systasis_CaptureWholeSequence<<Mode as __systasis_CaptureThroughMut<'a>>::Mode>>::Output;
             }
-            pub trait __CaptureSliceWrap<T> { type Output; }
-            impl<'a, T: 'a> __CaptureSliceWrap<T> for __CaptureShared<'a> { type Output = &'a [T]; }
-            impl<'a, T: 'a> __CaptureSliceWrap<T> for __CaptureMutable<'a> { type Output = &'a mut [T]; }
-            pub trait __SystasisCaptureSliceTail<Mode = __CaptureOwned> { type Output; }
-            impl<T, Mode: __CaptureSliceWrap<T>> __SystasisCaptureSliceTail<Mode> for [T] {
-                type Output = <Mode as __CaptureSliceWrap<T>>::Output;
+            pub trait __systasis_CaptureSliceWrap<T> { type Output; }
+            impl<'a, T: 'a> __systasis_CaptureSliceWrap<T> for __systasis_CaptureShared<'a> { type Output = &'a [T]; }
+            impl<'a, T: 'a> __systasis_CaptureSliceWrap<T> for __systasis_CaptureMutable<'a> { type Output = &'a mut [T]; }
+            pub trait __systasis_CaptureSliceTail<Mode = __systasis_CaptureOwned> { type Output; }
+            impl<T, Mode: __systasis_CaptureSliceWrap<T>> __systasis_CaptureSliceTail<Mode> for [T] {
+                type Output = <Mode as __systasis_CaptureSliceWrap<T>>::Output;
             }
-            impl<'a, T: ?Sized, Mode> __SystasisCaptureSliceTail<Mode> for &'a T
-            where T: __SystasisCaptureSliceTail<__CaptureShared<'a>> {
-                type Output = <T as __SystasisCaptureSliceTail<__CaptureShared<'a>>>::Output;
+            impl<'a, T: ?Sized, Mode> __systasis_CaptureSliceTail<Mode> for &'a T
+            where T: __systasis_CaptureSliceTail<__systasis_CaptureShared<'a>> {
+                type Output = <T as __systasis_CaptureSliceTail<__systasis_CaptureShared<'a>>>::Output;
             }
-            impl<'a, T: ?Sized, Mode: __CaptureThroughMut<'a>> __SystasisCaptureSliceTail<Mode> for &'a mut T
-            where T: __SystasisCaptureSliceTail<<Mode as __CaptureThroughMut<'a>>::Mode> {
-                type Output = <T as __SystasisCaptureSliceTail<<Mode as __CaptureThroughMut<'a>>::Mode>>::Output;
+            impl<'a, T: ?Sized, Mode: __systasis_CaptureThroughMut<'a>> __systasis_CaptureSliceTail<Mode> for &'a mut T
+            where T: __systasis_CaptureSliceTail<<Mode as __systasis_CaptureThroughMut<'a>>::Mode> {
+                type Output = <T as __systasis_CaptureSliceTail<<Mode as __systasis_CaptureThroughMut<'a>>::Mode>>::Output;
             }
         });
         quote! {
-            pub struct __CaptureOwned;
-            pub struct __CaptureShared<'a>(::core::marker::PhantomData<&'a ()>);
-            pub struct __CaptureMutable<'a>(::core::marker::PhantomData<&'a ()>);
-            pub trait __CaptureWrap<T> { type Output; }
-            impl<T> __CaptureWrap<T> for __CaptureOwned { type Output = T; }
-            impl<'a, T: 'a> __CaptureWrap<T> for __CaptureShared<'a> { type Output = &'a T; }
-            impl<'a, T: 'a> __CaptureWrap<T> for __CaptureMutable<'a> { type Output = &'a mut T; }
-            pub trait __CaptureThroughMut<'a> { type Mode; }
-            impl<'a> __CaptureThroughMut<'a> for __CaptureOwned { type Mode = __CaptureMutable<'a>; }
-            impl<'a, 'b> __CaptureThroughMut<'b> for __CaptureShared<'a> { type Mode = __CaptureShared<'a>; }
-            impl<'a, 'b> __CaptureThroughMut<'b> for __CaptureMutable<'a> { type Mode = __CaptureMutable<'a>; }
+            pub struct __systasis_CaptureOwned;
+            pub struct __systasis_CaptureShared<'a>(::core::marker::PhantomData<&'a ()>);
+            pub struct __systasis_CaptureMutable<'a>(::core::marker::PhantomData<&'a ()>);
+            pub trait __systasis_CaptureWrap<T> { type Output; }
+            impl<T> __systasis_CaptureWrap<T> for __systasis_CaptureOwned { type Output = T; }
+            impl<'a, T: 'a> __systasis_CaptureWrap<T> for __systasis_CaptureShared<'a> { type Output = &'a T; }
+            impl<'a, T: 'a> __systasis_CaptureWrap<T> for __systasis_CaptureMutable<'a> { type Output = &'a mut T; }
+            pub trait __systasis_CaptureThroughMut<'a> { type Mode; }
+            impl<'a> __systasis_CaptureThroughMut<'a> for __systasis_CaptureOwned { type Mode = __systasis_CaptureMutable<'a>; }
+            impl<'a, 'b> __systasis_CaptureThroughMut<'b> for __systasis_CaptureShared<'a> { type Mode = __systasis_CaptureShared<'a>; }
+            impl<'a, 'b> __systasis_CaptureThroughMut<'b> for __systasis_CaptureMutable<'a> { type Mode = __systasis_CaptureMutable<'a>; }
             #(#implementations)*
             #sequence
         }
@@ -430,7 +430,7 @@ impl Bindings {
             (Pat::Slice(pattern), Type::Path(path)) => {
                 self.sequence_projections = true;
                 let source = mode.bound_type(annotation);
-                let element = syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureElement>::Output);
+                let element = syn::parse_quote!(<#source as __systasis_injected::__systasis_CaptureElement>::Output);
                 let explicit = pattern.elems.iter().filter(|pat| !slice_rest(pat)).count();
                 let concrete = path.qself.is_none()
                     && path.path.segments.iter().all(|segment| {
@@ -445,17 +445,17 @@ impl Bindings {
                 // https://doc.rust-lang.org/reference/patterns.html#patterns.slice.refutable-slice
                 let rest = if explicit == 0 {
                     Some(
-                        syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureWholeSequence>::Output),
+                        syn::parse_quote!(<#source as __systasis_injected::__systasis_CaptureWholeSequence>::Output),
                     )
                 } else if concrete {
                     Some(
-                        syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureArrayTail<{<#annotation as __systasis_injected::__SystasisCaptureLength<#explicit>>::REMAINING}>>::Output),
+                        syn::parse_quote!(<#source as __systasis_injected::__systasis_CaptureArrayTail<{<#annotation as __systasis_injected::__systasis_CaptureLength<#explicit>>::REMAINING}>>::Output),
                     )
                 } else if explicit > 0 && !refutable {
                     None
                 } else {
                     Some(
-                        syn::parse_quote!(<#source as __systasis_injected::__SystasisCaptureSliceTail>::Output),
+                        syn::parse_quote!(<#source as __systasis_injected::__systasis_CaptureSliceTail>::Output),
                     )
                 };
                 for pat in &pattern.elems {
@@ -474,7 +474,7 @@ impl Bindings {
                         let borrowed = borrow.bound_type(&source);
                         self.types.insert(
                             name(&binding.ident),
-                            Some(syn::parse_quote!(<#borrowed as __systasis_injected::__SystasisCaptureWholeSequence>::Output)),
+                            Some(syn::parse_quote!(<#borrowed as __systasis_injected::__systasis_CaptureWholeSequence>::Output)),
                         );
                         continue;
                     }
@@ -500,7 +500,7 @@ impl Bindings {
                         continue;
                     }
                     self.tuple_projections.insert((arity, index));
-                    let projection = format_ident!("__SystasisCaptureTuple{arity}_{index}");
+                    let projection = format_ident!("__systasis_CaptureTuple{arity}_{index}");
                     let ty =
                         syn::parse_quote!(<#source as __systasis_injected::#projection>::Output);
                     self.observe_annotated_pattern(element, &ty, BindingMode::Move, refutable);
@@ -606,7 +606,7 @@ impl VisitMut for CaptureProjection {
                 .path
                 .segments
                 .iter()
-                .any(|segment| segment.ident.to_string().starts_with("__SystasisCapture"));
+                .any(|segment| segment.ident.to_string().starts_with("__systasis_Capture"));
         visit_mut::visit_type_path_mut(self, path);
     }
 }
@@ -1419,8 +1419,8 @@ mod tests {
         let _: syn::File = syn::parse2(helpers.clone()).unwrap();
         assert!(!helpers.to_string().contains("PrivateArray"));
         let types = capture_types(&plan);
-        assert!(types[0].contains("__SystasisCaptureElement"));
-        assert!(types[1].contains("__SystasisCaptureArrayTail"));
+        assert!(types[0].contains("__systasis_CaptureElement"));
+        assert!(types[1].contains("__systasis_CaptureArrayTail"));
     }
 
     #[test]
@@ -1437,7 +1437,7 @@ mod tests {
             &root,
         );
         assert!(!head.native);
-        assert!(capture_types(&head)[0].contains("__SystasisCaptureElement"));
+        assert!(capture_types(&head)[0].contains("__systasis_CaptureElement"));
     }
 
     #[test]
@@ -1460,7 +1460,7 @@ mod tests {
                 &parse_quote!(__captures),
             );
             assert!(!plan.native);
-            assert!(capture_types(&plan)[0].contains("__SystasisCaptureSliceTail"));
+            assert!(capture_types(&plan)[0].contains("__systasis_CaptureSliceTail"));
         }
     }
 
@@ -1484,7 +1484,7 @@ mod tests {
                 &parse_quote!(__captures),
             );
             assert!(!plan.native);
-            assert!(capture_types(&plan)[0].contains("__SystasisCaptureWholeSequence"));
+            assert!(capture_types(&plan)[0].contains("__systasis_CaptureWholeSequence"));
         }
     }
 
@@ -1493,11 +1493,11 @@ mod tests {
         for (pattern, expected) in [
             (
                 parse_quote!(let [ref whole @ ..]: Input<T> = input;),
-                parse_quote!(<&'_ Input<T> as __systasis_injected::__SystasisCaptureWholeSequence>::Output),
+                parse_quote!(<&'_ Input<T> as __systasis_injected::__systasis_CaptureWholeSequence>::Output),
             ),
             (
                 parse_quote!(let [ref mut whole @ ..]: Input<T> = input;),
-                parse_quote!(<&'_ mut Input<T> as __systasis_injected::__SystasisCaptureWholeSequence>::Output),
+                parse_quote!(<&'_ mut Input<T> as __systasis_injected::__systasis_CaptureWholeSequence>::Output),
             ),
         ] {
             let mut bindings = Bindings::from_function(&parse_quote!(

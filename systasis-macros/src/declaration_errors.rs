@@ -100,13 +100,13 @@ impl VisitMut for Sources {
 
     fn visit_expr_try_mut(&mut self, expression: &mut syn::ExprTry) {
         self.visit_expr_mut(&mut expression.expr);
-        expression.expr = Box::new(self.propagate(&expression.expr));
+        *expression.expr = self.propagate(&expression.expr);
     }
 
     fn visit_expr_return_mut(&mut self, expression: &mut syn::ExprReturn) {
         if let Some(source) = &mut expression.expr {
             self.visit_expr_mut(source);
-            *source = Box::new(self.propagate(source));
+            **source = self.propagate(source);
         }
     }
 }

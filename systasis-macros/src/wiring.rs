@@ -52,7 +52,7 @@ pub(crate) fn replacements(
     let mut result = BTreeMap::new();
     for (index, registration) in registrations.iter().enumerate() {
         if registration.constructor.is_some() {
-            let function = format_ident!("construct_{index}");
+            let function = format_ident!("__systasis_construct_{index}");
             let arguments: Vec<Expr> = arguments(index, dependencies)
                 .into_iter()
                 .map(slot)
