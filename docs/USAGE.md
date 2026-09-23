@@ -147,19 +147,11 @@ fn main() -> Result<(), Error> {
     assert_eq!(container.resolve_i_label(), "request");
     assert_eq!(container.resolve_i_label(), "request"); // A fresh String.
 
-    let reader = container.try_resolve_i_logger_dyn_ref()?;
+    let logger: Logger = container.try_resolve_i_logger()?;
+    let reader: &dyn ILogger = &logger; // The caller explicitly borrows its value.
     assert_eq!(reader.text(), "ready");
     assert!(matches!(
         container.try_resolve_i_logger(),
-        Err(Error::ValueAccessContention)
-    ));
-    drop(reader);
-
-    // `as dyn ILogger` adds dynamic access; static access remains available.
-    let logger: Logger = container.try_resolve_i_logger()?;
-    assert_eq!(logger.text(), "ready");
-    assert!(matches!(
-        container.try_resolve_i_logger_ref(),
         Err(Error::ValueAlreadyConsumed)
     ));
     Ok(())
@@ -169,10 +161,10 @@ fn main() -> Result<(), Error> {
 In this attribute form, `.build()` returns `Result<SystasisContainer, E>`. The
 caller owns the container and can return it from its initialization function.
 Pass `&container` to functions
-accepting a shared container reference. Resolved borrows prevent moving or
-dropping the container while those borrows remain usable. References stored in
-the container must refer to data that outlives them; borrowing another stored
-registration remains deferred.
+accepting a shared container reference. Stored values resolve by value, including
+stored references, whose referents must outlive them. Constructor outputs may
+still borrow their captured state; those borrows prevent moving or dropping the
+container while usable. Borrowing another stored registration remains deferred.
 Infallible builds infer the never error type, allowing `let Ok(container) = ...`.
 Use `.build::<E>()` when a fallible initializer needs an explicit error type.
 A fallible constructor alone does not make build fallible: it has not run yet.
@@ -287,7 +279,7 @@ fn main() {
         register_value!(rx: mpsc::Receiver<resolve_type!(IMessage)> as IReceiver);
     }.build();
 
-    let sender = container.try_resolve_i_sender().unwrap();
+    let sender = container.resolve_i_sender_clone();
     let receiver = container.try_resolve_i_receiver().unwrap();
     assert!(sender.send(Message(42)).is_ok());
     assert_eq!(receiver.recv().unwrap().0, 42);
@@ -303,41 +295,45 @@ resolution requires a `Default` bound; type lookup does not.
 
 ### Which resolvers are available?
 
-For a registration under `IValue`, `T` below is its concrete implementation type
-and `Error` is `systasis::container::Error`. A dash means no such method is
-available. The guard types shown are for synchronized storage; `require(!Sync)`
-uses the corresponding `core::cell` guards.
+For a registration under `IValue`, `T` is its concrete implementation type
+and `Error` is `systasis::container::Error`.
 
-| Registration | By value | Shared borrow | Mutable borrow |
-| --- | --- | --- | --- |
-| Stored Copy | `resolve_i_value() -> T` | `resolve_i_value_ref() -> &T` | — |
-| Stored consumable | `try_resolve_i_value() -> Result<T, Error>` | `try_resolve_i_value_ref() -> Result<Ref<'_, T>, Error>` | `try_resolve_i_value_ref_mut() -> Result<RefMut<'_, T>, Error>` |
-| Fresh Default or infallible custom | `resolve_i_value() -> T` | — | — |
-| Type registration without Default or a constructor | — | — | — |
-| Custom `try` returning `Result<T, E>` | `try_resolve_i_value() -> Result<T, E>` | — | — |
-| Custom `try` returning `Option<T>` | `try_resolve_i_value() -> Option<T>` | — | — |
+| Registration | Resolver | Try resolver |
+| --- | --- | --- |
+| Stored Copy | `resolve_i_value() -> T` | `try_resolve_i_value() -> Result<T, !>` |
+| Stored Clone, not Copy | `resolve_i_value_clone() -> T` | `try_resolve_i_value_clone() -> Result<T, !>` |
+| Stored neither | — | `try_resolve_i_value() -> Result<T, Error>` |
+| Fresh Default or infallible custom | `resolve_i_value() -> T` | `try_resolve_i_value() -> Result<T, !>` |
+| Type registration without Default or a constructor | — | — |
+| Custom `try` returning `Result<T, E>` | — | `try_resolve_i_value() -> Result<T, E>` |
+| Custom `try` returning `Option<T>` | — | `try_resolve_i_value() -> Option<T>` |
 
-A constructor may return a reference or guard as its `T`; it still has only its
-by-value resolver. If constructor wiring borrows a stored consumable registration,
-that registration's owned accessor is omitted; its other applicable accessors
-remain, subject to runtime contention checks.
+Copy and Clone results are repeatable; move-only values transfer once.
+Clone-only storage has no consuming resolver. No registration gets a borrowed
+`_ref` or `_ref_mut` accessor, including dyn or unchecked variants.
+A constructor can itself return a reference as its output type.
 
-For stored values, `as dyn IValue` adds `resolve_i_value_dyn_ref() -> &dyn IValue`
-for Copy storage or `try_resolve_i_value_dyn_ref() -> Result<Ref<'_, dyn IValue + '_>, Error>`
-for synchronized consumable storage. Static access remains available. The trait
-must be dyn-compatible; there is no dyn-mutable accessor or dyn accessor for a
-fresh constructor.
+Infallible try methods use the actual never type `!`: `let Ok(value) = ...;`
+is irrefutable. Using `?` in a function returning `Result<_, E>` still requires
+`E: From<!>`; use the direct resolver or `let Ok(...)` when no conversion exists.
 
-### Copy policy in generic code
+For stored values, `as dyn IValue` validates dyn compatibility and enables
+`resolve_type!(dyn IValue)`. It does not add a borrowed resolver. Borrow or
+coerce the resolved concrete value explicitly when trait-object access is needed.
 
-Concrete stored types select Copy storage automatically when they implement
-`Copy`. To select Copy storage for a registered type involving enclosing generic
-parameters, write an explicit Copy bound on that whole type: `T: Copy` or
-`Wrapper<T>: Copy`.
-An indirectly established Copy fact without that explicit bound is diagnosed.
-Parentheses do not change which whole type a bound applies to. Renamed Copy
-imports and equivalent types spelled through different aliases still have
-recognition gaps; these are implementation limits, not different Copy policies.
+### Copy and Clone policy in generic code
+
+Concrete stored types select Copy first, otherwise Clone, otherwise move-only
+storage. For a type involving enclosing generic parameters, an explicit bound
+on the whole registered type selects its policy: `T: Copy`, `Wrapper<T>: Copy`,
+`T: Clone`, or `Wrapper<T>: Clone`. A Clone bound without a Copy bound gives
+the clone API even when the caller instantiates it with a Copy type.
+Shared references are intrinsically Copy regardless of their referent's bounds.
+
+An indirectly established Copy/Clone fact without the explicit whole-type bound
+is diagnosed. Parentheses do not change the type. Renamed trait imports and
+equivalent types spelled through different aliases retain recognition gaps;
+these are implementation limits, not different policies.
 
 An unconstrained generic registration stays consumable, even when called with
 `u32`. Its resolver API does not change between instantiations:
@@ -365,37 +361,67 @@ fn main() -> Result<(), Error> {
 
 ### Cloning a stored value
 
-Stored `Clone` values support explicit cloning without consuming the original.
-Copy storage has `resolve_i_value_clone() -> T`; consumable storage has
-`try_resolve_i_value_clone() -> Result<T, Error>`. Both call `Clone::clone`,
-including for Copy types. Fresh constructors have no clone accessor.
+Stored Clone-only values use immutable storage without locks. Both clone
+resolvers invoke `Clone::clone`; neither consumes the original. Copy resolution
+does not call Clone, and Copy/fresh registrations have no clone resolver.
 
 ```rust
-use systasis::container::Error;
-
 trait ILabel {}
 impl ILabel for String {}
 
 #[systasis::container]
-fn main() -> Result<(), Error> {
+fn main() {
     let Ok(container) = systasis::systasis_container! {
         register_value!(String::from("stored"): String as ILabel);
     }.build();
 
-    let cloned: String = container.try_resolve_i_label_clone()?;
-    let original: String = container.try_resolve_i_label()?;
-    assert_eq!(cloned, original);
-    assert!(matches!(
-        container.try_resolve_i_label_clone(),
-        Err(Error::ValueAlreadyConsumed)
-    ));
-    Ok(())
+    let mut first: String = container.resolve_i_label_clone();
+    first.push('!');
+    let Ok(second) = container.try_resolve_i_label_clone();
+    assert_eq!(first, "stored!");
+    assert_eq!(second, "stored");
 }
 ```
 
-Cloning a consumable value can also return `ValueAccessContention` while it is
-mutably borrowed. Cloning through a dependency query does not itself remove the
-original's owned resolver.
+The never error means resolution cannot fail through consumption or contention.
+Caller-written Clone implementations can still panic or allocate.
+
+### Stored references
+
+A stored `&T` follows the Copy API. A stored `&mut T` follows the move-once
+API: resolution transfers the reference, without reborrowing or retaining a guard.
+
+```rust
+use systasis::container::Error;
+
+trait IText {}
+impl IText for &str {}
+trait ICounter {}
+impl ICounter for &mut u32 {}
+
+#[systasis::container]
+fn init<'a>(text: &'a str, counter: &'a mut u32) -> SystasisContainer<'a> {
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(text: &'a str as IText);
+        register_value!(counter: &'a mut u32 as ICounter);
+    }.build();
+    container
+}
+
+fn main() -> Result<(), Error> {
+    let text = String::from("external");
+    let mut count = 0;
+    let container = init(&text, &mut count);
+    let counter = container.try_resolve_i_counter()?;
+    let Ok(label) = container.try_resolve_i_text();
+    assert_eq!(label, "external");
+    assert!(matches!(container.try_resolve_i_counter(), Err(Error::ValueAlreadyConsumed)));
+    drop(container);
+    *counter += 1; // The transferred reference does not borrow the container.
+    assert_eq!(count, 1);
+    Ok(())
+}
+```
 
 ### Capturing an array remainder containing references
 
@@ -474,7 +500,7 @@ This temporary requirement adds no lifetime bound or compiler feature.
 
 Services and constructors remain ordinary Rust. `registered_type!(Interface)`
 names the selected implementation inside a registration; `try_resolve!(Interface)`
-takes a stored non-Copy value. The dependency is initialized first even when
+takes a stored move-only value. `resolve_clone!(Interface)` clones Clone-only storage. The dependency is initialized first even when
 declared later. No wrapper or extra generic parameter is added to the service.
 
 ```rust
@@ -534,8 +560,8 @@ Queries never fall back to types, traits or aliases outside the selected contain
 separate values under each trait. Queries must name the whole group; their trait
 order does not matter. Generated method names alphabetize the trait names.
 
-`as dyn IRead + ILength` additionally provides a shared dynamic accessor for
-the group, while keeping concrete storage and static accessors:
+`as dyn IRead + ILength` additionally provides a combined trait-object type
+query, while keeping concrete storage and ordinary value accessors:
 
 ```rust
 use systasis::container::Error;
@@ -559,21 +585,18 @@ impl IObserved for usize {}
 fn main() -> Result<(), Error> {
     let container = systasis::systasis_container! {
         register_value!({
-            let view = try_resolve_dyn_ref!(ILength + IRead)?;
-            let target: &resolve_type!(dyn IRead + ILength) = &*view;
+            let view = resolve_clone!(ILength + IRead);
+            let target: &resolve_type!(dyn IRead + ILength) = &view;
             target.length()
         }: usize as IObserved);
         register_value!(String::from("group"): String as dyn IRead + ILength);
     }.build::<Error>()?;
 
     assert_eq!(container.resolve_i_observed(), 5);
-    let dynamic = container.try_resolve_i_length_i_read_dyn_ref()?;
+    let concrete = container.resolve_i_length_i_read_clone();
+    let dynamic: &dyn IRead = &concrete;
     assert_eq!(dynamic.text(), "group");
-    let concrete = container.try_resolve_i_length_i_read_ref()?;
-    assert_eq!(&*concrete, "group");
-    drop(concrete);
-    drop(dynamic);
-    assert_eq!(container.try_resolve_i_length_i_read()?, "group");
+    assert_eq!(concrete, "group");
     Ok(())
 }
 ```
@@ -630,84 +653,72 @@ keep those type names distinct. In this example, `main` builds the database
 container and `application::run` builds a container that uses it.
 
 ```rust
-use systasis::container::Error;
-
 trait IDatabase {}
 impl IDatabase for String {}
 
 mod application {
-    use super::Error;
-
     trait ILength {}
     impl ILength for usize {}
 
     // This component receives only the database scope.
-    fn database_length(database: &primary::SubContainer<'_>) -> Result<usize, Error> {
-        Ok(database.try_resolve_i_database_ref()?.len())
+    fn database_length(database: &primary::SubContainer<'_>) -> usize {
+        database.resolve_i_database_clone().len()
     }
 
     #[systasis::container]
-    pub fn run(primary: &super::SystasisContainer) -> Result<(), Error> {
+    pub fn run(primary: &super::SystasisContainer) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &super::SystasisContainer);
-            register_type_with!(usize as ILength, try || -> Result<usize, Error> {
-                Ok(try_resolve_ref_from!(IDatabase, primary)?.len())
+            register_type_with!(usize as ILength, || {
+                resolve_clone_from!(IDatabase, primary).len()
             });
         }.build();
 
-        assert_eq!(database_length(container.primary())?, 11);
-        assert_eq!(container.try_resolve_i_length()?, 11);
-        Ok(())
+        assert_eq!(database_length(container.primary()), 11);
+        assert_eq!(container.resolve_i_length(), 11);
     }
 }
 
 #[systasis::container]
-fn main() -> Result<(), Error> {
+fn main() {
     let Ok(database) = systasis::systasis_container! {
         register_value!(String::from("application"): String as IDatabase);
     }.build();
-    application::run(&database)
+    application::run(&database);
 }
 ```
 
-`container.primary()` returns `&primary::SubContainer<'_>`, a generated type
-that exposes the child's permitted resolvers, not its unrestricted backing
-container. Here the constructor borrows `IDatabase`, so the scope has no owned
-`try_resolve_i_database()` method. Shared and mutable borrowed access remain
-available, with contention checked while a guard is held. No `IDatabase` trait
-import is needed inside `application` for its registration-name query.
+`container.primary()` returns `&primary::SubContainer<'_>`, a nameable generated
+scope exposing the child's applicable resolvers. No `IDatabase` trait import is
+needed inside `application` for its registration-name query.
 
-Nested scopes preserve these restrictions. Inside a registration, use
-`try_resolve_ref_from!(IDatabase, branch::primary)`; outside, use
-`container.branch().primary().try_resolve_i_database_ref()`. Two instances of
-one child type can be composed under different names. The child owners must
-remain alive while their composed scopes are used.
+Inside a registration, nested paths use
+`resolve_clone_from!(IDatabase, branch::primary)`; outside, use
+`container.branch().primary().resolve_i_database_clone()`. Two instances of one
+child type can be composed under different names. Child owners must remain alive
+while their composed scopes are used. Ownership transfers through any path use
+the same slot; composing a child does not duplicate its values.
 
-## Borrowing and thread-safety choices
+## Thread-safety choices
 
-With synchronized storage, `try_resolve_i_logger_ref()` returns a [`Ref`] and
-`try_resolve_i_logger_ref_mut()` returns a [`RefMut`], each inside `Result`.
-These are systasis guards: they retain shared or exclusive access and dereference
-to the present value. Incompatible access returns `Error::ValueAccessContention`
-immediately; access after consumption returns `Error::ValueAlreadyConsumed`.
-Stored Copy values instead expose ordinary shared references and repeatable
-by-value resolution, with no mutable accessor.
+Copy and Clone-only fields use immutable storage without locks or borrow counters.
+Move-only fields use checked, nonblocking ownership transfer. Concurrent transfer
+attempts may return `Error::ValueAccessContention`; subsequent attempts after
+consumption return `Error::ValueAlreadyConsumed`. No resolver lends a stored field.
 
 Natural `Send`/`Sync` implementations depend on stored state. Optional
 `#[systasis::container(require(Send, Sync))]` checks both traits; either may be
 requested independently. Positive requirements do not select a storage mode.
 
-`#[systasis::container(require(!Sync))]` instead selects non-atomic `RefCell`
-borrow tracking for mutable/takeable values and makes the container `!Sync`.
-Its returned `core::cell::Ref` / `core::cell::RefMut` guards are `!Send` and
-`!Sync`; retaining one across `.await`
-therefore prevents that future from being `Send`. Other mutable/takeable values
-use `parking_lot` with `send_guard` in std builds, or Spin in no_std builds.
-Their guards retain the corresponding payload-dependent auto traits.
+`#[systasis::container(require(!Sync))]` selects non-atomic `RefCell` occupancy
+tracking for move-only values and makes the container `!Sync`. This does not
+change the type or auto traits of the returned value. Other move-only slots use
+`parking_lot` in std builds, or Spin in no_std builds. Locks are released before
+returning ownership; a resolved value does not hold a container lock across
+`.await`. Futures still follow ordinary Rust Send rules for everything they retain.
 
-Returned constructor values may borrow captures or retain dependency guards.
-Storing a service that borrows another registration inside the same container
-is deferred; it is not established by the owned-injection example above.
+Returned constructor values may borrow captures. Storing a service that borrows
+another registration inside the same container remains deferred.
 
 ## Features
 
@@ -729,13 +740,12 @@ host, and the nightly requirement above still applies.
   implementation; systasis does not assume a single core.
 - `experimental-hardware` enables that integration and its embedded compile/link
   checks. Execution on physical boards remains unverified.
-- `resolve_unchecked` enables unsafe nonblocking accessors. These retain borrow
-  protection and ownership exclusions; callers must guarantee availability and
-  successful acquisition at the call. Checked accessors remain unchanged.
+- `resolve_unchecked` enables unsafe nonblocking ownership transfer for move-only
+  storage. Callers must guarantee availability and successful acquisition at the
+  call. Checked accessors remain unchanged.
 
-With `resolve_unchecked`, consumable registrations gain
-`resolve_i_value_unchecked()`, `resolve_i_value_ref_unchecked()` and
-`resolve_i_value_ref_mut_unchecked()`, returning `T`, a read guard and a write
-guard respectively, without `Result`. Calling them requires an explicit unsafe
-context. No unchecked accessor is added for Copy storage or fresh constructors;
-there is no unchecked clone accessor.
+With `resolve_unchecked`, move-only registrations gain
+`resolve_i_value_unchecked() -> T`, without `Result`. Calling it requires an
+explicit unsafe context. Synchronization remains enabled; no borrowed unchecked
+accessors are generated. Copy, Clone-only and fresh registrations gain no unchecked
+accessor.

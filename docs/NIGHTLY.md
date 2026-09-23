@@ -29,8 +29,8 @@ This package assumes no stabilization date and does not claim a stable MSRV.
 
 These are compiler/code-generation features, not runtime dependencies or unsafe
 operations. Existing guard implementations need no unstable mapped-guard APIs.
-Declaration build-error inference names never through a `fn() -> !` return-type
-projection; it requires no separate never-type feature. In the attribute form,
+Declaration build-error inference and infallible try resolvers name never through
+a `fn() -> !` return-type projection; this requires no separate never-type feature. In the attribute form,
 explicit `.build::<!>()` uses the selected compiler's support for that spelling.
 
 `allow_internal_unstable` enables only TAIT in generated code; configuration
@@ -66,13 +66,13 @@ That comparison retained the dated nightly pin; the pin was removed on
 Reproduction source and logs are preserved in the parent
 workspace's `research/stable-boundary/` directory.
 
-Retain native capture ownership, lazy/repeatable calls, returned guards, natural
+Retain native capture ownership, lazy/repeatable calls, permitted borrowed constructor outputs, natural
 auto traits, failed-build cleanup, and cross-crate container/subcontainer naming
 when replacing either feature. Keep current returned borrows into reconstructed
 owned capture state; native closures alone do not support that case.
 
 Production native closure tests cover owned macro captures, explicit external
-lifetimes, returned dependency guards, subcontainers and cross-crate privacy.
+lifetimes, owned dependency transfers, subcontainers and cross-crate privacy.
 Remaining cases are in `CAPTURE_LIMITS.md`; these tests do not establish full
 constructor-macro support. No other unstable feature has been enabled by this
 integration.

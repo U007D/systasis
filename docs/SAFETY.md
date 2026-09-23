@@ -5,9 +5,11 @@
 A consuming builder retains a safe `FnOnce` initializer. Building executes it
 and returns an owned `SystasisContainer`; there is no hidden scope owner or allocation.
 The container owns its slots and constructor captures. It may retain references
-to external inputs, with ordinary Rust lifetime checks. Resolver references and
-guards borrow `&self`, preventing moves or destruction while those borrows remain
-usable. Stored internal borrows are not supported by this mechanism.
+to external inputs, with ordinary Rust lifetime checks. Stored references are
+resolved by value: shared references copy, mutable references transfer once.
+Neither operation lends the container's slot. Constructor outputs may borrow
+captured state; those borrows prevent moving or destroying their container.
+Stored internal borrows are not supported by this mechanism.
 
 The generated type remains `!Unpin`, but construction does not pin its result.
 No storage operation relies on pinning: address stability during access follows
@@ -46,14 +48,22 @@ on observing a particular count. See VALIDATION.md for measured workloads.
 - TakeSlot supports synchronized mutable/consuming access through &self.
   std uses parking_lot 0.12.5 with send_guard; no_std uses spin.
 
-The generator selects plain Copy storage or consumable storage using the
-registration-site Copy policy. Selection must consider every access path, including independently
-shared subcontainers. Absence of require(Sync) is not proof of single-threaded
-use and must not silently disable the container's natural Sync capability.
-Local guard types and synchronized guard types differ; generated resolver
-return types must select the actual policy without erasing their auto traits.
+The generator selects CopySlot for Copy values, ReadSlot for Clone-only values,
+and TakeSlot/LocalTakeSlot otherwise. Clone storage is immutable and never consumed,
+so cloning cannot fail through occupancy or contention. Copy and Clone try aliases
+return Result<T, !>. Shared references intrinsically copy; &mut T moves once.
+Generic types use declaration-site bounds; their API does not change at instantiation.
+
+Selection applies equally through subcontainers. Absence of require(Sync) is not
+proof of single-threaded use and does not disable natural Sync capability.
+No generated method returns the internal slot's read or write guard; locks and
+local borrow tracking are released before ownership returns to the caller.
 
 ## Synchronized slots and guards
+
+Guard operations remain internal support with regression coverage; generated
+containers now expose only ownership transfer from these slots. Their existing
+unsafe implementation is unchanged by the resolver-policy change.
 
 Both backends store RwLock<bool> separately from UnsafeCell<Option<T>>.
 Four unsafe blocks form payload references only after the relevant checks:
@@ -116,19 +126,21 @@ Forgetting any guard can retain contention; it cannot enable incompatible access
 
 ## Verification
 
-The default-off `resolve_unchecked` feature adds unsafe owned/shared/mutable
-accessors for consumable slots. They call the same checked acquisition functions,
+The default-off `resolve_unchecked` feature adds an unsafe owned accessor for
+generated move-only slots. It calls the same checked acquisition function,
 then return the success value. Caller-precondition violations reach justified
 `unreachable!` diagnostics; no `unwrap_unchecked` or additional payload pointer
 operation is introduced. Generated methods forward the caller's preconditions
 through explicit unsafe calls. Registration-time queries do not add an unsafe
-block on the caller's behalf. Copy/fresh storage gains no unchecked accessor,
-and constructor-borrow ownership exclusions remain in force.
+block on the caller's behalf. Copy/Clone/fresh storage gains no unchecked accessor.
+The low-level legacy borrowed primitives remain tested but are not emitted as
+container accessors.
 
-Four feature-enabled behavior tests pass natively and under Miri for std and
+Historical guard-based feature tests passed natively and under Miri for std and
 no_std, including local RefCell guards and a `forbid(unsafe_code)` consumer using
 only checked access. Compiler tests reject calls outside unsafe context and
-methods excluded by storage policy or constructor borrowing. No dependency changed.
+methods excluded by storage policy. The owned-only API has separate current
+coverage recorded in VALIDATION.md; historical guard results are not its test count. No dependency changed.
 
 Native Rust-driven compiler tests reject lifetime escape, mutable lifetime
 substitution, sharing local storage, sending local guards, and taking ReadSlot.
