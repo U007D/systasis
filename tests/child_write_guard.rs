@@ -1,7 +1,7 @@
 //! A macro-free constructor can return a Send write guard from a named child.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 struct Borrowed<'env>(&'env str);
 trait IValue {}

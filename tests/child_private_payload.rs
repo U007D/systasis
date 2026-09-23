@@ -28,7 +28,7 @@ mod parent {
     pub fn check<'a, 'env>(primary: &'a child::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &'a child::SystasisContainer<'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, systasis::app_container::Error> {
+            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, systasis::container::Error> {
                 Ok(View(try_resolve_ref_from!(IValue, primary)?))
             });
         }
@@ -37,7 +37,7 @@ mod parent {
         assert_eq!(view.0.0, "borrowed");
         assert!(matches!(
             primary.try_resolve_i_value_ref_mut(),
-            Err(systasis::app_container::Error::ValueAccessContention)
+            Err(systasis::container::Error::ValueAccessContention)
         ));
         drop(view);
         assert!(primary.try_resolve_i_value_ref_mut().is_ok());

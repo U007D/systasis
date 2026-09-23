@@ -3,7 +3,7 @@
 
 #[cfg(all(test, not(miri)))]
 mod support;
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod leaf {
     pub trait IValue {}

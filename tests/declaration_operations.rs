@@ -13,7 +13,7 @@ mod stored {
 
     #[test]
     fn read_write_clone_and_consume_keep_the_same_slot() {
-        use systasis::app_container::Error;
+        use systasis::container::Error;
         let Ok(container) = SystasisContainer::build();
         let reader = container.try_resolve_i_value_ref().unwrap();
         assert_eq!(reader.0, 7);

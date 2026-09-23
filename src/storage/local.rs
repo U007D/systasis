@@ -1,6 +1,6 @@
 //! Non-atomic borrow tracking for slots confined to one thread at a time.
 
-use crate::app_container::Error;
+use crate::container::Error;
 use core::cell::{Ref, RefCell, RefMut};
 
 /// Consumable storage without thread synchronization.

@@ -57,7 +57,7 @@ mod inferred_capture {
 }
 
 mod returned_guard {
-    use systasis::app_container::Error;
+    use systasis::container::Error;
     struct View<'a>(systasis::Ref<'a, String>);
     trait IView {}
     impl IView for View<'_> {}
@@ -89,7 +89,7 @@ mod returned_guard {
 }
 
 mod returned_write_guard {
-    use systasis::app_container::Error;
+    use systasis::container::Error;
     struct View<'a>(systasis::RefMut<'a, String>);
     trait IView {}
     impl IView for View<'_> {}

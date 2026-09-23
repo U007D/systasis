@@ -225,7 +225,7 @@ fn actual_library_artifacts_support_metadata_checks_linking_and_intended_errors(
     );
     fs::write(
         &source,
-        "fn main() { let _: u32 = systasis::app_container::Error::ValueAlreadyConsumed; }",
+        "fn main() { let _: u32 = systasis::container::Error::ValueAlreadyConsumed; }",
     )
     .unwrap();
     let output = compile(&["--error-format=json", "--emit=metadata"]);

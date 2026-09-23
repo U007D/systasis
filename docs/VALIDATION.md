@@ -7,6 +7,16 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 public resolution-error path: `systasis::container::Error` replaces
+`systasis::app_container::Error`, with unchanged variants and behavior. A regression
+test uses one `use systasis::container` import for both the attribute macro and
+the error module. All current examples, tests and usage documentation use the
+new path. Full optional-feature std/no_std suites each pass 472 tests, zero
+failures and four intentionally ignored. Extracted-package consumers pass for
+both backends; warnings-denied workspace Rustdoc, formatting and diff checks pass.
+Logs: `/private/tmp/systasis-error-path-{std,no-std,package,doc}.log`.
+Only naming/references changed; no new unsafe mechanism, dependency or feature.
+
 2026-09-22 declaration construction and inferred errors: the item-position macro
 generates parameterless `SystasisContainer::build()` and
 `SystasisContainerError`. Module/block placement, block-local private types,

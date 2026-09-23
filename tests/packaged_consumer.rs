@@ -261,11 +261,11 @@ pub mod outer {
         assert_eq!(named_container(&container), 41);
         assert!(core::ptr::eq(container.primary(), container.primary()));
         let guard = container.try_resolve_i_stored_ref().unwrap();
-        assert!(matches!(container.try_resolve_i_stored(), Err(systasis::app_container::Error::ValueAccessContention)));
+        assert!(matches!(container.try_resolve_i_stored(), Err(systasis::container::Error::ValueAccessContention)));
         assert_eq!(guard.0, 42);
         drop(guard);
         let result = container.try_resolve_i_stored().unwrap().0;
-        assert!(matches!(container.try_resolve_i_stored(), Err(systasis::app_container::Error::ValueAlreadyConsumed)));
+        assert!(matches!(container.try_resolve_i_stored(), Err(systasis::container::Error::ValueAlreadyConsumed)));
         result
     }
 }

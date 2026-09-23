@@ -1,7 +1,7 @@
 //! Explicit group targets retain concrete storage and expose all opted-in traits.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IReader {
     type Item;

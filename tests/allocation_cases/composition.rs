@@ -1,7 +1,7 @@
 //! Includes independently owned leaf, middle, and outer containers in each count.
 
 use super::{assert_no_allocations, measure};
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 macro_rules! scenario {
     ($module:ident, ($($requirements:tt)*), $guard:path) => {

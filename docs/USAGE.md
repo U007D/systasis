@@ -110,7 +110,7 @@ Supply the stored value's type before `as`, for example
 produces a compile-time error showing where to add the annotation.
 
 ```rust
-use systasis::{app_container::Error, systasis_container};
+use systasis::{container::Error, systasis_container};
 
 trait ICount {}
 impl ICount for u32 {}
@@ -263,7 +263,7 @@ errors are not wrapped in the container's stored-value access error.
 ### Which resolvers are available?
 
 For a registration under `IValue`, `T` below is its concrete implementation type
-and `Error` is `systasis::app_container::Error`. A dash means no such method is
+and `Error` is `systasis::container::Error`. A dash means no such method is
 generated. The guard types shown are for synchronized storage; `require(!Sync)`
 uses the corresponding `core::cell` guards.
 
@@ -301,7 +301,7 @@ An unconstrained generic registration stays consumable, even when called with
 `u32`. Its resolver API does not change between instantiations:
 
 ```rust
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IValue {}
 impl<T> IValue for T {}
@@ -329,7 +329,7 @@ Copy storage has `resolve_i_value_clone() -> T`; consumable storage has
 including for Copy types. Fresh constructors have no clone accessor.
 
 ```rust
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait ILabel {}
 impl ILabel for String {}
@@ -436,7 +436,7 @@ takes a stored non-Copy value. The dependency is initialized first even when
 declared later. No wrapper or extra generic parameter is added to the service.
 
 ```rust
-use systasis::{app_container::Error, systasis_container};
+use systasis::{container::Error, systasis_container};
 
 trait IDatabase {
     fn name(&self) -> &str;
@@ -496,7 +496,7 @@ order does not matter. Generated method names alphabetize the trait names.
 the group, while keeping concrete storage and static accessors:
 
 ```rust
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IRead {
     fn text(&self) -> &str;
@@ -588,7 +588,7 @@ keep those type names distinct. In this example, `main` builds the database
 container and `application::run` builds a container that uses it.
 
 ```rust
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IDatabase {}
 impl IDatabase for String {}

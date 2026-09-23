@@ -2,7 +2,7 @@
 #![cfg(feature = "resolve_unchecked")]
 #![cfg_attr(miri, feature(never_type))]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod leaf {
     pub trait IValue {}

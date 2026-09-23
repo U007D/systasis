@@ -4,7 +4,7 @@
 #[cfg(all(test, not(miri)))]
 mod support;
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod leaf {
     pub trait IValue {}
@@ -15,7 +15,7 @@ mod leaf {
     pub fn run(value: String, call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: String as IValue);
-            register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> {
+            register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> {
                 Ok(try_resolve!(IValue)?.len())
             });
         }.build();

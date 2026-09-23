@@ -1,6 +1,6 @@
 //! Child data lifetimes must not become static requirements for native closures.
 #![forbid(unsafe_code)]
-use systasis::app_container::Error;
+use systasis::container::Error;
 /// Non-Copy payload retaining an external reference.
 struct Borrowed<'a>(&'a str);
 trait IValue {}
@@ -121,7 +121,7 @@ mod explicit_child_lifetime {
 }
 
 mod nested {
-    use systasis::app_container::Error;
+    use systasis::container::Error;
     trait IValue {}
     impl IValue for String {}
     struct View<'a>(systasis::Ref<'a, String>);

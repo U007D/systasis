@@ -2,7 +2,7 @@
 #![deny(warnings)]
 #![forbid(unsafe_code)]
 
-use systasis::{app_container::Error, systasis_container};
+use systasis::{container::Error, systasis_container};
 
 trait IDatabase {
     fn name(&self) -> &str;

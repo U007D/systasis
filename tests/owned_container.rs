@@ -1,7 +1,7 @@
 //! Owned dependencies retain ordinary user type and constructor semantics.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IDatabase {
     fn name(&self) -> &str;

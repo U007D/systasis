@@ -1,6 +1,6 @@
 //! Allocation-free no_std storage with guard-free permanent read reservations.
 
-use crate::app_container::Error;
+use crate::container::Error;
 use ::spin::lock_api::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use core::{
     cell::UnsafeCell,

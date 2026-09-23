@@ -66,7 +66,7 @@ fn container_diagnostics() {
         (
             "scope_cannot_consume_indirectly_through_factory",
             "",
-            "register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> { Ok(try_resolve!(IValue)?.len()) });",
+            "register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> { Ok(try_resolve!(IValue)?.len()) });",
             "type M = systasis::scoped::mask::Mask<__systasis_injected::__systasis_RestrictionKey0, systasis::scoped::mask::Empty>; let container = built.unwrap(); let scope = systasis::scoped::AsScope::<M>::scope(&container); scope.try_resolve_i_size();",
             Some("E0599"),
         ),
@@ -149,14 +149,14 @@ fn container_diagnostics() {
         (
             "namespace_borrow_excludes_only_matching_owned_accessor",
             "",
-            "register_value!(String::new(): String as IValue in test); register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> { Ok(try_resolve_ref_from!(IValue, test)?.len()) });",
+            "register_value!(String::new(): String as IValue in test); register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> { Ok(try_resolve_ref_from!(IValue, test)?.len()) });",
             "built.unwrap().try_resolve_i_value_in_test();",
             Some("E0599"),
         ),
         (
             "namespace_borrow_preserves_other_namespace_owned_accessor",
             "",
-            "register_value!(String::new(): String as IValue in test); register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> { Ok(try_resolve_ref_from!(IValue, test)?.len()) });",
+            "register_value!(String::new(): String as IValue in test); register_value!(String::new(): String as IValue); register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> { Ok(try_resolve_ref_from!(IValue, test)?.len()) });",
             "built.unwrap().try_resolve_i_value().unwrap();",
             None,
         ),
@@ -212,7 +212,7 @@ fn container_diagnostics() {
         (
             "combined_dyn_constructor_borrow_removes_owned_accessor",
             "",
-            "register_value!(String::new(): String as dyn IValue + a::IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { let _ = try_resolve_dyn_ref!(a::IValue + IValue)?; Ok(1) });",
+            "register_value!(String::new(): String as dyn IValue + a::IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::container::Error> { let _ = try_resolve_dyn_ref!(a::IValue + IValue)?; Ok(1) });",
             "built.unwrap().try_resolve_i_value_i_value();",
             Some("E0599"),
         ),
@@ -460,21 +460,21 @@ fn container_diagnostics() {
         (
             "dyn_constructor_borrow_removes_owned_accessor",
             "",
-            "register_value!(String::new(): String as dyn IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { let _guard = try_resolve_dyn_ref!(IValue)?; Ok(1) });",
+            "register_value!(String::new(): String as dyn IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::container::Error> { let _guard = try_resolve_dyn_ref!(IValue)?; Ok(1) });",
             "built.unwrap().try_resolve_i_value();",
             Some("E0599"),
         ),
         (
             "constructor_borrow_removes_owned_accessor",
             "",
-            "register_value!(String::new(): String as IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { Ok(try_resolve_ref!(IValue)?.len() as u32) });",
+            "register_value!(String::new(): String as IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::container::Error> { Ok(try_resolve_ref!(IValue)?.len() as u32) });",
             "built.unwrap().try_resolve_i_value();",
             Some("E0599"),
         ),
         (
             "constructor_borrow_prevents_build_consumption",
             "",
-            "register_value!(String::new(): String as IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::app_container::Error> { Ok(try_resolve_ref!(IValue)?.len() as u32) }); register_value!(try_resolve!(IValue)?.len() as usize: usize as ISize);",
+            "register_value!(String::new(): String as IValue); register_type_with!(u32 as INumber, try || -> Result<u32, systasis::container::Error> { Ok(try_resolve_ref!(IValue)?.len() as u32) }); register_value!(try_resolve!(IValue)?.len() as usize: usize as ISize);",
             "",
             Some("requested resolver is unavailable"),
         ),
@@ -720,7 +720,7 @@ fn main() {{
     let config: String = String::from("config");
     let untyped = String::from("untyped");
     let local_config: std::rc::Rc<String> = std::rc::Rc::new(String::from("local"));
-    let built = systasis::systasis_container! {{ {registrations} }}.build::<systasis::app_container::Error>();
+    let built = systasis::systasis_container! {{ {registrations} }}.build::<systasis::container::Error>();
     {after}
 }}
 "#

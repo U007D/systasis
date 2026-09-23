@@ -1,7 +1,7 @@
 //! Dyn target queries select the opted-in trait without changing static lookup.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 macro_rules! scenario {
     ($module:ident, ($($requirements:tt)*), $guard:path) => {

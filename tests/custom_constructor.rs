@@ -5,7 +5,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 struct Service(String);
 trait IService {}

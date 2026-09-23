@@ -141,19 +141,19 @@ mod returned_guard {
     trait IGuard {}
     impl IGuard for systasis::Ref<'_, Value> {}
     #[systasis::container]
-    fn guards() -> Result<(), systasis::app_container::Error> {
+    fn guards() -> Result<(), systasis::container::Error> {
         let container = systasis::systasis_container! {
             register_value!(Value([9; 16]): Value as IValue);
-            register_type_with!(systasis::Ref<'_, Value> as IGuard, try || -> Result<systasis::Ref<'_, Value>, systasis::app_container::Error> {
+            register_type_with!(systasis::Ref<'_, Value> as IGuard, try || -> Result<systasis::Ref<'_, Value>, systasis::container::Error> {
                 try_resolve_ref!(IValue)
             });
-        }.build::<systasis::app_container::Error>()?;
+        }.build::<systasis::container::Error>()?;
         {
             let guard = container.try_resolve_i_guard()?;
             assert_eq!(guard.0, [9; 16]);
             assert!(matches!(
                 container.try_resolve_i_value_ref_mut(),
-                Err(systasis::app_container::Error::ValueAccessContention)
+                Err(systasis::container::Error::ValueAccessContention)
             ));
         }
         container.try_resolve_i_value_ref_mut()?.0[0] = 3;

@@ -16,7 +16,7 @@ impl ILength for usize {}
 #[systasis::container]
 #[test]
 fn dyn_references_do_not_require_static_implementation_data()
--> Result<(), systasis::app_container::Error> {
+-> Result<(), systasis::container::Error> {
     let input = String::from("borrowed");
     let container = systasis::systasis_container! {
         register_value!(Logger(&input): Logger<'_> as dyn ILogger);
@@ -26,7 +26,7 @@ fn dyn_references_do_not_require_static_implementation_data()
             logger.text().len()
         }: usize as ILength);
     }
-    .build::<systasis::app_container::Error>()?;
+    .build::<systasis::container::Error>()?;
     assert_eq!(container.resolve_i_length(), 8);
     assert_eq!(container.try_resolve_i_logger_dyn_ref()?.text(), input);
     Ok(())

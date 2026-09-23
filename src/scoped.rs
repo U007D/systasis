@@ -41,7 +41,7 @@ use core::cell::{Ref as LocalRef, RefMut as LocalRefMut};
 use core::marker::PhantomData;
 
 use crate::{
-    app_container::Error,
+    container::Error,
     fresh::FreshSlot,
     storage::{CopySlot, LocalTakeSlot, ReadSlot, TakeSlot},
 };

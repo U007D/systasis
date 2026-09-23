@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 use systasis::{
     __private::{LocalTakeSlot, ReadSlot},
-    app_container::Error,
+    container::Error,
 };
 
 #[test]

@@ -9,7 +9,7 @@ use std::{
     pin::pin,
     task::{Context, Poll, Waker},
 };
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 fn pending(future: impl Future<Output = ()>, inspect_suspended: impl FnOnce()) {
     let mut future = pin!(future);

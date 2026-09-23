@@ -2,7 +2,7 @@
 #![deny(warnings)]
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IDatabase {}
 impl IDatabase for String {}

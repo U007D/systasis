@@ -47,7 +47,7 @@ mod siblings {
 
 mod guarded {
     use super::imported;
-    use systasis::app_container::Error;
+    use systasis::container::Error;
     struct View<'a>(systasis::Ref<'a, String>);
     trait IView {}
     impl IView for View<'_> {}
@@ -91,7 +91,7 @@ fn rust_control_glob_shadows_outer_callable() {
 }
 
 mod child_hygiene {
-    use systasis::app_container::Error;
+    use systasis::container::Error;
     trait IDatabase {}
     impl IDatabase for String {}
 
@@ -165,7 +165,7 @@ mod caller_binding_hygiene {
 
 mod unused_context_generics {
     use core::marker::PhantomData;
-    use systasis::app_container::Error;
+    use systasis::container::Error;
     struct Number(u32);
     trait INumber {}
     impl INumber for Number {}

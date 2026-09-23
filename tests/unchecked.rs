@@ -1,7 +1,7 @@
 //! Unchecked operations retain occupancy and nonblocking guard behavior.
 #![cfg(feature = "resolve_unchecked")]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IValue {}
 impl IValue for String {}

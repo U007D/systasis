@@ -1,6 +1,6 @@
 //! Nonblocking parking_lot storage with transferable guards and no poisoning.
 
-use crate::app_container::Error;
+use crate::container::Error;
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},

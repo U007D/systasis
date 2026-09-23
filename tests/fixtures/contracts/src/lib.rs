@@ -1,7 +1,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
-use systasis::{Fallible, app_container::Error};
+use systasis::{Fallible, container::Error};
 
 /// Positive control for the generated path in no_std target compilation.
 pub mod generated {

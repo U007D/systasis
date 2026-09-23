@@ -1,6 +1,6 @@
 //! Generic child payloads and constructor chains retain authored backing lifetimes.
 #![forbid(unsafe_code)]
-use systasis::app_container::Error;
+use systasis::container::Error;
 struct Private(String);
 trait IData {
     fn text(&self) -> &str;

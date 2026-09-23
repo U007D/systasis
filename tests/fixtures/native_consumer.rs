@@ -33,7 +33,7 @@ mod parent {
 
 mod borrowing_parent {
     use native_provider::borrowed_child::{SystasisContainer as Child, Value};
-    use systasis::app_container::Error;
+    use systasis::container::Error;
 
     struct View<'a, 'env>(systasis::Ref<'a, Value<'env>>);
     trait IView {}
@@ -68,7 +68,7 @@ mod borrowing_parent {
 
 mod nested_borrowing_parent {
     use native_provider::{borrowed_branch::SystasisContainer as Branch, borrowed_child::Value};
-    use systasis::app_container::Error;
+    use systasis::container::Error;
 
     struct View<'a, 'env>(systasis::Ref<'a, Value<'env>>);
     trait IView {}

@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use std::{sync::mpsc, thread, time::Duration};
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Database<'a> {

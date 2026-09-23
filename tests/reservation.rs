@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use systasis::{__private::TakeSlot, Ref, app_container::Error};
+use systasis::{__private::TakeSlot, Ref, container::Error};
 
 fn assert_contended<T>(result: Result<T, Error>) {
     assert!(matches!(result, Err(Error::ValueAccessContention)));

@@ -1,6 +1,6 @@
 //! Public error behavior in both runtime configurations.
 use std::error::Error as _;
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 #[test]
 fn resolution_errors_support_the_required_value_traits() {
@@ -42,4 +42,37 @@ fn error_has_only_consumption_and_contention() {
     }
     assert!(classify(Error::ValueAlreadyConsumed));
     assert!(!classify(Error::ValueAccessContention));
+}
+
+mod shared_name {
+    use systasis::{container, systasis_container};
+
+    trait IValue {}
+    impl IValue for String {}
+
+    #[container]
+    fn make(value: String) -> Result<SystasisContainer, container::Error> {
+        let builder = systasis_container! {
+            register_value!(value: String as IValue);
+        };
+        builder.build()
+    }
+
+    #[test]
+    fn error_module_and_attribute_share_one_import() -> Result<(), container::Error> {
+        let container = make(String::from("value"))?;
+        let guard = container.try_resolve_i_value_ref()?;
+        assert_eq!(&*guard, "value");
+        assert_eq!(
+            container.try_resolve_i_value(),
+            Err(container::Error::ValueAccessContention)
+        );
+        drop(guard);
+        assert_eq!(container.try_resolve_i_value()?, "value");
+        assert_eq!(
+            container.try_resolve_i_value(),
+            Err(container::Error::ValueAlreadyConsumed)
+        );
+        Ok(())
+    }
 }

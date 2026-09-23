@@ -50,7 +50,7 @@ mod inferred {
 }
 
 mod inferred_capture_with_guard {
-    use systasis::app_container::Error;
+    use systasis::container::Error;
 
     struct View<'a>(systasis::RefMut<'a, String>, usize);
     trait IView {}

@@ -1,6 +1,6 @@
 //! Dyn type lookup must allow a shorter borrow of an intermediate container.
 #![forbid(unsafe_code)]
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod leaf {
     pub trait IValue {

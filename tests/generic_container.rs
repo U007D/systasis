@@ -1,7 +1,7 @@
 //! Generic declarations retain their registration-site API after instantiation.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IValue {}
 impl<T> IValue for T {}

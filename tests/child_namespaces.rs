@@ -1,6 +1,6 @@
 //! Namespace suffixes in child paths preserve registration identity and types.
 #![forbid(unsafe_code)]
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod child {
     pub trait IValue {

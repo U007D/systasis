@@ -1,7 +1,7 @@
 //! Complete trait groups share one value and one order-independent identity.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IReader {}
 trait IWriter {}

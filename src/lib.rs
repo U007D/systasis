@@ -2,7 +2,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-pub mod app_container;
+pub mod container;
 
 mod builder;
 
@@ -29,7 +29,7 @@ pub mod __private {
         CopyFallback, CopyKnown, CopySlot, CopyUnknown, DetectCopy, LocalTakeSlot, Pick, Policy,
         ReadSlot, Select, TakeSlot, verify_generic_fallback,
     };
-    pub use crate::{Ref, RefMut, app_container::Error};
+    pub use crate::{Ref, RefMut, container::Error};
     pub use systasis_macros::{__SystasisSelectConfiguration, __systasis_erase_configuration};
 
     pub fn split<T, E>(result: Result<T, E>) -> (Option<T>, Option<E>) {

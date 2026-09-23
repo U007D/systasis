@@ -2,7 +2,7 @@
 //! Reserved-name collision probes remain research evidence, not supported usage.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod imported {
     // Ordinary names resembling implementation roles remain available to callers.

@@ -1,7 +1,7 @@
 //! Checked generated access retains locks and preserves cloning semantics.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 macro_rules! scenario {
     ($module:ident, ($($requirements:tt)*)) => {

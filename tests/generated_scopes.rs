@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use systasis::{
-    app_container::Error,
+    container::Error,
     scoped::{
         AsScope, BorrowContext,
         mask::{Empty, Mask},

@@ -27,7 +27,7 @@ mod caller_local {
         let built = systasis::systasis_container! {
             register_value!(__systasis_error: String as IValue);
         }
-        .build::<systasis::app_container::Error>();
+        .build::<systasis::container::Error>();
 
         assert_eq!(
             built.unwrap().try_resolve_i_value().unwrap(),
@@ -37,7 +37,7 @@ mod caller_local {
 }
 
 mod caller_result_alias {
-    type Result<T> = core::result::Result<T, systasis::app_container::Error>;
+    type Result<T> = core::result::Result<T, systasis::container::Error>;
 
     trait IValue {}
     impl IValue for String {}
@@ -48,7 +48,7 @@ mod caller_result_alias {
         let built = systasis::systasis_container! {
             register_value!(String::from("value"): String as IValue);
         }
-        .build::<systasis::app_container::Error>();
+        .build::<systasis::container::Error>();
 
         assert_eq!(built?.try_resolve_i_value()?, "value");
         Ok(())
@@ -65,7 +65,7 @@ mod annotated_coercion {
         let built = systasis::systasis_container! {
             register_value!(Box::new([1_u8]): Box<[u8]> as IValue);
         }
-        .build::<systasis::app_container::Error>();
+        .build::<systasis::container::Error>();
 
         let value: Box<[u8]> = built.unwrap().try_resolve_i_value().unwrap();
         assert_eq!(&*value, &[1]);

@@ -6,7 +6,7 @@ mod support;
 
 use systasis::{
     __private::{CopySlot, FreshSlot, LocalTakeSlot, ReadSlot, TakeSlot},
-    app_container::Error,
+    container::Error,
     scoped::{SlotAccess, op},
 };
 
@@ -159,7 +159,7 @@ fn cross_crate_aliases_preserve_metadata_and_restricted_guard_lifetimes() {
         r#"
 #![no_std]
 #![forbid(unsafe_code)]
-use systasis::{__private::TakeSlot, scoped::*, app_container::Error, Ref};
+use systasis::{__private::TakeSlot, scoped::*, container::Error, Ref};
 pub struct ValueKey;
 pub struct NamedNamespace;
 pub struct ChildKey;

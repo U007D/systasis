@@ -4,7 +4,7 @@
 #[cfg(all(test, not(miri)))]
 mod support;
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod child {
     pub trait IValue {}
@@ -15,7 +15,7 @@ mod child {
     pub fn run(value: String, call: impl FnOnce(&SystasisContainer)) {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: String as IValue);
-            register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> {
+            register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> {
                 Ok(try_resolve!(IValue)?.len())
             });
         }.build();
@@ -148,7 +148,7 @@ mod child {{
     fn build() {{
         let Ok(container) = systasis::systasis_container! {{
             register_value!(String::new(): String as IValue);
-            register_type_with!(usize as ISize, try || -> Result<usize, systasis::app_container::Error> {{ Ok(try_resolve!(IValue)?.len()) }});
+            register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> {{ Ok(try_resolve!(IValue)?.len()) }});
         }}.build();
     }}
 }}
@@ -159,7 +159,7 @@ fn parent(primary: &child::SystasisContainer, replica: &child::SystasisContainer
     let Ok(container) = systasis::systasis_container! {{
         register_container!(primary: &child::SystasisContainer);
         register_container!(replica: &child::SystasisContainer);
-        register_type_with!(usize as ILength, try || -> Result<usize, systasis::app_container::Error> {{ Ok(try_resolve_ref_from!(IValue, primary)?.len()) }});
+        register_type_with!(usize as ILength, try || -> Result<usize, systasis::container::Error> {{ Ok(try_resolve_ref_from!(IValue, primary)?.len()) }});
     }}.build();
     let _ = {access};
 }}

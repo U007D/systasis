@@ -2,7 +2,7 @@
 //! Documentation continues to show explicit registration annotations.
 #![forbid(unsafe_code)]
 
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 trait IText {}
 impl IText for String {}

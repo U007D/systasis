@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use std::{cell::Cell, rc::Rc};
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 #[derive(Debug)]
 struct Resource {

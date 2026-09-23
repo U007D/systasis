@@ -16,7 +16,7 @@ mod unavailable {
     #[systasis::container]
     #[test]
     fn selected_slot_errors_do_not_fall_back_to_caller_values() {
-        use systasis::app_container::Error;
+        use systasis::container::Error;
         let outside = String::from("outside");
         let _: &dyn IValue = &outside;
         let Ok(container) = systasis::systasis_container! {

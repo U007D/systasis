@@ -1,6 +1,6 @@
 //! Child projections carry declaration-site Copy policy into receiving storage.
 #![forbid(unsafe_code)]
-use systasis::app_container::Error;
+use systasis::container::Error;
 
 mod child {
     pub trait IValue {}

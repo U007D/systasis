@@ -12,7 +12,7 @@ use std::{
 use systasis::{
     __private::{CopySlot, TakeSlot},
     Ref, RefMut,
-    app_container::Error,
+    container::Error,
 };
 
 fn assert_consumed<T>(result: Result<T, Error>) {
