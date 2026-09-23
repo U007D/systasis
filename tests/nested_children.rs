@@ -1,8 +1,5 @@
-//! Nested descriptors retain child exclusions and independent sibling state.
+//! Nested named descriptors preserve repeatable cloning and independent sibling state.
 #![forbid(unsafe_code)]
-
-#[cfg(all(test, not(miri)))]
-mod support;
 
 use systasis::container::Error;
 
@@ -16,7 +13,7 @@ mod leaf {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: String as IValue);
             register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> {
-                Ok(try_resolve!(IValue)?.len())
+                Ok(resolve_clone!(IValue).len())
             });
         }.build();
         call(&container);
@@ -37,7 +34,7 @@ mod middle {
             register_container!(primary: &'a leaf::SystasisContainer);
             register_container!(replica: &'a leaf::SystasisContainer);
             register_type_with!(usize as ILength, try || -> Result<usize, Error> {
-                Ok(try_resolve_ref_from!(IValue, primary)?.len())
+                Ok(resolve_clone_from!(IValue, primary).len())
             });
         }
         .build();
@@ -58,85 +55,35 @@ mod outer {
     pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_container!(branch: &middle::SystasisContainer<'a>);
-            register_value!(try_resolve_from!(IValue, branch::replica)?: resolve_type_from!(IValue, branch::replica) as ICopied);
+            register_value!(resolve_clone_from!(IValue, branch::replica): resolve_type_from!(IValue, branch::replica) as ICopied);
             register_type_with!(usize as IObserved, try || -> Result<usize, Error> {
-                Ok(try_resolve_ref_from!(IValue, branch::primary)?.len())
+                Ok(resolve_clone_from!(IValue, branch::primary).len())
             });
         }
         .build::<Error>()?;
         assert_eq!(receive(container.branch())?, 7);
         assert_eq!(container.try_resolve_i_observed()?, 7);
+        let mut cloned = container.branch().primary().resolve_i_value_clone();
+        assert_eq!(cloned, "primary");
+        cloned.push('!');
+        assert_eq!(cloned, "primary!");
+        assert_eq!(receive(container.branch())?, 7);
+        assert_eq!(container.try_resolve_i_observed()?, 7);
+        assert_eq!(container.branch().primary().try_resolve_i_size()?, 7);
+        assert_eq!(container.resolve_i_copied_clone(), "replica");
         assert_eq!(
-            &*container.branch().primary().try_resolve_i_value_ref()?,
-            "primary"
+            container.branch().replica().resolve_i_value_clone(),
+            "replica"
         );
-        container
-            .branch()
-            .primary()
-            .try_resolve_i_value_ref_mut()?
-            .push('!');
-        assert_eq!(receive(container.branch())?, 8);
-        assert_eq!(container.try_resolve_i_observed()?, 8);
-        assert_eq!(container.try_resolve_i_copied()?, "replica");
-        // NEGATIVE_ACCESS
         Ok(())
     }
 }
 
 #[test]
-fn nested_scopes_preserve_borrows_and_leave_siblings_consumable() {
+fn nested_named_scopes_preserve_clone_access_and_independent_siblings() {
     leaf::run(String::from("primary"), |primary| {
         leaf::run(String::from("replica"), |replica| {
             middle::run(primary, replica, |branch| outer::run(branch).unwrap());
         });
     });
-}
-
-#[test]
-#[cfg(not(miri))]
-fn nested_scopes_cannot_restore_direct_or_indirect_ownership() {
-    use std::{fs, path::PathBuf, process::Command};
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let backend = if cfg!(feature = "std") {
-        "std"
-    } else {
-        "no-std"
-    };
-    let target = root.join("target/nested-child-contracts").join(backend);
-    let mut build = Command::new(env!("CARGO"));
-    build
-        .current_dir(&root)
-        .args(["build", "--lib", "--offline", "--locked", "--target-dir"])
-        .arg(&target);
-    if !cfg!(feature = "std") {
-        build.arg("--no-default-features");
-    }
-    let artifacts = support::Artifacts::build(&mut build);
-    for method in ["try_resolve_i_value", "try_resolve_i_size"] {
-        let source = include_str!("nested_children.rs").replace(
-            concat!("// NEGATIVE", "_ACCESS"),
-            &format!("let _ = container.branch().primary().{method}();"),
-        );
-        let path = target.join(format!("{method}.rs"));
-        fs::write(&path, source).unwrap();
-        let output = artifacts
-            .rustc()
-            .args([
-                "--edition=2024",
-                "--crate-type=lib",
-                "--emit=metadata",
-                "--error-format=json",
-            ])
-            .arg(&path)
-            .arg("--out-dir")
-            .arg(&target)
-            .output()
-            .unwrap();
-        let diagnostics = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{method} unexpectedly compiled");
-        assert!(
-            diagnostics.contains("\"code\":\"E0599\""),
-            "{method}: {diagnostics}"
-        );
-    }
 }

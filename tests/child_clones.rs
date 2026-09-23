@@ -1,4 +1,4 @@
-//! Parent constructor borrows exclude child ownership without restricting siblings.
+//! Parent constructors clone child registrations without changing either sibling.
 #![forbid(unsafe_code)]
 
 #[cfg(all(test, not(miri)))]
@@ -16,7 +16,7 @@ mod child {
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: String as IValue);
             register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> {
-                Ok(try_resolve!(IValue)?.len())
+                Ok(resolve_clone!(IValue).len())
             });
         }.build();
         call(&container);
@@ -36,21 +36,24 @@ mod parent {
             register_container!(primary: &child::SystasisContainer);
             register_container!(replica: &child::SystasisContainer);
             register_type_with!(usize as ILength, try || -> Result<usize, Error> {
-                Ok(try_resolve_ref_from!(IValue, primary)?.len())
+                Ok(resolve_clone_from!(IValue, primary).len())
             });
         }
         .build::<Error>()?;
         assert_eq!(container.try_resolve_i_length()?, 7);
-        assert_eq!(&*container.primary().try_resolve_i_value_ref()?, "primary");
-        container.primary().try_resolve_i_value_ref_mut()?.push('!');
-        assert_eq!(container.try_resolve_i_length()?, 8);
-        assert_eq!(container.replica().try_resolve_i_value()?, "replica");
+        let mut cloned = container.primary().resolve_i_value_clone();
+        assert_eq!(cloned, "primary");
+        cloned.push('!');
+        assert_eq!(cloned, "primary!");
+        assert_eq!(container.try_resolve_i_length()?, 7);
+        assert_eq!(container.primary().try_resolve_i_size()?, 7);
+        assert_eq!(container.replica().resolve_i_value_clone(), "replica");
         Ok(())
     }
 }
 
 #[test]
-fn child_borrow_retains_mutable_access_and_does_not_restrict_sibling() {
+fn cloned_child_values_are_independent_and_do_not_restrict_siblings() {
     child::run(String::from("primary"), |primary| {
         child::run(String::from("replica"), |replica| {
             parent::run(primary, replica).unwrap()
@@ -60,7 +63,7 @@ fn child_borrow_retains_mutable_access_and_does_not_restrict_sibling() {
 
 #[test]
 #[cfg(not(miri))]
-fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
+fn child_context_preserves_clone_access_visibility_and_backing_lifetime() {
     use std::{fs, path::PathBuf, process::Command};
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let backend = if cfg!(feature = "std") {
@@ -68,7 +71,7 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
     } else {
         "no-std"
     };
-    let target = root.join("target/child-borrow-contracts").join(backend);
+    let target = root.join("target/child-clone-contracts").join(backend);
     let mut build = Command::new(env!("CARGO"));
     build
         .current_dir(&root)
@@ -80,44 +83,29 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
     let artifacts = support::Artifacts::build(&mut build);
     for (native, (name, access, rejection)) in [
         (
-            "take",
-            "container.primary().try_resolve_i_value()",
-            Some("\"code\":\"E0599\""),
+            "clone",
+            "container.primary().resolve_i_value_clone()",
+            None,
         ),
         (
-            "indirect_take",
+            "factory",
             "container.primary().try_resolve_i_size()",
-            Some("\"code\":\"E0599\""),
-        ),
-        (
-            "shared",
-            "container.primary().try_resolve_i_value_ref()",
             None,
         ),
         (
-            "mutable",
-            "container.primary().try_resolve_i_value_ref_mut()",
+            "sibling_clone",
+            "container.replica().resolve_i_value_clone()",
             None,
         ),
         (
-            "sibling_take",
-            "container.replica().try_resolve_i_value()",
+            "context_clone",
+            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); context.descriptor().resolve_i_value_clone() }",
             None,
         ),
         (
-            "context_cannot_restore_take",
-            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); context.descriptor().try_resolve_i_value() }",
-            Some("\"code\":\"E0599\""),
-        ),
-        (
-            "context_shared",
-            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); context.descriptor().try_resolve_i_value_ref() }",
-            None,
-        ),
-        (
-            "context_cannot_clear_mask",
+            "context_with_empty_mask",
             "systasis::scoped::BorrowContext::<'_, child::SystasisContainer, systasis::scoped::mask::Empty>::borrow_context(container.primary())",
-            Some("\"code\":\"E0277\""),
+            None,
         ),
         (
             "context_backing_is_private",
@@ -127,11 +115,6 @@ fn borrowed_child_cannot_be_consumed_directly_or_through_its_factory() {
         (
             "context_cannot_extend_backing_lifetime",
             "{ let context: systasis::scoped::BorrowedContext<'static, child::SystasisContainer, _> = systasis::scoped::BorrowContext::borrow_context(container.primary()); context }",
-            Some("lifetime may not live long enough"),
-        ),
-        (
-            "context_guard_cannot_extend_backing_lifetime",
-            "{ let context = systasis::scoped::BorrowContext::borrow_context(container.primary()); let guard: systasis::Ref<'static, String> = context.descriptor().try_resolve_i_value_ref().unwrap(); guard }",
             Some("lifetime may not live long enough"),
         ),
     ]
@@ -148,7 +131,7 @@ mod child {{
     fn build() {{
         let Ok(container) = systasis::systasis_container! {{
             register_value!(String::new(): String as IValue);
-            register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> {{ Ok(try_resolve!(IValue)?.len()) }});
+            register_type_with!(usize as ISize, try || -> Result<usize, systasis::container::Error> {{ Ok(resolve_clone!(IValue).len()) }});
         }}.build();
     }}
 }}
@@ -159,7 +142,7 @@ fn parent(primary: &child::SystasisContainer, replica: &child::SystasisContainer
     let Ok(container) = systasis::systasis_container! {{
         register_container!(primary: &child::SystasisContainer);
         register_container!(replica: &child::SystasisContainer);
-        register_type_with!(usize as ILength, try || -> Result<usize, systasis::container::Error> {{ Ok(try_resolve_ref_from!(IValue, primary)?.len()) }});
+        register_type_with!(usize as ILength, try || -> Result<usize, systasis::container::Error> {{ Ok(resolve_clone_from!(IValue, primary).len()) }});
     }}.build();
     let _ = {access};
 }}
@@ -168,8 +151,8 @@ fn main() {{}}
         );
         let source = if native {
             source.replace(
-                "Ok(try_resolve_ref_from!(IValue, primary)?.len())",
-                "{ let value = try_resolve_ref_from!(IValue, primary)?; assert!(value.is_empty()); Ok(value.len()) }",
+                "Ok(resolve_clone_from!(IValue, primary).len())",
+                "{ let value = resolve_clone_from!(IValue, primary); assert!(value.is_empty()); Ok(value.len()) }",
             )
         } else {
             source

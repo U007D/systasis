@@ -1,4 +1,4 @@
-//! Pass only a named subcontainer's permitted registrations to a component.
+//! Pass a named subcontainer to a component instead of the whole container.
 #![deny(warnings)]
 #![forbid(unsafe_code)]
 
@@ -14,8 +14,8 @@ mod application {
     impl ILength for usize {}
 
     // This function receives the database scope, not the application container.
-    fn database_length(database: &primary::SubContainer<'_>) -> Result<usize, Error> {
-        Ok(database.try_resolve_i_database_ref()?.len())
+    fn database_length(database: &primary::SubContainer<'_>) -> usize {
+        database.resolve_i_database_clone().len()
     }
 
     #[systasis::container]
@@ -25,18 +25,17 @@ mod application {
             register_type_with!(usize as ILength, try || -> Result<usize, Error> {
                 // IDatabase identifies a registration in primary. No import
                 // of the surrounding Rust trait is needed for this query.
-                Ok(try_resolve_ref_from!(IDatabase, primary)?.len())
+                Ok(resolve_clone_from!(IDatabase, primary).len())
             });
         }
         .build();
 
-        assert_eq!(database_length(container.primary())?, 11);
+        assert_eq!(database_length(container.primary()), 11);
         assert_eq!(container.try_resolve_i_length()?, 11);
-        container
-            .primary()
-            .try_resolve_i_database_ref_mut()?
-            .push('!');
-        assert_eq!(database_length(container.primary())?, 12);
+        let mut cloned = container.primary().resolve_i_database_clone();
+        cloned.push('!');
+        assert_eq!(cloned, "application!");
+        assert_eq!(database_length(container.primary()), 11);
         Ok(())
     }
 }
@@ -48,6 +47,6 @@ fn main() -> Result<(), Error> {
     }
     .build();
 
-    // The generated owner stays in main's scope throughout application::run.
+    // main owns the container; application::run borrows it.
     application::run(&database)
 }

@@ -4,9 +4,9 @@
 struct Borrowed<'a>(&'a str);
 trait IValue {}
 impl IValue for Borrowed<'_> {}
-struct View<'a, 'env>(systasis::Ref<'a, Borrowed<'env>>);
+struct View<'env>(Borrowed<'env>);
 trait IView {}
-impl IView for View<'_, '_> {}
+impl IView for View<'_> {}
 
 mod child {
     use super::*;
@@ -28,19 +28,21 @@ mod parent {
     pub fn check<'a, 'env>(primary: &'a child::SystasisContainer<'env>) {
         let Ok(container) = systasis::systasis_container! {
             register_container!(primary: &'a child::SystasisContainer<'env>);
-            register_type_with!(View<'_, 'env> as IView, try || -> Result<View<'_, 'env>, systasis::container::Error> {
-                Ok(View(try_resolve_ref_from!(IValue, primary)?))
+            register_type_with!(View<'env> as IView, try || -> Result<View<'env>, systasis::container::Error> {
+                Ok(View(try_resolve_from!(IValue, primary)?))
             });
         }
         .build();
         let view = container.try_resolve_i_view().unwrap();
         assert_eq!(view.0.0, "borrowed");
         assert!(matches!(
-            primary.try_resolve_i_value_ref_mut(),
-            Err(systasis::container::Error::ValueAccessContention)
+            primary.try_resolve_i_value(),
+            Err(systasis::container::Error::ValueAlreadyConsumed)
         ));
-        drop(view);
-        assert!(primary.try_resolve_i_value_ref_mut().is_ok());
+        assert!(matches!(
+            container.try_resolve_i_view(),
+            Err(systasis::container::Error::ValueAlreadyConsumed)
+        ));
     }
 }
 

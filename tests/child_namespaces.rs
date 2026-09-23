@@ -36,26 +36,25 @@ mod outer {
     pub fn run(primary: &child::SystasisContainer) -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_container!(primary: &child::SystasisContainer);
-            register_value!(try_resolve_clone_from!(IValue, primary::metrics)?: resolve_type_from!(IValue, primary::metrics) as ICopied);
+            register_value!(resolve_clone_from!(IValue, primary::metrics): resolve_type_from!(IValue, primary::metrics) as ICopied);
             register_value!({
-                let guard = try_resolve_dyn_ref_from!(IValue, primary::metrics)?;
-                let value: &resolve_type_from!(dyn IValue, primary::metrics) = &*guard;
+                let cloned = resolve_clone_from!(IValue, primary::metrics);
+                let value: &resolve_type_from!(dyn IValue, primary::metrics) = &cloned;
                 value.length()
             }: usize as ILength);
-            register_value!(try_resolve_ref_from!(IValue, primary::default)?.len(): usize as IDefault);
+            register_value!(resolve_clone_from!(IValue, primary::default).len(): usize as IDefault);
             register_type_with!(usize as ILater, try || -> Result<usize, Error> {
-                Ok(try_resolve_ref_from!(IValue, primary::metrics)?.len())
+                Ok(resolve_clone_from!(IValue, primary::metrics).len())
             });
         }.build::<Error>()?;
         assert_eq!(container.resolve_i_length(), 7);
         assert_eq!(container.resolve_i_default(), 7);
-        assert_eq!(container.try_resolve_i_copied()?, "metrics");
+        assert_eq!(container.resolve_i_copied_clone(), "metrics");
         assert_eq!(container.try_resolve_i_later()?, 7);
-        container
-            .primary()
-            .try_resolve_i_value_ref_mut_in_metrics()?
-            .push('!');
-        assert_eq!(container.try_resolve_i_later()?, 8);
+        let mut cloned = container.primary().resolve_i_value_clone_in_metrics();
+        cloned.push('!');
+        assert_eq!(cloned, "metrics!");
+        assert_eq!(container.try_resolve_i_later()?, 7);
         Ok(())
     }
 }
