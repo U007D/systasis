@@ -7,6 +7,18 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-23 clone-prefix naming (`07d3858`): public methods are
+`resolve_clone_<trait>` and `try_resolve_clone_<trait>`, with namespace suffixes
+unchanged. `clone_prefix` checks Sender<Message> without Clone/Default on Message,
+infallible try aliases, explicit default namespaces, sorted groups and child
+forwarding. Existing compiler fixtures verify collisions and method availability.
+Full optional-feature workspace suites pass on std and no_std: 499 passed,
+zero failed, four intentionally ignored per backend, including 16 usage doctests.
+Warnings-denied all-target Clippy passes on both backends. Formatting/diff checks
+pass. Logs: `/private/tmp/systasis-clone-prefix-{std,nostd}.log` and
+`/private/tmp/systasis-clone-prefix-clippy{,-nostd}.log`.
+No production dependency, toolchain, storage-policy or unsafe-code changes.
+
 2026-09-23 owned-only resolver policy: Copy storage offers repeatable resolve/try;
 Clone-only storage offers repeatable clone/try-clone without consuming access;
 other stored values transfer once through try-resolve. Infallible try results use

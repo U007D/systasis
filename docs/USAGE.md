@@ -279,7 +279,7 @@ fn main() {
         register_value!(rx: mpsc::Receiver<resolve_type!(IMessage)> as IReceiver);
     }.build();
 
-    let sender = container.resolve_i_sender_clone();
+    let sender = container.resolve_clone_i_sender();
     let receiver = container.try_resolve_i_receiver().unwrap();
     assert!(sender.send(Message(42)).is_ok());
     assert_eq!(receiver.recv().unwrap().0, 42);
@@ -301,7 +301,7 @@ and `Error` is `systasis::container::Error`.
 | Registration | Resolver | Try resolver |
 | --- | --- | --- |
 | Stored Copy | `resolve_i_value() -> T` | `try_resolve_i_value() -> Result<T, !>` |
-| Stored Clone, not Copy | `resolve_i_value_clone() -> T` | `try_resolve_i_value_clone() -> Result<T, !>` |
+| Stored Clone, not Copy | `resolve_clone_i_value() -> T` | `try_resolve_clone_i_value() -> Result<T, !>` |
 | Stored neither | — | `try_resolve_i_value() -> Result<T, Error>` |
 | Fresh Default or infallible custom | `resolve_i_value() -> T` | `try_resolve_i_value() -> Result<T, !>` |
 | Type registration without Default or a constructor | — | — |
@@ -361,6 +361,10 @@ fn main() -> Result<(), Error> {
 
 ### Cloning a stored value
 
+Clone methods place the operation before the trait name:
+`resolve_clone_i_label()` and `try_resolve_clone_i_label()`.
+Named namespaces append `_in_name`, as in `resolve_clone_i_label_in_test()`.
+
 Stored Clone-only values use immutable storage without locks. Both clone
 resolvers invoke `Clone::clone`; neither consumes the original. Copy resolution
 does not call Clone, and Copy/fresh registrations have no clone resolver.
@@ -375,9 +379,9 @@ fn main() {
         register_value!(String::from("stored"): String as ILabel);
     }.build();
 
-    let mut first: String = container.resolve_i_label_clone();
+    let mut first: String = container.resolve_clone_i_label();
     first.push('!');
-    let Ok(second) = container.try_resolve_i_label_clone();
+    let Ok(second) = container.try_resolve_clone_i_label();
     assert_eq!(first, "stored!");
     assert_eq!(second, "stored");
 }
@@ -593,7 +597,7 @@ fn main() -> Result<(), Error> {
     }.build::<Error>()?;
 
     assert_eq!(container.resolve_i_observed(), 5);
-    let concrete = container.resolve_i_length_i_read_clone();
+    let concrete = container.resolve_clone_i_length_i_read();
     let dynamic: &dyn IRead = &concrete;
     assert_eq!(dynamic.text(), "group");
     assert_eq!(concrete, "group");
@@ -662,7 +666,7 @@ mod application {
 
     // This component receives only the database scope.
     fn database_length(database: &primary::SubContainer<'_>) -> usize {
-        database.resolve_i_database_clone().len()
+        database.resolve_clone_i_database().len()
     }
 
     #[systasis::container]
@@ -694,7 +698,7 @@ needed inside `application` for its registration-name query.
 
 Inside a registration, nested paths use
 `resolve_clone_from!(IDatabase, branch::primary)`; outside, use
-`container.branch().primary().resolve_i_database_clone()`. Two instances of one
+`container.branch().primary().resolve_clone_i_database()`. Two instances of one
 child type can be composed under different names. Child owners must remain alive
 while their composed scopes are used. Ownership transfers through any path use
 the same slot; composing a child does not duplicate its values.
