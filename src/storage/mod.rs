@@ -6,7 +6,8 @@ mod unchecked;
 pub use local::LocalTakeSlot;
 mod policy;
 pub use policy::{
-    CopyFallback, CopyKnown, CopyUnknown, DetectCopy, Pick, Policy, Select, verify_generic_fallback,
+    CloneFallback, CloneKnown, CloneUnknown, CopyFallback, CopyKnown, CopyUnknown, DetectClone,
+    DetectCopy, Pick, Policy, Select, verify_generic_clone_fallback, verify_generic_fallback,
 };
 
 #[cfg(not(feature = "std"))]
@@ -42,6 +43,14 @@ impl<T> ReadSlot<T> {
     {
         self.0.clone()
     }
+
+    /// Clones the immutable value; no availability or locking failure is possible.
+    pub fn try_resolve_clone(&self) -> Result<T, crate::__private::Never>
+    where
+        T: Clone,
+    {
+        Ok(self.resolve_clone())
+    }
 }
 
 /// Plain storage for a registration with established `Copy` behavior.
@@ -62,6 +71,11 @@ impl<T: Copy> CopySlot<T> {
         self.0
     }
 
+    /// Copies the immutable value; no availability or locking failure is possible.
+    pub fn try_resolve(&self) -> Result<T, crate::__private::Never> {
+        Ok(self.resolve())
+    }
+
     /// Explicitly invokes `Clone`, even when its behavior differs from copying.
     #[allow(clippy::clone_on_copy)]
     pub fn resolve_clone(&self) -> T {
@@ -71,5 +85,54 @@ impl<T: Copy> CopySlot<T> {
     /// Borrows the stored value without acquiring a lock.
     pub fn resolve_ref(&self) -> &T {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod value_policy_tests {
+    use super::*;
+    use core::cell::Cell;
+
+    #[test]
+    fn copying_has_an_uninhabited_error_and_is_repeatable() {
+        let slot = CopySlot::new(42);
+        let Ok(first) = slot.try_resolve();
+        let Ok(second) = slot.try_resolve();
+        assert_eq!((first, second), (42, 42));
+    }
+
+    #[test]
+    fn cloning_keeps_the_original_and_calls_clone_each_time() {
+        struct Counted<'a>(&'a Cell<usize>);
+        impl Clone for Counted<'_> {
+            fn clone(&self) -> Self {
+                self.0.set(self.0.get() + 1);
+                Self(self.0)
+            }
+        }
+        let calls = Cell::new(0);
+        let slot = <Policy<false, false, true> as Select<_>>::store(Counted(&calls));
+        let _first = slot.resolve_clone();
+        let Ok(_second) = slot.try_resolve_clone();
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn copy_policy_takes_precedence_over_clone() {
+        let slot: CopySlot<u8> = <Policy<true, false, true> as Select<_>>::store(7);
+        assert_eq!(slot.resolve(), 7);
+    }
+
+    #[test]
+    fn a_mutable_reference_is_transferred_once() {
+        let mut value = 0;
+        let slot = <Policy<false, false> as Select<_>>::store(&mut value);
+        let borrowed = slot.try_resolve().unwrap();
+        *borrowed = 3;
+        assert_eq!(
+            slot.try_resolve(),
+            Err(crate::container::Error::ValueAlreadyConsumed)
+        );
+        assert_eq!(value, 3);
     }
 }

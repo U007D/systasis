@@ -99,10 +99,10 @@ pub trait RebindPolicy<const LOCAL: bool> {
     /// The same Copy decision with the requested local-storage setting.
     type Policy;
 }
-impl<const COPY: bool, const OLD: bool, const LOCAL: bool> RebindPolicy<LOCAL>
-    for crate::__private::Policy<COPY, OLD>
+impl<const COPY: bool, const CLONE: bool, const OLD: bool, const LOCAL: bool> RebindPolicy<LOCAL>
+    for crate::__private::Policy<COPY, OLD, CLONE>
 {
-    type Policy = crate::__private::Policy<COPY, LOCAL>;
+    type Policy = crate::__private::Policy<COPY, LOCAL, CLONE>;
 }
 impl<T, const LOCAL: bool> SlotPolicy<LOCAL> for CopySlot<T> {
     type Policy = crate::__private::Policy<true, LOCAL>;
@@ -114,7 +114,7 @@ impl<T, const LOCAL: bool> SlotPolicy<LOCAL> for LocalTakeSlot<T> {
     type Policy = crate::__private::Policy<false, LOCAL>;
 }
 impl<T, const LOCAL: bool> SlotPolicy<LOCAL> for ReadSlot<T> {
-    type Policy = crate::__private::Policy<false, LOCAL>;
+    type Policy = crate::__private::Policy<false, LOCAL, true>;
 }
 
 /// The explicit trait-object target of an opted-in registration.
@@ -280,6 +280,15 @@ impl<T: Copy> SlotAccess<op::Owned> for CopySlot<T> {
         self.resolve()
     }
 }
+impl<T: Copy> SlotAccess<op::TryOwned> for CopySlot<T> {
+    type Output<'a>
+        = Result<T, crate::__private::Never>
+    where
+        Self: 'a;
+    fn access(&self) -> Self::Output<'_> {
+        self.try_resolve()
+    }
+}
 impl<T: Copy> SlotAccess<op::Shared> for CopySlot<T> {
     type Output<'a>
         = &'a T
@@ -314,6 +323,15 @@ impl<T: Clone> SlotAccess<op::CloneValue> for ReadSlot<T> {
         Self: 'a;
     fn access(&self) -> T {
         self.resolve_clone()
+    }
+}
+impl<T: Clone> SlotAccess<op::TryCloneValue> for ReadSlot<T> {
+    type Output<'a>
+        = Result<T, crate::__private::Never>
+    where
+        Self: 'a;
+    fn access(&self) -> Self::Output<'_> {
+        self.try_resolve_clone()
     }
 }
 impl<T: Default> SlotAccess<op::Owned> for FreshSlot<T> {

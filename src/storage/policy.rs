@@ -1,6 +1,6 @@
 //! Compile-time storage selection used by generated registration code.
 
-use super::{CopySlot, LocalTakeSlot, TakeSlot};
+use super::{CopySlot, LocalTakeSlot, ReadSlot, TakeSlot};
 use core::marker::PhantomData;
 
 /// Probe whose inherent constant wins when the compiler establishes Copy.
@@ -61,9 +61,54 @@ pub trait CopyFallback {
 
 impl<T> CopyFallback for Pick<T> {}
 
+/// Evidence for a registration whose Clone bound is established.
+#[doc(hidden)]
+pub struct CloneKnown;
+#[doc(hidden)]
+pub struct CloneUnknown;
+
+#[doc(hidden)]
+pub trait DetectClone {
+    type Evidence;
+    fn clone_evidence(self) -> Self::Evidence;
+}
+impl<T> DetectClone for &Pick<T> {
+    type Evidence = CloneUnknown;
+    fn clone_evidence(self) -> Self::Evidence {
+        CloneUnknown
+    }
+}
+impl<T: Clone> DetectClone for &&Pick<T> {
+    type Evidence = CloneKnown;
+    fn clone_evidence(self) -> Self::Evidence {
+        CloneKnown
+    }
+}
+
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "generic registration: Clone is known indirectly; add an explicit Clone bound on the registered type"
+)]
+pub trait ValidGenericCloneFallback {}
+impl ValidGenericCloneFallback for CloneUnknown {}
+
+#[doc(hidden)]
+pub fn verify_generic_clone_fallback<E: ValidGenericCloneFallback>(_: E) {}
+
+impl<T: Clone> Pick<T> {
+    /// The registered type supports cloning at this use site.
+    pub const IS_CLONE: bool = true;
+}
+
+#[doc(hidden)]
+pub trait CloneFallback {
+    const IS_CLONE: bool = false;
+}
+impl<T> CloneFallback for Pick<T> {}
+
 /// Storage choice: copying is independent of the explicit local policy.
 #[doc(hidden)]
-pub struct Policy<const COPY: bool, const LOCAL: bool>;
+pub struct Policy<const COPY: bool, const LOCAL: bool, const CLONE: bool = false>;
 
 /// Construct the selected slot without runtime policy dispatch.
 #[doc(hidden)]
@@ -74,10 +119,17 @@ pub trait Select<T> {
     fn store(value: T) -> Self::Slot;
 }
 
-impl<T: Copy, const LOCAL: bool> Select<T> for Policy<true, LOCAL> {
+impl<T: Copy, const LOCAL: bool, const CLONE: bool> Select<T> for Policy<true, LOCAL, CLONE> {
     type Slot = CopySlot<T>;
     fn store(value: T) -> Self::Slot {
         CopySlot::new(value)
+    }
+}
+
+impl<T: Clone, const LOCAL: bool> Select<T> for Policy<false, LOCAL, true> {
+    type Slot = ReadSlot<T>;
+    fn store(value: T) -> Self::Slot {
+        ReadSlot::new(value)
     }
 }
 

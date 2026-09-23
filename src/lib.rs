@@ -26,11 +26,24 @@ pub mod __private {
     pub use crate::factory::{FactorySlot, check_native_constructor_captures};
     pub use crate::fresh::FreshSlot;
     pub use crate::storage::{
-        CopyFallback, CopyKnown, CopySlot, CopyUnknown, DetectCopy, LocalTakeSlot, Pick, Policy,
-        ReadSlot, Select, TakeSlot, verify_generic_fallback,
+        CloneFallback, CloneKnown, CloneUnknown, CopyFallback, CopyKnown, CopySlot, CopyUnknown,
+        DetectClone, DetectCopy, LocalTakeSlot, Pick, Policy, ReadSlot, Select, TakeSlot,
+        verify_generic_clone_fallback, verify_generic_fallback,
     };
     pub use crate::{Ref, RefMut, container::Error};
     pub use systasis_macros::{__SystasisSelectConfiguration, __systasis_erase_configuration};
+
+    /// Extracts the return type of a function pointer.
+    pub trait FunctionOutput {
+        /// The function's return type.
+        type Output;
+    }
+    impl<T> FunctionOutput for fn() -> T {
+        type Output = T;
+    }
+
+    /// The actual never type, named without requiring caller-side feature gates.
+    pub type Never = <fn() -> ! as FunctionOutput>::Output;
 
     pub fn split<T, E>(result: Result<T, E>) -> (Option<T>, Option<E>) {
         match result {
