@@ -9,6 +9,8 @@ mod child;
 mod child_codegen;
 mod child_queries;
 mod configuration;
+mod declaration;
+mod declaration_errors;
 mod dyn_targets;
 mod generate;
 mod generic_policy;
@@ -93,14 +95,12 @@ pub fn container(
 /// Workaround: register an implementation with owned fields and captures.
 /// Not all affected compiler errors include this guidance.
 #[proc_macro]
+#[allow_internal_unstable(type_alias_impl_trait)]
 pub fn systasis_container(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     if input.to_string() == "@ __systasis_marker" {
         return quote::quote!(()).into();
     }
-    syn::Error::new(
-        proc_macro2::Span::call_site(),
-        "bind systasis_container! to a local inside a #[systasis::container] function",
-    )
-    .into_compile_error()
-    .into()
+    declaration::expand(input.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }

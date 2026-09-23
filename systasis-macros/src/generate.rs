@@ -212,9 +212,25 @@ impl VisitMut for Lifetimes {
 }
 
 pub(crate) fn expand(
+    function: ItemFn,
+    local_policy: bool,
+    requirements: &[Ident],
+) -> Result<proc_macro2::TokenStream> {
+    expand_inner(function, local_policy, requirements, None)
+}
+
+pub(crate) fn expand_declaration(
+    function: ItemFn,
+    errors: &mut crate::declaration_errors::Sources,
+) -> Result<proc_macro2::TokenStream> {
+    expand_inner(function, false, &[], Some(errors))
+}
+
+fn expand_inner(
     mut function: ItemFn,
     local_policy: bool,
     requirements: &[Ident],
+    mut build_errors: Option<&mut crate::declaration_errors::Sources>,
 ) -> Result<proc_macro2::TokenStream> {
     let original_generics = &function.sig.generics;
     let type_arguments = original_generics
@@ -1489,7 +1505,10 @@ pub(crate) fn expand(
         }
         for i in &order {
             let slot = &slots[*i];
-            let value = &registrations[*i].value;
+            let mut value = registrations[*i].value.clone();
+            if let Some(errors) = &mut build_errors {
+                errors.visit_expr_mut(&mut value);
+            }
             let policy = &policies[*i];
             let ty = &initializer_types[*i];
             let capture_owner =
