@@ -36,9 +36,9 @@ pub(crate) fn replacements(
     registrations: &[Registration],
     dependencies: &[BTreeSet<usize>],
     building: bool,
-    local_policy: bool,
+    _local_policy: bool,
     turbofish: &Option<proc_macro2::TokenStream>,
-    dynamic: &[Option<syn::Type>],
+    _dynamic: &[Option<syn::Type>],
 ) -> BTreeMap<(usize, String), Expr> {
     let children = children_ident();
     let slot = |index| {
@@ -62,39 +62,24 @@ pub(crate) fn replacements(
             } else {
                 "resolve"
             };
-            let call = if building {
+            let call: Expr = if building {
                 parse_quote!(self::__systasis_injected::#function #turbofish (#(#arguments,)* &#children))
             } else {
                 parse_quote!(self::__systasis_injected::#function #turbofish (#(#arguments,)* self._children))
             };
-            result.insert((index, method.into()), call);
-        } else {
-            if registration.dynamic {
-                let owner: Expr = slot(index);
-                let target = dynamic[index].as_ref().unwrap_or_else(|| {
-                    unreachable!("every opted-in registration has a generated dyn target")
-                });
-                let guard: syn::Path = if local_policy {
-                    parse_quote!(::core::cell::Ref)
-                } else {
-                    parse_quote!(::systasis::__private::Ref)
-                };
+            result.insert((index, method.into()), call.clone());
+            if !registration.fallible {
                 result.insert(
-                    (index, "resolve_dyn_ref".into()),
+                    (index, "try_resolve".into()),
                     parse_quote!(
-                        (#owner.resolve_ref() as &(#target))
+                        ::core::result::Result::<_, ::systasis::__private::Never>::Ok(#call)
                     ),
                 );
-                result.insert((index, "try_resolve_dyn_ref".into()), parse_quote!(
-                    #owner.try_resolve_ref().map(|guard| #guard::map(guard, |value| value as &(#target)))
-                ));
             }
+        } else {
             for method in [
                 "resolve",
                 "try_resolve",
-                "resolve_ref",
-                "try_resolve_ref",
-                "try_resolve_ref_mut",
                 "resolve_clone",
                 "try_resolve_clone",
             ] {
@@ -103,11 +88,7 @@ pub(crate) fn replacements(
                 result.insert((index, method.into()), parse_quote!(#owner.#method_ident()));
             }
             if cfg!(feature = "resolve_unchecked") && !registration.fresh {
-                for method in [
-                    "resolve_unchecked",
-                    "resolve_ref_unchecked",
-                    "resolve_ref_mut_unchecked",
-                ] {
+                for method in ["resolve_unchecked"] {
                     let method_ident = format_ident!("{method}");
                     let owner: Expr = slot(index);
                     // Deliberately no unsafe block: the user's query must be

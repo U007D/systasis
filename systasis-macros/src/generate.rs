@@ -263,16 +263,6 @@ fn expand_inner(
     } else {
         quote!(())
     };
-    let read_type = if local_policy {
-        quote!(::core::cell::Ref)
-    } else {
-        quote!(::systasis::__private::Ref)
-    };
-    let write_type = if local_policy {
-        quote!(::core::cell::RefMut)
-    } else {
-        quote!(::systasis::__private::RefMut)
-    };
     let mut emitted = None;
     let mut statements = Vec::new();
     let mut bindings = crate::captures::Bindings::from_function(&function);
@@ -571,16 +561,19 @@ fn expand_inner(
         for (i, registration) in registrations.iter_mut().enumerate() {
             let original = &registration.ty;
             let flag = &flags[i];
+            let clone_flag = format_ident!("__systasis_is_clone_{i}");
             let mut projected = false;
             if crate::generic_policy::depends_on_generics(original, original_generics) {
                 let copy =
                     crate::generic_policy::has_explicit_copy_bound(original, original_generics);
-                let inherited = (!copy)
+                let clone =
+                    crate::generic_policy::has_explicit_clone_bound(original, original_generics);
+                let inherited = (!copy && !clone)
                     .then(|| crate::child_queries::projected_policy(original, local_policy))
                     .flatten();
                 projected = inherited.is_some();
                 policies.push(inherited.unwrap_or_else(
-                    || quote!(::systasis::__private::Policy<#copy, #local_policy>),
+                    || quote!(::systasis::__private::Policy<#copy, #local_policy, #clone>),
                 ));
                 if !copy && !projected && !registration.fresh {
                     policy_checks.push(quote!({
@@ -590,9 +583,18 @@ fn expand_inner(
                         );
                     }));
                 }
+                if !clone && !projected && !registration.fresh {
+                    policy_checks.push(quote!({
+                        use ::systasis::__private::DetectClone as _;
+                        ::systasis::__private::verify_generic_clone_fallback(
+                            (&&::systasis::__private::Pick::<#original>::NEW).clone_evidence()
+                        );
+                    }));
+                }
             } else {
-                policies.push(quote!(::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy>));
+                policies.push(quote!(::systasis::__private::Policy<{__systasis_injected::#flag}, #local_policy, {__systasis_injected::#clone_flag}>));
                 constants.push(quote!(pub(super) const #flag: bool = ::systasis::__private::Pick::<#original>::IS_COPY;));
+                constants.push(quote!(pub(super) const #clone_flag: bool = ::systasis::__private::Pick::<#original>::IS_CLONE;));
             }
             // A custom constructor stores its captures, not its output. Elided
             // output lifetimes belong to each resolver call, not SystasisContainer.
@@ -922,11 +924,8 @@ fn expand_inner(
                 &initializer_types[i],
                 dynamic[i].as_ref(),
             ));
-            let read = format_ident!("try_resolve_{snake}_ref");
-            let write = format_ident!("try_resolve_{snake}_ref_mut");
             let take = format_ident!("try_resolve_{snake}");
             let copy = format_ident!("resolve_{snake}");
-            let copy_ref = format_ident!("resolve_{snake}_ref");
             let clone = format_ident!("resolve_{snake}_clone");
             let try_clone = format_ident!("try_resolve_{snake}_clone");
             if let Some(factory) = factories.get(&i) {
@@ -1020,10 +1019,13 @@ fn expand_inner(
                     quote!(fn() -> (#(#marker_types,)*))
                 };
                 let context_type = quote!(#context<#children_lifetime, #call_lifetime, #(#context_slot_arguments,)* #child_tuple, #context_marker>);
-                let call_arguments = arguments.iter().map(|&index| {
-                    let field = &fields[index];
-                    quote!(&self.#field)
-                });
+                let call_arguments = arguments
+                    .iter()
+                    .map(|&index| {
+                        let field = &fields[index];
+                        quote!(&self.#field)
+                    })
+                    .collect::<Vec<_>>();
                 let method = if registration.fallible { &take } else { &copy };
                 let registered = &initializer_types[i];
                 let result = if registration.fallible {
@@ -1182,9 +1184,15 @@ fn expand_inner(
                     }
                     ));
                 }
+                let try_alias = (!registration.fallible).then(|| quote!(
+                    pub fn #take(&self) -> ::core::result::Result<#output, ::systasis::__private::Never> {
+                        ::core::result::Result::Ok(#helper #turbofish (#(#call_arguments,)* #stored_children_ref))
+                    }
+                ));
                 implementations.push(quote!(
                     impl #impl_generics __systasis_Generated<#(#selected),*> #where_clause {
                         pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments,)* #stored_children_ref) }
+                        #try_alias
                     }
                 ));
                 namespace_methods(
@@ -1239,137 +1247,45 @@ fn expand_inner(
                     }
                 })
                 .collect::<Vec<_>>();
-            if registration.dynamic {
-                let interface = &registration.interface;
-                let target = dynamic[i].as_ref().unwrap_or_else(|| {
-                    unreachable!("every opted-in registration has a generated dyn target")
-                });
-                let dyn_lifetime = (0..)
-                    .map(|suffix| {
-                        Lifetime::new(&format!("'__systasis_dyn_{suffix}"), Span::mixed_site())
-                    })
-                    .find(|candidate| {
-                        !generics
-                            .lifetimes()
-                            .any(|parameter| parameter.lifetime.ident == candidate.ident)
-                    })
-                    .unwrap_or_else(|| {
-                        unreachable!(
-                            "the finite lifetime parameter list cannot exhaust identifier suffixes"
-                        )
-                    });
-                let mut target = target.clone();
-                CallLifetime(dyn_lifetime.clone()).visit_type_mut(&mut target);
-                let dyn_ref = format_ident!("try_resolve_{snake}_dyn_ref");
-                let copy_dyn_ref = format_ident!("resolve_{snake}_dyn_ref");
-                let mut dyn_generics = generics.clone();
-                let dyn_value = crate::dyn_targets::value_parameter(&generics);
-                dyn_generics.params.push(parse_quote!(#dyn_value));
-                for parameter in &others {
-                    if Some(*parameter) != parameters.last() {
-                        dyn_generics.params.push(parse_quote!(#parameter));
-                    }
-                }
-                // Mapping guards requires a projection valid for every input
-                // reference lifetime. First recovering the declared type keeps
-                // its lifetime relations visible, unlike an erased __Value.
-                // Actual slots store exactly that type, so Borrow<T> for T
-                // supplies this bound without a caller-written implementation.
-                let dyn_bounds: [WherePredicate; 2] = [
-                    parse_quote!(#dyn_value: ::core::borrow::Borrow<#ty>),
-                    parse_quote!(#ty: #interface),
-                ];
-                dyn_generics
-                    .make_where_clause()
-                    .predicates
-                    .extend(dyn_bounds);
-                let (dyn_parameters, _, dyn_where) = dyn_generics.split_for_impl();
-                let mut copy_dyn_generics = dyn_generics.clone();
-                copy_dyn_generics
-                    .make_where_clause()
-                    .predicates
-                    .push(parse_quote!(#dyn_value: ::core::marker::Copy));
-                let (copy_dyn_parameters, _, copy_dyn_where) = copy_dyn_generics.split_for_impl();
-                let mut dyn_take_args = take_args.clone();
-                let mut dyn_copy_args = copy_args.clone();
-                dyn_take_args[i] = quote!(#slot_type<#dyn_value>);
-                dyn_copy_args[i] = quote!(::systasis::__private::CopySlot<#dyn_value>);
-                *dyn_take_args.last_mut().unwrap_or_else(|| {
-                    unreachable!(
-                        "take_args maps every parameter, including the final generic marker"
-                    )
-                }) = generic_marker.clone();
-                *dyn_copy_args.last_mut().unwrap_or_else(|| {
-                    unreachable!(
-                        "copy_args maps every parameter, including the final generic marker"
-                    )
-                }) = generic_marker.clone();
-                implementations.push(quote!(
-                    impl #dyn_parameters __systasis_Generated<#(#dyn_take_args),*> #dyn_where {
-                        pub fn #dyn_ref<#dyn_lifetime>(&#dyn_lifetime self) -> ::core::result::Result<#read_type<#dyn_lifetime, #target>, ::systasis::__private::Error> {
-                            self.#field.try_resolve_ref().map(|guard| #read_type::map(guard, |value| <#dyn_value as ::core::borrow::Borrow<#ty>>::borrow(value) as &(#target)))
-                        }
-                    }
-                    impl #copy_dyn_parameters __systasis_Generated<#(#dyn_copy_args),*> #copy_dyn_where {
-                        pub fn #copy_dyn_ref<#dyn_lifetime>(&#dyn_lifetime self) -> &#dyn_lifetime (#target) {
-                            <#dyn_value as ::core::borrow::Borrow<#ty>>::borrow(self.#field.resolve_ref())
-                        }
-                    }
-                ));
-            }
-            let take_method = (!constructor_borrows.contains(&i)).then(|| quote!(
-                pub fn #take(&self) -> ::core::result::Result<__Value,::systasis::__private::Error> { self.#field.try_resolve() }
-            ));
+            let mut clone_args = copy_args.clone();
+            clone_args[i] = quote!(::systasis::__private::ReadSlot<__Value>);
             let unchecked_methods = (cfg!(feature = "resolve_unchecked") && !registration.fresh)
                 .then(|| {
-                    let take = format_ident!("resolve_{snake}_unchecked");
-                    let read = format_ident!("resolve_{snake}_ref_unchecked");
-                    let write = format_ident!("resolve_{snake}_ref_mut_unchecked");
-                    let owned = (!constructor_borrows.contains(&i)).then(|| {
-                        quote!(
-                            /// Takes the available value without returning access errors.
-                            /// # Safety
-                            /// The value must be present and exclusive acquisition must succeed.
-                            pub unsafe fn #take(&self) -> __Value {
-                                // SAFETY: the caller guarantees the slot's preconditions.
-                                unsafe { self.#field.resolve_unchecked() }
-                            }
-                        )
-                    });
+                    let unchecked = format_ident!("resolve_{snake}_unchecked");
                     quote!(
-                        #owned
-                        /// Borrows the available value and retains its shared guard.
-                        /// # Safety
-                        /// The value must be present and shared acquisition must succeed.
-                        pub unsafe fn #read(&self) -> #read_type<'_, __Value> {
-                            // SAFETY: the caller guarantees the slot's preconditions.
-                            unsafe { self.#field.resolve_ref_unchecked() }
-                        }
-                        /// Mutably borrows the available value and retains its exclusive guard.
+                        /// Transfers the available value without returning access errors.
                         /// # Safety
                         /// The value must be present and exclusive acquisition must succeed.
-                        pub unsafe fn #write(&self) -> #write_type<'_, __Value> {
+                        pub unsafe fn #unchecked(&self) -> __Value {
                             // SAFETY: the caller guarantees the slot's preconditions.
-                            unsafe { self.#field.resolve_ref_mut_unchecked() }
+                            unsafe { self.#field.resolve_unchecked() }
                         }
                     )
                 });
             implementations.push(quote!(
                 impl<__Value: ::core::default::Default, #(#others),*> __systasis_Generated<#(#fresh_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
+                    pub fn #take(&self) -> ::core::result::Result<__Value, ::systasis::__private::Never> {
+                        ::core::result::Result::Ok(self.#field.resolve())
+                    }
                 }
                 impl<#lifetime __Value: ::core::marker::Copy, #(#others),*> __systasis_Generated<#(#copy_args),*> {
                     pub fn #copy(&self) -> __Value { self.#field.resolve() }
-                    pub fn #copy_ref(&self) -> &__Value { self.#field.resolve_ref() }
+                    pub fn #take(&self) -> ::core::result::Result<__Value, ::systasis::__private::Never> {
+                        self.#field.try_resolve()
+                    }
+                }
+                impl<__Value: ::core::clone::Clone, #(#others),*> __systasis_Generated<#(#clone_args),*> {
                     pub fn #clone(&self) -> __Value { self.#field.resolve_clone() }
+                    pub fn #try_clone(&self) -> ::core::result::Result<__Value, ::systasis::__private::Never> {
+                        self.#field.try_resolve_clone()
+                    }
                 }
                 impl<#lifetime __Value, #(#others),*> __systasis_Generated<#(#take_args),*> {
-                    pub fn #read(&self) -> ::core::result::Result<#read_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref() }
-                    pub fn #write(&self) -> ::core::result::Result<#write_type<'_,__Value>,::systasis::__private::Error> { self.#field.try_resolve_ref_mut() }
-                    #take_method
+                    pub fn #take(&self) -> ::core::result::Result<__Value, ::systasis::__private::Error> {
+                        self.#field.try_resolve()
+                    }
                     #unchecked_methods
-                    pub fn #try_clone(&self) -> ::core::result::Result<__Value,::systasis::__private::Error>
-                    where __Value: ::core::clone::Clone { self.#field.try_resolve_clone() }
                 }
             ));
             namespace_methods(
@@ -1450,6 +1366,7 @@ fn expand_inner(
                 #(#capture_records)*
                 #child_storage_definitions
                 use ::systasis::__private::CopyFallback as _;
+                use ::systasis::__private::CloneFallback as _;
                 #(#constants)*
                 #(#const_markers)*
                 #(#dynamic_declarations)*
@@ -1518,7 +1435,11 @@ fn expand_inner(
                 quote!(::systasis::__private::FreshSlot::<#ty>::new())
             } else {
                 quote!({
-                    let __systasis_input: #ty = { #value };
+                    // Infer the expression before applying the declared type:
+                    // a directly typed &mut initializer would implicitly
+                    // reborrow a captured reference instead of transferring it.
+                    let __systasis_input = { #value };
+                    let __systasis_input: #ty = __systasis_input;
                     <#policy as ::systasis::__private::Select<#ty>>::store(__systasis_input)
                 })
             };

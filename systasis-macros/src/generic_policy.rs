@@ -1,4 +1,4 @@
-//! Registration-site Copy policy for types involving enclosing generics.
+//! Registration-site Copy/Clone policies for types involving enclosing generics.
 
 use std::collections::BTreeSet;
 
@@ -55,6 +55,14 @@ pub(crate) fn depends_on_generics(ty: &Type, generics: &Generics) -> bool {
 /// does not count as a bound on its wrapper. Type grouping is ignored, but
 /// resolving renamed traits or type aliases requires information beyond syntax.
 pub(crate) fn has_explicit_copy_bound(ty: &Type, generics: &Generics) -> bool {
+    // Shared references are Copy independently of their referent's bounds.
+    // Lifetimes do not change this; mutable references are never Copy.
+    match ty {
+        Type::Reference(reference) if reference.mutability.is_none() => return true,
+        Type::Paren(paren) => return has_explicit_copy_bound(&paren.elem, generics),
+        Type::Group(group) => return has_explicit_copy_bound(&group.elem, generics),
+        _ => {}
+    }
     fn is_copy(bound: &TypeParamBound) -> bool {
         let TypeParamBound::Trait(bound) = bound else {
             return false;
@@ -87,6 +95,46 @@ pub(crate) fn has_explicit_copy_bound(ty: &Type, generics: &Generics) -> bool {
                 };
                 ungrouped_type_spelling(&predicate.bounded_ty) == registered
                     && predicate.bounds.iter().any(is_copy)
+            })
+        })
+}
+
+/// Clone selection follows declaration-site bounds just like Copy selection.
+pub(crate) fn has_explicit_clone_bound(ty: &Type, generics: &Generics) -> bool {
+    if has_explicit_copy_bound(ty, generics) {
+        return true;
+    }
+    let is_clone = |bound: &TypeParamBound| {
+        let TypeParamBound::Trait(bound) = bound else {
+            return false;
+        };
+        bound.maybe.is_none()
+            && bound.modifiers.require_empty().is_ok()
+            && matches!(
+                bound
+                    .path
+                    .to_token_stream()
+                    .to_string()
+                    .replace(' ', "")
+                    .as_str(),
+                "Clone"
+                    | "core::clone::Clone"
+                    | "::core::clone::Clone"
+                    | "std::clone::Clone"
+                    | "::std::clone::Clone"
+            )
+    };
+    let registered = ungrouped_type_spelling(ty);
+    generics
+        .type_params()
+        .any(|parameter| parameter.ident == registered && parameter.bounds.iter().any(is_clone))
+        || generics.where_clause.as_ref().is_some_and(|clause| {
+            clause.predicates.iter().any(|predicate| {
+                let syn::WherePredicate::Type(predicate) = predicate else {
+                    return false;
+                };
+                ungrouped_type_spelling(&predicate.bounded_ty) == registered
+                    && predicate.bounds.iter().any(is_clone)
             })
         })
 }
@@ -266,5 +314,42 @@ mod tests {
                 "{source}"
             );
         }
+    }
+
+    #[test]
+    fn shared_references_are_intrinsically_copy_but_mutable_references_are_not() {
+        let generics = signature("fn configure<'a, T>() {}");
+        assert!(has_explicit_copy_bound(&parse_quote!(&'a T), &generics));
+        assert!(!has_explicit_copy_bound(
+            &parse_quote!(&'a mut T),
+            &generics
+        ));
+        assert!(!has_explicit_clone_bound(
+            &parse_quote!(&'a mut T),
+            &generics
+        ));
+    }
+
+    #[test]
+    fn clone_requires_a_whole_type_bound_and_includes_copy() {
+        for source in [
+            "fn configure<T: Clone>() {}",
+            "fn configure<T: Copy>() {}",
+            "fn configure<T>() where T: ::core::clone::Clone {}",
+            "fn configure<T>() where T: std::clone::Clone {}",
+        ] {
+            assert!(has_explicit_clone_bound(
+                &parse_quote!(T),
+                &signature(source)
+            ));
+        }
+        let argument = signature("fn configure<T: Clone>() {}");
+        assert!(!has_explicit_clone_bound(
+            &parse_quote!(Wrapper<T>),
+            &argument
+        ));
+        let whole = signature("fn configure<T>() where Wrapper<T>: Clone {}");
+        assert!(has_explicit_clone_bound(&parse_quote!(Wrapper<T>), &whole));
+        assert!(!has_explicit_clone_bound(&parse_quote!(T), &whole));
     }
 }

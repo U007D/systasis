@@ -12,8 +12,36 @@ pub(crate) struct Queries<'a> {
     pub(crate) error: Option<Error>,
     pub(crate) replacements: Option<&'a BTreeMap<(usize, String), Expr>>,
 }
+
+/// Borrowing is no longer a container operation; references can be stored as values.
+pub(crate) fn removed_borrow_query(path: &Path) -> bool {
+    let Some(name) = path.get_ident() else {
+        return false;
+    };
+    let name = name.to_string();
+    let name = name.strip_suffix("_from").unwrap_or(&name);
+    matches!(
+        name,
+        "resolve_ref"
+            | "try_resolve_ref"
+            | "try_resolve_ref_mut"
+            | "resolve_dyn_ref"
+            | "try_resolve_dyn_ref"
+            | "resolve_ref_unchecked"
+            | "resolve_ref_mut_unchecked"
+    )
+}
+
+pub(crate) const REMOVED_BORROW_MESSAGE: &str = "borrowed resolvers have been removed; register a reference explicitly, or resolve an owned value and borrow it";
+
 impl VisitMut for Queries<'_> {
     fn visit_expr_mut(&mut self, expression: &mut Expr) {
+        if let Expr::Macro(query) = expression
+            && removed_borrow_query(&query.mac.path)
+        {
+            self.error = Some(Error::new_spanned(query, REMOVED_BORROW_MESSAGE));
+            return;
+        }
         if let Expr::Macro(query) = expression
             && [
                 "try_resolve",

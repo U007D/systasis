@@ -298,15 +298,6 @@ impl<T: Copy> SlotAccess<op::Shared> for CopySlot<T> {
         self.resolve_ref()
     }
 }
-impl<T: Copy> SlotAccess<op::CloneValue> for CopySlot<T> {
-    type Output<'a>
-        = T
-    where
-        Self: 'a;
-    fn access(&self) -> T {
-        self.resolve_clone()
-    }
-}
 impl<T> SlotAccess<op::Shared> for ReadSlot<T> {
     type Output<'a>
         = &'a T

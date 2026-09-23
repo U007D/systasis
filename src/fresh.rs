@@ -23,4 +23,9 @@ impl<T: Default> FreshSlot<T> {
     pub fn resolve(&self) -> T {
         T::default()
     }
+
+    /// Constructs a fresh value with an uninhabited error type.
+    pub fn try_resolve(&self) -> Result<T, crate::__private::Never> {
+        Ok(self.resolve())
+    }
 }

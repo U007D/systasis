@@ -76,12 +76,6 @@ impl<T: Copy> CopySlot<T> {
         Ok(self.resolve())
     }
 
-    /// Explicitly invokes `Clone`, even when its behavior differs from copying.
-    #[allow(clippy::clone_on_copy)]
-    pub fn resolve_clone(&self) -> T {
-        T::clone(&self.0)
-    }
-
     /// Borrows the stored value without acquiring a lock.
     pub fn resolve_ref(&self) -> &T {
         &self.0

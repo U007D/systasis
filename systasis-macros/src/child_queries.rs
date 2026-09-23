@@ -105,6 +105,13 @@ impl Queries<'_> {
 impl VisitMut for Queries<'_> {
     fn visit_expr_mut(&mut self, expression: &mut Expr) {
         if let Expr::Macro(query) = expression {
+            if crate::analysis::removed_borrow_query(&query.mac.path) {
+                self.error = Some(Error::new_spanned(
+                    query,
+                    crate::analysis::REMOVED_BORROW_MESSAGE,
+                ));
+                return;
+            }
             let name = query
                 .mac
                 .path
