@@ -24,7 +24,7 @@ mod success {
         }
         .build();
         assert_eq!(drops.get(), 0);
-        drop(container.try_resolve_i_tracked_ref().unwrap());
+        core::hint::black_box(&container);
     }
     #[test]
     fn successful_owner_destruction_does_not_allocate() {
@@ -133,35 +133,34 @@ mod native {
     }
 }
 
-mod returned_guard {
+mod transferred_output {
     use super::*;
     struct Value([u8; 16]);
     trait IValue {}
     impl IValue for Value {}
-    trait IGuard {}
-    impl IGuard for systasis::Ref<'_, Value> {}
+    trait IOutput {}
+    impl IOutput for Value {}
     #[systasis::container]
-    fn guards() -> Result<(), systasis::container::Error> {
+    fn transfer() -> Result<(), systasis::container::Error> {
         let container = systasis::systasis_container! {
             register_value!(Value([9; 16]): Value as IValue);
-            register_type_with!(systasis::Ref<'_, Value> as IGuard, try || -> Result<systasis::Ref<'_, Value>, systasis::container::Error> {
-                try_resolve_ref!(IValue)
+            register_type_with!(Value as IOutput, try || -> Result<Value, systasis::container::Error> {
+                try_resolve!(IValue)
             });
         }.build::<systasis::container::Error>()?;
-        {
-            let guard = container.try_resolve_i_guard()?;
-            assert_eq!(guard.0, [9; 16]);
-            assert!(matches!(
-                container.try_resolve_i_value_ref_mut(),
-                Err(systasis::container::Error::ValueAccessContention)
-            ));
-        }
-        container.try_resolve_i_value_ref_mut()?.0[0] = 3;
+        let mut value = container.try_resolve_i_output()?;
+        assert_eq!(value.0, [9; 16]);
+        assert!(matches!(
+            container.try_resolve_i_value(),
+            Err(systasis::container::Error::ValueAlreadyConsumed)
+        ));
+        value.0[0] = 3;
+        core::hint::black_box(value);
         Ok(())
     }
     #[test]
-    fn returned_constructor_guards_do_not_allocate() {
-        let (result, counts) = measure(guards);
+    fn transferred_constructor_outputs_do_not_allocate() {
+        let (result, counts) = measure(transfer);
         assert_no_allocations(counts);
         result.unwrap();
     }

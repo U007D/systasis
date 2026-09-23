@@ -24,18 +24,17 @@ fn copy_and_clone(calls: &Cell<usize>) {
     }
     .build();
     black_box(container.resolve_i_counted());
-    black_box(container.resolve_i_counted_ref());
+    let Ok(copied) = container.try_resolve_i_counted();
+    black_box(copied);
     assert_eq!(calls.get(), 0);
-    black_box(container.resolve_i_counted_clone());
-    assert_eq!(calls.get(), 1);
 }
 
 #[test]
-fn copy_resolution_and_explicit_clone_do_not_allocate() {
+fn copy_resolution_does_not_allocate_or_invoke_clone() {
     let calls = Cell::new(0);
     let (_, counts) = measure(|| copy_and_clone(&calls));
     assert_no_allocations(counts);
-    assert_eq!(calls.get(), 1);
+    assert_eq!(calls.get(), 0);
 }
 
 #[test]

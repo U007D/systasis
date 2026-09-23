@@ -14,14 +14,18 @@ impl IOutput for String {}
 
 mod owned {
     use super::*;
+    struct Value(String);
+    impl IReader for Value {}
+    impl IWriter for Value {}
+    impl IOutput for Value {}
     #[systasis::container]
     #[test]
     fn complete_group_queries_use_one_owned_slot() -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_value!(try_resolve!(IWriter + IReader)?: registered_type!(IReader + IWriter) as IOutput);
-            register_value!(String::from("group"): String as IWriter + IReader);
+            register_value!(Value(String::from("group")): Value as IWriter + IReader);
         }.build::<Error>()?;
-        assert_eq!(container.try_resolve_i_output()?, "group");
+        assert_eq!(container.try_resolve_i_output()?.0, "group");
         assert!(matches!(
             container.try_resolve_i_reader_i_writer(),
             Err(Error::ValueAlreadyConsumed)
@@ -40,16 +44,12 @@ mod distinct {
             register_value!(String::from("individual"): String as IReader);
         }
         .build::<Error>()?;
-        {
-            let mut group = container.try_resolve_i_reader_i_writer_ref_mut()?;
-            group.push('!');
-            assert!(matches!(
-                container.try_resolve_i_reader_i_writer_ref(),
-                Err(Error::ValueAccessContention)
-            ));
-        }
-        assert_eq!(&*container.try_resolve_i_reader_i_writer_ref()?, "group!");
-        assert_eq!(container.try_resolve_i_reader()?, "individual");
+        let mut group = container.resolve_i_reader_i_writer_clone();
+        group.push('!');
+        assert_eq!(group, "group!");
+        let Ok(group_again) = container.try_resolve_i_reader_i_writer_clone();
+        assert_eq!(group_again, "group");
+        assert_eq!(container.resolve_i_reader_clone(), "individual");
         Ok(())
     }
 }
@@ -64,7 +64,8 @@ mod copy {
         }
         .build();
         assert_eq!(container.resolve_i_reader_i_writer(), 17);
-        assert_eq!(*container.resolve_i_reader_i_writer_ref(), 17);
+        let Ok(value) = container.try_resolve_i_reader_i_writer();
+        assert_eq!(value, 17);
     }
 }
 
@@ -93,7 +94,7 @@ mod constructors {
             register_value!(resolve!(IWriter + IReader): resolve_type!(IReader + IWriter) as IOutput);
             register_type_with!(String as IReader + IWriter, move || config.clone());
         }.build::<Error>()?;
-        assert_eq!(container.try_resolve_i_output()?, "fresh");
+        assert_eq!(container.resolve_i_output_clone(), "fresh");
         assert_eq!(container.resolve_i_reader_i_writer(), "fresh");
         assert_eq!(container.resolve_i_reader_i_writer(), "fresh");
         Ok(())
@@ -118,18 +119,20 @@ mod constructor_dependency {
     use super::*;
     #[systasis::container]
     #[test]
-    fn borrowed_constructor_queries_use_the_complete_group() -> Result<(), Error> {
+    fn clone_constructor_queries_use_the_complete_group() -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_type_with!(String as IOutput, try || -> Result<String, Error> {
-                Ok(try_resolve_ref!(IWriter + IReader)?.clone())
+                Ok(resolve_clone!(IWriter + IReader))
             });
             register_value!(String::from("borrowed"): String as IReader + IWriter);
         }
         .build::<Error>()?;
         assert_eq!(container.try_resolve_i_output()?, "borrowed");
         assert_eq!(container.try_resolve_i_output()?, "borrowed");
-        container.try_resolve_i_reader_i_writer_ref_mut()?.push('!');
-        assert_eq!(container.try_resolve_i_output()?, "borrowed!");
+        let mut clone = container.resolve_i_reader_i_writer_clone();
+        clone.push('!');
+        assert_eq!(clone, "borrowed!");
+        assert_eq!(container.try_resolve_i_output()?, "borrowed");
         Ok(())
     }
 }

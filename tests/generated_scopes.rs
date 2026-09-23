@@ -14,32 +14,29 @@ impl IValue for String {}
 
 #[systasis::container]
 #[test]
-fn descriptor_retains_guards_without_exposing_backing_storage() -> Result<(), Error> {
+fn descriptor_clones_without_exposing_backing_storage() {
     let value: String = "scoped".into();
     let Ok(container) = systasis::systasis_container! {
         register_value!(value: String as IValue);
     }
     .build();
-    let guard = {
+    let mut value = {
         let scope = AsScope::<Empty>::scope(&container);
-        scope.try_resolve_i_value_ref()?
+        scope.resolve_i_value_clone()
     };
-    assert_eq!(&*guard, "scoped");
-    assert!(matches!(
-        container.try_resolve_i_value(),
-        Err(Error::ValueAccessContention)
-    ));
-    drop(guard);
+    assert_eq!(value, "scoped");
+    value.push('!');
+    assert_eq!(value, "scoped!");
     let scope = AsScope::<Empty>::scope(&container);
-    assert_eq!(scope.try_resolve_i_value()?, "scoped");
-    Ok(())
+    let Ok(clone) = scope.try_resolve_i_value_clone();
+    assert_eq!(clone, "scoped");
 }
 
 mod restricted {
     use super::*;
     #[systasis::container]
     #[test]
-    fn restricted_scope_keeps_shared_clone_and_mutable_access() -> Result<(), Error> {
+    fn restricted_scope_keeps_nonconsuming_clone_access() {
         let value: String = "reserved-name-only".into();
         let Ok(container) = systasis::systasis_container! {
             register_value!(value: String as IValue);
@@ -47,10 +44,11 @@ mod restricted {
         .build();
         type Restrictions = Mask<__systasis_injected::__systasis_RestrictionKey0, Empty>;
         let scope = AsScope::<Restrictions>::scope(&container);
-        scope.try_resolve_i_value_ref_mut()?.push('!');
-        assert_eq!(&*scope.try_resolve_i_value_ref()?, "reserved-name-only!");
-        assert_eq!(scope.try_resolve_i_value_clone()?, "reserved-name-only!");
-        Ok(())
+        let mut value = scope.resolve_i_value_clone();
+        value.push('!');
+        assert_eq!(value, "reserved-name-only!");
+        let Ok(clone) = scope.try_resolve_i_value_clone();
+        assert_eq!(clone, "reserved-name-only");
     }
 }
 
@@ -74,37 +72,28 @@ mod factory {
 
 mod borrowed_context {
     use super::*;
+    struct Value(String);
+    impl IValue for Value {}
 
     #[systasis::container]
     #[test]
-    fn guards_outlive_both_context_and_temporary_descriptor() -> Result<(), Error> {
+    fn transferred_value_outlives_both_context_and_temporary_descriptor() -> Result<(), Error> {
         let Ok(container) = systasis::systasis_container! {
-            register_value!(String::from("context"): String as IValue);
+            register_value!(Value(String::from("context")): Value as IValue);
         }
         .build();
-        let read = {
+        let mut value = {
             let scope = AsScope::<Empty>::scope(&container);
             let context = scope.borrow_context();
-            context.descriptor().try_resolve_i_value_ref()?
+            context.descriptor().try_resolve_i_value()?
         };
-        assert_eq!(&*read, "context");
+        assert_eq!(value.0, "context");
         assert!(matches!(
             container.try_resolve_i_value(),
-            Err(Error::ValueAccessContention)
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(read);
-        let mut write = {
-            let scope = AsScope::<Empty>::scope(&container);
-            let context = scope.borrow_context();
-            context.descriptor().try_resolve_i_value_ref_mut()?
-        };
-        write.push('!');
-        assert!(matches!(
-            container.try_resolve_i_value_ref(),
-            Err(Error::ValueAccessContention)
-        ));
-        drop(write);
-        assert_eq!(container.try_resolve_i_value()?, "context!");
+        value.0.push('!');
+        assert_eq!(value.0, "context!");
         Ok(())
     }
 }

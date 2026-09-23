@@ -15,52 +15,43 @@ fn defaults_named_values_and_copy_queries() {
         register_value!(10u32: u32 as IValue);
         register_value!(20u32: u32 as IValue in test);
         register_value!(resolve_from!(IValue, test) + resolve_from!(IValue, default): resolve_type_from!(IValue, test) as IValue in sum);
-        register_value!(*resolve_ref_from!(IValue, test): u32 as IValue in shared);
-        register_value!(resolve_clone_from!(IValue, test): u32 as IValue in cloned);
+        register_value!({ let Ok(value) = try_resolve_from!(IValue, test); value }: u32 as IValue in checked);
     }.build();
     assert_eq!(container.resolve_i_value(), 10);
     assert_eq!(container.resolve_i_value_in_default(), 10);
-    assert_eq!(*container.resolve_i_value_ref_in_default(), 10);
-    assert_eq!(container.resolve_i_value_clone_in_default(), 10);
+    let Ok(default_value) = container.try_resolve_i_value_in_default();
+    assert_eq!(default_value, 10);
     assert_eq!(container.resolve_i_value_in_test(), 20);
-    assert_eq!(*container.resolve_i_value_ref_in_test(), 20);
-    assert_eq!(container.resolve_i_value_clone_in_test(), 20);
+    let Ok(named_value) = container.try_resolve_i_value_in_test();
+    assert_eq!(named_value, 20);
     assert_eq!(container.resolve_i_value_in_sum(), 30);
-    assert_eq!(container.resolve_i_value_in_shared(), 20);
-    assert_eq!(container.resolve_i_value_in_cloned(), 20);
+    assert_eq!(container.resolve_i_value_in_checked(), 20);
 }
 
 mod owned {
     use super::*;
+    struct Value(String);
     #[systasis::container]
     #[test]
-    fn namespaces_keep_borrowing_consumption_and_owned_dependencies_separate() -> Result<(), Error>
-    {
+    fn namespaces_keep_consumption_and_owned_dependencies_separate() -> Result<(), Error> {
         let container = systasis::systasis_container! {
             register_value!(try_resolve_from!(IValue, source)?: resolve_type_from!(IValue, source) as IValue in destination);
-            register_value!(String::from("source"): String as IValue in source);
-            register_value!(String::from("untouched"): String as IValue);
+            register_value!(Value(String::from("source")): Value as IValue in source);
+            register_value!(Value(String::from("untouched")): Value as IValue);
         }.build::<Error>()?;
         assert!(matches!(
             container.try_resolve_i_value_in_source(),
             Err(Error::ValueAlreadyConsumed)
         ));
-        let guard = container.try_resolve_i_value_ref_in_destination()?;
-        assert_eq!(&*guard, "source");
+        let mut value = container.try_resolve_i_value_in_destination()?;
+        assert_eq!(value.0, "source");
         assert!(matches!(
-            container.try_resolve_i_value_ref_mut_in_destination(),
-            Err(Error::ValueAccessContention)
+            container.try_resolve_i_value_in_destination(),
+            Err(Error::ValueAlreadyConsumed)
         ));
-        drop(guard);
-        container
-            .try_resolve_i_value_ref_mut_in_destination()?
-            .push('!');
-        assert_eq!(
-            container.try_resolve_i_value_clone_in_destination()?,
-            "source!"
-        );
-        assert_eq!(container.try_resolve_i_value_in_destination()?, "source!");
-        assert_eq!(container.try_resolve_i_value_in_default()?, "untouched");
+        value.0.push('!');
+        assert_eq!(value.0, "source!");
+        assert_eq!(container.try_resolve_i_value_in_default()?.0, "untouched");
         Ok(())
     }
 }
@@ -69,7 +60,7 @@ mod constructors {
     use super::*;
     #[systasis::container(require(!Sync))]
     #[test]
-    fn named_fresh_and_captured_constructors_use_named_guard_queries() -> Result<(), Error> {
+    fn named_fresh_and_captured_constructors_use_named_clone_queries() -> Result<(), Error> {
         let suffix: String = String::from("!");
         let container = systasis::systasis_container! {
             register_value!(String::from("name"): String as IValue in data);
@@ -80,15 +71,16 @@ mod constructors {
                 value
             });
             register_type_with!(usize as ISize in shared, try || -> Result<usize, Error> {
-                Ok(try_resolve_ref_from!(IValue, data)?.len())
+                Ok(resolve_clone_from!(IValue, data).len())
             });
             register_type_with!(usize as ISize in mutate, try || -> Result<usize, Error> {
-                let mut value = try_resolve_ref_mut_from!(IValue, data)?;
+                let mut value = resolve_clone_from!(IValue, data);
                 value.push('!');
                 Ok(value.len())
             });
             register_type_with!(String as IValue in cloned, try || -> Result<String, Error> {
-                try_resolve_clone_from!(IValue, data)
+                let Ok(value) = try_resolve_clone_from!(IValue, data);
+                Ok(value)
             });
         }
         .build::<Error>()?;
@@ -96,7 +88,7 @@ mod constructors {
         assert_eq!(container.resolve_i_value_in_capture(), "!");
         assert_eq!(container.try_resolve_i_size_in_shared()?, 4);
         assert_eq!(container.try_resolve_i_size_in_mutate()?, 5);
-        assert_eq!(container.try_resolve_i_value_in_cloned()?, "name!");
+        assert_eq!(container.try_resolve_i_value_in_cloned()?, "name");
         Ok(())
     }
 }
@@ -146,15 +138,16 @@ mod dyn_group {
         let container = systasis::systasis_container! {
             register_value!(String::from("dyn"): String as dyn IRead + ILength in data);
             register_value!({
-                let guard = try_resolve_dyn_ref_from!(ILength + IRead, data)?;
-                let object: &resolve_type_from!(dyn IRead + ILength, data) = &*guard;
+                let value = resolve_clone_from!(ILength + IRead, data);
+                let object: &resolve_type_from!(dyn IRead + ILength, data) = &value;
                 object.length()
             }: usize as ISize);
         }
         .build::<Error>()?;
         assert_eq!(container.resolve_i_size(), 3);
-        let guard = container.try_resolve_i_length_i_read_dyn_ref_in_data()?;
-        assert_eq!(guard.text(), "dyn");
+        let value = container.resolve_i_length_i_read_clone_in_data();
+        let object: &dyn IRead = &value;
+        assert_eq!(object.text(), "dyn");
         Ok(())
     }
 }
@@ -194,15 +187,19 @@ mod copy_dyn {
     }
     #[systasis::container]
     #[test]
-    fn named_copy_dyn_query_returns_plain_reference() {
+    fn named_copy_dyn_type_query_supports_explicit_coercion() {
         let Ok(container) = systasis::systasis_container! {
             register_value!(41u32: u32 as dyn INumber in named);
             register_value!({
-                let object: &resolve_type_from!(dyn INumber, named) = resolve_dyn_ref_from!(INumber, named);
+                let value = resolve_from!(INumber, named);
+                let object: &resolve_type_from!(dyn INumber, named) = &value;
                 object.number() + 1
             }: u32 as IValue);
-        }.build();
-        assert_eq!(container.resolve_i_number_dyn_ref_in_named().number(), 41);
+        }
+        .build();
+        let value = container.resolve_i_number_in_named();
+        let object: &dyn INumber = &value;
+        assert_eq!(object.number(), 41);
         assert_eq!(container.resolve_i_value(), 42);
     }
 }

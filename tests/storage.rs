@@ -189,7 +189,10 @@ fn explicit_clone_is_observable_even_for_copy_values() {
     let _copy = slot.resolve();
     let _reference = slot.resolve_ref();
     assert_eq!(clones.load(Ordering::SeqCst), 0);
-    let _clone = slot.resolve_clone();
+    let Ok(_copy) = slot.try_resolve();
+    assert_eq!(clones.load(Ordering::SeqCst), 0);
+    let clone_slot = systasis::__private::ReadSlot::new(CountClone(&clones));
+    let _clone = clone_slot.resolve_clone();
     assert_eq!(clones.load(Ordering::SeqCst), 1);
     let slot = TakeSlot::new(CountClone(&clones));
     let _clone = slot.try_resolve_clone().unwrap();

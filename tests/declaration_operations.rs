@@ -12,22 +12,34 @@ mod stored {
     }
 
     #[test]
-    fn read_write_clone_and_consume_keep_the_same_slot() {
-        use systasis::container::Error;
+    fn cloning_preserves_the_stored_value() {
         let Ok(container) = SystasisContainer::build();
-        let reader = container.try_resolve_i_value_ref().unwrap();
-        assert_eq!(reader.0, 7);
+        let mut value = container.resolve_i_value_clone();
+        assert_eq!(value.0, 7);
+        value.0 = 8;
+        assert_eq!(value.0, 8);
+        let Ok(clone) = container.try_resolve_i_value_clone();
+        assert_eq!(clone.0, 7);
+        assert_eq!(container.resolve_i_value_clone().0, 7);
+    }
+}
+
+mod move_only {
+    struct Value(u8);
+    trait IValue {}
+    impl IValue for Value {}
+
+    systasis::systasis_container! {
+        register_value!(self::Value(7): self::Value as IValue);
+    }
+
+    #[test]
+    fn stored_move_only_value_can_be_consumed_once() {
+        let Ok(container) = SystasisContainer::build();
+        assert_eq!(container.try_resolve_i_value().unwrap().0, 7);
         assert!(matches!(
             container.try_resolve_i_value(),
-            Err(Error::ValueAccessContention)
-        ));
-        drop(reader);
-        container.try_resolve_i_value_ref_mut().unwrap().0 = 8;
-        assert_eq!(container.try_resolve_i_value_clone().unwrap().0, 8);
-        assert_eq!(container.try_resolve_i_value().unwrap().0, 8);
-        assert!(matches!(
-            container.try_resolve_i_value_ref(),
-            Err(Error::ValueAlreadyConsumed)
+            Err(systasis::container::Error::ValueAlreadyConsumed)
         ));
     }
 }
@@ -50,11 +62,13 @@ mod fresh_and_named {
     }
 
     #[test]
-    fn default_constructors_and_named_dyn_access_work() {
+    fn default_constructors_and_named_explicit_dyn_coercion_work() {
         let Ok(container) = SystasisContainer::build();
         assert_eq!(container.resolve_i_value().number(), 0);
         assert_eq!(container.resolve_i_value_in_named().number(), 42);
-        assert_eq!(container.resolve_i_value_dyn_ref_in_named().number(), 42);
+        let value = container.resolve_i_value_in_named();
+        let object: &dyn IValue = &value;
+        assert_eq!(object.number(), 42);
     }
 }
 

@@ -4,7 +4,7 @@ use super::{assert_no_allocations, measure};
 use systasis::container::Error;
 
 macro_rules! scenario {
-    ($module:ident, ($($requirements:tt)*), $guard:path) => {
+    ($module:ident, ($($requirements:tt)*)) => {
         mod $module {
             use super::*;
 
@@ -48,25 +48,23 @@ macro_rules! scenario {
                 pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<(), Error> {
                     let container = systasis::systasis_container! {
                         register_container!(branch: &middle::SystasisContainer<'a>);
-                        register_value!(try_resolve_clone_from!(IPacket, branch::primary)?: resolve_type_from!(IPacket, branch::primary) as ICopied);
+                        register_value!(resolve_clone_from!(IPacket, branch::primary): resolve_type_from!(IPacket, branch::primary) as ICopied);
                         register_value!({
-                            let guard = try_resolve_dyn_ref_from!(IPacket, branch::primary)?;
-                            guard.first()
+                            let packet = resolve_clone_from!(IPacket, branch::primary);
+                            let object: &resolve_type_from!(dyn IPacket, branch::primary) = &packet;
+                            object.first()
                         }: u32 as IObserved);
                     }.build::<Error>()?;
                     assert_eq!(container.resolve_i_observed(), 11);
-                    {
-                        let reader = container.branch().primary().try_resolve_i_packet_ref()?;
-                        assert_eq!(reader.0, [11; 4]);
-                        assert!(matches!(container.branch().primary().try_resolve_i_packet(), Err(Error::ValueAccessContention)));
-                    }
-                    container.branch().primary().try_resolve_i_packet_ref_mut()?.0[0] = 12;
-                    assert_eq!(container.branch().primary().try_resolve_i_packet_dyn_ref()?.first(), 12);
-                    let consumed = container.branch().primary().try_resolve_i_packet()?;
-                    assert_eq!(consumed.0[0], 12);
-                    assert!(matches!(container.branch().primary().try_resolve_i_packet_ref(), Err(Error::ValueAlreadyConsumed)));
-                    drop(consumed);
-                    let cloned = container.try_resolve_i_copied_clone()?;
+                    let mut packet = container.branch().primary().resolve_i_packet_clone();
+                    assert_eq!(packet.0, [11; 4]);
+                    packet.0[0] = 12;
+                    let object: &dyn leaf::IPacket = &packet;
+                    assert_eq!(object.first(), 12);
+                    let Ok(another) = container.branch().primary().try_resolve_i_packet_clone();
+                    assert_eq!(another.0, [11; 4]);
+                    drop((packet, another));
+                    let Ok(cloned) = container.try_resolve_i_copied_clone();
                     assert_eq!(cloned.0, [11; 4]);
                     drop(cloned);
                     // Both copied storage and the untouched replica drop with their owners.
@@ -77,36 +75,34 @@ macro_rules! scenario {
 
             mod native_outer {
                 use super::*;
-                use $guard as Guard;
-
-                struct View<'a>(Guard<'a, leaf::Packet>);
+                struct View(leaf::Packet);
                 trait IView {}
-                impl IView for View<'_> {}
+                impl IView for View {}
 
                 #[systasis::container($($requirements)*)]
                 pub fn run<'a>(branch: &middle::SystasisContainer<'a>) -> Result<(), Error> {
                     let container = systasis::systasis_container! {
                         register_container!(branch: &middle::SystasisContainer<'a>);
-                        register_type_with!(View<'_> as IView, try || -> Result<View<'_>, Error> {
-                            let packet = try_resolve_ref_from!(IPacket, branch::primary)?;
+                        register_type_with!(View as IView, try || -> Result<View, Error> {
+                            let packet = resolve_clone_from!(IPacket, branch::primary);
                             // This macro selects native constructor storage.
                             assert_eq!(packet.0[0], 11);
                             Ok(View(packet))
                         });
                     }.build::<Error>()?;
                     for _ in 0..2 {
-                        let view = core::hint::black_box(&container).try_resolve_i_view()?;
+                        let mut view = core::hint::black_box(&container).try_resolve_i_view()?;
                         assert_eq!(view.0.0, [11; 4]);
-                        assert!(matches!(branch.primary().try_resolve_i_packet(), Err(Error::ValueAccessContention)));
+                        view.0.0[0] = 12;
+                        assert_eq!(branch.primary().resolve_i_packet_clone().0, [11; 4]);
                         drop(view);
-                        assert!(branch.primary().try_resolve_i_packet_ref_mut().is_ok());
                     }
                     Ok(())
                 }
             }
 
             #[test]
-            fn native_nested_child_contexts_and_returned_guards_do_not_allocate() {
+            fn native_nested_child_contexts_and_cloned_outputs_do_not_allocate() {
                 let (result, counts) = measure(|| {
                     leaf::run(11, |primary| {
                         leaf::run(22, |replica| {
@@ -134,5 +130,5 @@ macro_rules! scenario {
     };
 }
 
-scenario!(synchronized, (), systasis::Ref);
-scenario!(local, (require(!Sync)), core::cell::Ref);
+scenario!(synchronized, ());
+scenario!(local, (require(!Sync)));

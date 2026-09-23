@@ -22,8 +22,9 @@ fn slot_policy_preserves_copy_selection_and_adapts_owned_local_storage() {
     assert_eq!(local.try_resolve().unwrap(), 13);
     let synchronized: Selected<LocalTakeSlot<u32>, u32, false> = TakeSlot::new(14);
     assert_eq!(synchronized.try_resolve().unwrap(), 14);
-    let readonly: Selected<ReadSlot<u32>, u32, false> = TakeSlot::new(15);
-    assert_eq!(readonly.try_resolve().unwrap(), 15);
+    let readonly: Selected<ReadSlot<u32>, u32, false> = ReadSlot::new(15);
+    let Ok(value) = readonly.try_resolve_clone();
+    assert_eq!(value, 15);
     type Rebound =
         <systasis::__private::Policy<false, false> as systasis::scoped::RebindPolicy<true>>::Policy;
     let rebound: <Rebound as Select<u32>>::Slot = LocalTakeSlot::new(16);
@@ -60,7 +61,8 @@ fn copy_dispatch_preserves_plain_references_and_repeatable_ownership() {
     assert_eq!(SlotAccess::<op::Owned>::access(&slot), 17);
     assert_eq!(SlotAccess::<op::Owned>::access(&slot), 17);
     assert_eq!(*SlotAccess::<op::Shared>::access(&slot), 17);
-    assert_eq!(SlotAccess::<op::CloneValue>::access(&slot), 17);
+    let Ok(value) = SlotAccess::<op::TryOwned>::access(&slot);
+    assert_eq!(value, 17);
 }
 
 #[test]

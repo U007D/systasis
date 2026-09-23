@@ -10,7 +10,7 @@ use std::{
     process::Command,
     time::{Duration, Instant},
 };
-use systasis::__private::{CopySlot, LocalTakeSlot, TakeSlot};
+use systasis::__private::{CopySlot, LocalTakeSlot, ReadSlot, TakeSlot};
 
 const ITERATIONS: u64 = 100_000;
 const SAMPLES: usize = 9;
@@ -18,13 +18,13 @@ const SAMPLES: usize = 9;
 #[derive(Clone, Copy, Debug)]
 enum Work {
     Copy,
-    Shared,
-    Exclusive,
+    Clone,
     Lazy,
     Consume,
     BuildDrop,
 }
 
+#[derive(Clone)]
 struct Value(u64);
 trait IValue {}
 impl IValue for Value {}
@@ -54,42 +54,26 @@ mod copying {
     }
 }
 
-macro_rules! guarded {
-    ($module:ident, $requirements:tt, $slot:ident) => {
+macro_rules! cloning {
+    ($module:ident, $requirements:tt) => {
         mod $module {
             use super::*;
             #[systasis::container $requirements]
-            pub fn generated(work: Work) -> (Duration, u64) {
+            pub fn generated() -> (Duration, u64) {
                 let Ok(container) = systasis::systasis_container! {
                     register_value!(Value(black_box(0)): Value as IValue);
                 }.build();
-                match work {
-                    Work::Shared => timed(|_| black_box(&container).try_resolve_i_value_ref().unwrap().0),
-                    Work::Exclusive => timed(|_| {
-                        let mut guard = black_box(&container).try_resolve_i_value_ref_mut().unwrap();
-                        guard.0 += 1;
-                        guard.0
-                    }),
-                    _ => unreachable!("guard baseline only receives shared or exclusive work"),
-                }
+                timed(|_| black_box(&container).resolve_i_value_clone().0)
             }
-            pub fn handwritten(work: Work) -> (Duration, u64) {
-                let slot = $slot::new(Value(black_box(0)));
-                match work {
-                    Work::Shared => timed(|_| black_box(&slot).try_resolve_ref().unwrap().0),
-                    Work::Exclusive => timed(|_| {
-                        let mut guard = black_box(&slot).try_resolve_ref_mut().unwrap();
-                        guard.0 += 1;
-                        guard.0
-                    }),
-                    _ => unreachable!("guard baseline only receives shared or exclusive work"),
-                }
+            pub fn handwritten() -> (Duration, u64) {
+                let slot = ReadSlot::new(Value(black_box(0)));
+                timed(|_| black_box(&slot).resolve_clone().0)
             }
         }
     };
 }
-guarded!(synchronized, (), TakeSlot);
-guarded!(local, (require(!Sync)), LocalTakeSlot);
+cloning!(synchronized, ());
+cloning!(local, (require(!Sync)));
 
 mod lazy {
     use super::*;
@@ -144,10 +128,8 @@ macro_rules! lifecycle {
             }
             #[inline(never)]
             fn handwritten_once(index: u64, drops: &Cell<u64>, consume: bool) -> u64 {
-                // Match the generated owner's pin/occupancy representation as
-                // well as the exact checked slot operation and payload drops.
-                let owner = std::pin::pin!(Some($slot::new(Dropped { value: index, drops })));
-                let slot = owner.as_ref().get_ref().as_ref().unwrap();
+                let owner = $slot::new(Dropped { value: index, drops });
+                let slot = &owner;
                 if consume {
                     let value = black_box(slot).try_resolve().unwrap();
                     black_box(value.value)
@@ -177,8 +159,8 @@ lifecycle!(local_lifecycle, (require(!Sync)), LocalTakeSlot);
 fn expected(work: Work) -> u64 {
     match work {
         Work::Copy => 17 * ITERATIONS,
-        Work::Shared => 0,
-        Work::Exclusive | Work::Lazy => ITERATIONS * (ITERATIONS + 1) / 2,
+        Work::Clone => 0,
+        Work::Lazy => ITERATIONS * (ITERATIONS + 1) / 2,
         Work::Consume | Work::BuildDrop => ITERATIONS * (ITERATIONS - 1) / 2,
     }
 }
@@ -248,23 +230,12 @@ fn generated_and_handwritten_runtime_baselines() {
         eprintln!("{variable}={:?}", std::env::var_os(variable));
     }
     eprintln!(
-        "Guard timings exclude build/drop. Consume includes build+checked take+drop; build/drop includes one payload destruction. All paths use identical slot primitives; no allocator workload, compile-time, machine isolation, or cross-machine claims."
+        "Copy/clone timings exclude build/drop. Consume includes build+checked take+drop; build/drop includes one payload destruction. All paths use identical slot primitives; no allocator workload, compile-time, machine isolation, or cross-machine claims."
     );
     report("copy", Work::Copy, copying::generated, copying::handwritten);
-    for work in [Work::Shared, Work::Exclusive] {
-        report(
-            &format!("synchronized {work:?}"),
-            work,
-            || synchronized::generated(work),
-            || synchronized::handwritten(work),
-        );
-        report(
-            &format!("local {work:?}"),
-            work,
-            || local::generated(work),
-            || local::handwritten(work),
-        );
-    }
+    report("clone", Work::Clone, synchronized::generated, synchronized::handwritten);
+    report("local clone", Work::Clone, local::generated, local::handwritten);
+
     report(
         "lazy constructor",
         Work::Lazy,
