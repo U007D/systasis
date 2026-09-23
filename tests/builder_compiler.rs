@@ -179,7 +179,7 @@ fn main() { let _ = configure(); }
             Some(("E0373", "it borrows `text`")),
         ),
         (
-            "owned_container_cannot_move_while_a_guard_borrows_it",
+            "owned_container_has_no_borrowed_resolver",
             r#"
 trait IText {} impl IText for String {}
 #[systasis::container]
@@ -187,13 +187,28 @@ fn configure() {
     let Ok(container) = systasis::systasis_container! {
         register_value!(String::from("value"): String as IText);
     }.build();
-    let guard = container.try_resolve_i_text_ref().unwrap();
-    drop(container);
-    assert_eq!(&*guard, "value");
+    container.try_resolve_i_text_ref();
 }
 fn main() { configure(); }
 "#,
-            Some(("E0505", "cannot move out of `container`")),
+            Some(("E0599", "try_resolve_i_text_ref")),
+        ),
+        (
+            "cloned_value_survives_container_move",
+            r#"
+trait IText {} impl IText for String {}
+#[systasis::container]
+fn configure() {
+    let Ok(container) = systasis::systasis_container! {
+        register_value!(String::from("value"): String as IText);
+    }.build();
+    let value = container.resolve_i_text_clone();
+    drop(container);
+    assert_eq!(value, "value");
+}
+fn main() { configure(); }
+"#,
+            None,
         ),
         (
             "pending_shared_borrow_prevents_mutation",
