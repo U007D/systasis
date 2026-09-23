@@ -1,8 +1,9 @@
 Statically wired dependency injection with checked, nonblocking value access.
 
-Systasis generates a module-scope `SystasisContainer` from registrations written
-inside an attributed function. Registration annotations name ordinary Rust
+`systasis_container!` declares a public `SystasisContainer` and a parameterless
+`SystasisContainer::build()` method. Registration annotations name ordinary Rust
 types and traits; dependency queries select registrations in the container.
+The existing attributed-function form remains available for runtime inputs.
 The crate is under development: see the repository README and
 `docs/CAPTURE_LIMITS.md` for remaining implementation limits.
 
@@ -29,7 +30,76 @@ wrong value; this is not a compiler-enforced naming check. Other glob imports
 remain allowed. Rust diagnostics may display generated implementation types and
 paths instead of public aliases such as `SystasisContainer`.
 
-## Stored values and fresh constructors
+## Declaration containers
+
+Place the declaration at module or block scope. No enclosing function attribute
+is needed. Building returns an owned container; each call initializes a new one.
+
+```rust
+use systasis::systasis_container;
+
+systasis_container! {
+    register_value!(42: u8 as Copy);
+}
+
+pub fn init_container() -> SystasisContainer {
+    let Ok(container) = SystasisContainer::build();
+    container
+}
+
+fn main() {
+    assert_eq!(init_container().resolve_copy(), 42);
+}
+```
+
+Initializers execute during `build()`, not at the declaration. Their expressions
+can use items in scope, including functions and constants. As with an ordinary
+associated function, this parameterless `build()` does not capture surrounding
+runtime variables; use the attribute form below when supplying such inputs.
+
+### Inferred initialization errors
+
+Propagate an initializer's error with `?`. Systasis infers and combines the source
+errors in `SystasisContainerError`; no error-type annotation or list is needed.
+Sources must implement `core::error::Error + 'static`.
+
+```rust
+use systasis::systasis_container;
+
+trait IPort {}
+impl IPort for u16 {}
+trait IEnabled {}
+impl IEnabled for bool {}
+
+systasis_container! {
+    register_value!("8080".parse::<u16>()?: u16 as IPort);
+    register_value!("true".parse::<bool>()?: bool as IEnabled);
+}
+
+pub fn init_container() -> Result<SystasisContainer, SystasisContainerError> {
+    SystasisContainer::build()
+}
+
+fn main() -> Result<(), SystasisContainerError> {
+    let container = init_container()?;
+    assert_eq!(container.resolve_i_port(), 8080);
+    assert!(container.resolve_i_enabled());
+    Ok(())
+}
+```
+
+The generated enum owns errors inline, without boxing. `Error::source()` exposes
+the original error, and `Display` forwards its message. `Send`/`Sync` follow the
+source types. Internal variants and source-type parameters are not public naming
+contracts; use the generated error name and the `Error` trait.
+
+Infallible declarations infer the never error type, permitting the first
+example's irrefutable `let Ok(...)`. Errors handled inside a nested closure, or
+returned by a lazy constructor during resolution, do not make building fallible.
+Failed builds drop initialized values before returning the error, except values
+owned by the error itself. No partial container is exposed.
+
+## Function-local inputs (attribute form)
 
 `register_value!` evaluates its initializer once at build time.
 `register_type_with!` runs its constructor each time it is resolved;
@@ -95,8 +165,9 @@ fn main() -> Result<(), Error> {
 }
 ```
 
-`build()` returns `Result<SystasisContainer, E>`. The caller owns the container and
-can return it from its initialization function. Pass `&container` to functions
+In this attribute form, `.build()` returns `Result<SystasisContainer, E>`. The
+caller owns the container and can return it from its initialization function.
+Pass `&container` to functions
 accepting a shared container reference. Resolved borrows prevent moving or
 dropping the container while those borrows remain usable. References stored in
 the container must refer to data that outlives them; borrowing another stored
@@ -158,8 +229,9 @@ undo caller side effects or restore values already consumed from an independent
 child container. Similarly, a failed resolution does not roll back earlier
 successful dependency consumption.
 
-Error types can be selected with `.build::<E>()` or inferred from caller context;
-`.build::<_>()` also requests inference. Infallible builds default to the never
+In the attribute form, error types can be selected with `.build::<E>()` or
+inferred from caller context; `.build::<_>()` also requests inference.
+Infallible builds default to the never
 error type. A fallible initializer may need an explicit `E`; errors are not
 automatically combined into a generated enum.
 

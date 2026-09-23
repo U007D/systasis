@@ -24,13 +24,14 @@ This package assumes no stabilization date and does not claim a stable MSRV.
 
 | Feature | Purpose | Location |
 | --- | --- | --- |
-| `type_alias_impl_trait` | Name compiler-inferred native closure storage without exposing closure type parameters in `SystasisContainer`. | Generated private constructor storage. |
+| `type_alias_impl_trait` | Name compiler-inferred native closure storage and declaration initialization errors without exposing their type parameters. | Generated constructor storage and declaration build/error-kind helpers. |
 | `allow_internal_unstable` | Permit the generated opaque aliases and their defining functions without requiring application-level feature annotations. | Procedural-macro entry points. |
 
 These are compiler/code-generation features, not runtime dependencies or unsafe
 operations. Existing guard implementations need no unstable mapped-guard APIs.
-Build-error inference does not emit `!`; explicit `.build::<!>()` uses the
-selected compiler's support for that spelling.
+Declaration build-error inference names never through a `fn() -> !` return-type
+projection; it requires no separate never-type feature. In the attribute form,
+explicit `.build::<!>()` uses the selected compiler's support for that spelling.
 
 `allow_internal_unstable` enables only TAIT in generated code; configuration
 selection has no independent unstable mechanism. The temporary builder closure
@@ -39,6 +40,13 @@ The stored constructor closure is different: its type becomes part of the
 module-scope, concrete `SystasisContainer`, including when its captures are inferred.
 Rust [closure types](https://doc.rust-lang.org/reference/types/closure.html)
 are anonymous; the generated opaque alias currently supplies that field's name.
+
+Declaration builds also use opaque aliases for the inferred source-error enum
+and a zero-sized marker describing whether it is uninhabited. The compiler uses
+the marker's associated constant to expose never for an infallible build. This
+preserves irrefutable `let Ok(...)` without choosing fallibility by counting `?`
+or relying on type layout. Stable replacement work must cover this API as well
+as native captures; no additional unstable feature was added for it.
 
 ## Verification and removal
 

@@ -17,9 +17,14 @@ The generated path supports stored values, fresh Default and custom constructors
 dependency injection, concrete registered-type lookup, overrides, dependency
 layers, checked access, cloning, multi-trait groups, local namespaces, explicit dyn access, and optional Send/Sync
 requirements or local !Sync storage. See the runnable [owned-dependency example](examples/owned.rs).
-Builders can be held, moved, built once, or dropped without running initializers.
-Building returns `Result<SystasisContainer, E>`; the caller owns the built container
-and may return it from the initialization function.
+The declaration form generates `SystasisContainer::build()` with no arguments
+and an inferred `SystasisContainerError`. It combines initialization errors
+without boxing or caller-maintained error annotations. Source errors implement
+`core::error::Error + 'static`; `Error::source()` exposes the original error.
+Infallible declarations retain `let Ok(container) = SystasisContainer::build()`.
+The existing attribute form supports runtime inputs and consuming builders,
+which can be held, moved or dropped without running initializers. Both forms
+return an owned container that may leave its initialization function.
 The [usage guide](docs/USAGE.md) is also the crate-level API documentation;
 its examples compile and run as doctests.
 The requirements' complete [quick example](examples/quick_start.rs) is also

@@ -7,6 +7,36 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-09-22 declaration construction and inferred errors: the item-position macro
+generates parameterless `SystasisContainer::build()` and
+`SystasisContainerError`. Module/block placement, block-local private types,
+owned returns, repeated initialization, lazy constructors, dependency queries,
+ordinary resolvers, namespaces, dyn access and composition as a child are covered.
+The existing attributed-function API remains covered by the workspace suite.
+
+Infallible builds retain irrefutable `let Ok(...)`. Different propagated source
+errors are stored inline in a generated enum; tests verify source identity,
+display, natural Send/Sync, immediate failed-build cleanup and source destruction.
+The compiler driver verifies downstream naming and rejects non-Error sources
+and invalid Send assertions. The allocation test observes zero heap allocations
+for both the successful build and mixed-source failure in its nonallocating
+workload; this does not constrain allocations performed by user initializers.
+
+On installed rustc 1.97.0-nightly (4b0c9d76a, 2026-05-10), full std/no_std workspace
+runs with `resolve_unchecked,experimental-hardware` each pass 471 tests, zero
+failures and four intentionally ignored, including fourteen guide doctests.
+All-target optional-feature Clippy and warnings-denied Rustdoc pass on both
+backends. The separately run extracted-package test passes for std/no_std,
+including declaration/error names used by a downstream caller. Formatting and
+diff checks pass. No new unsafe code, dependencies or compiler features;
+existing TAIT permission is reused, and Miri was not rerun.
+
+Logs: `/private/tmp/systasis-declaration-{std,no-std}.log`,
+`/private/tmp/systasis-declaration-{clippy,no-std-clippy}.log`,
+`/private/tmp/systasis-declaration-{doc,no-std-doc}.log`, and
+`/private/tmp/systasis-declaration-package.log`. Extracted artifacts:
+`target/packaged-consumer/441-1790129071729776000/`.
+
 2026-09-22 generated-type rename: the public type is now `SystasisContainer`.
 The user's `pub fn init_container() -> Result<SystasisContainer, Box<dyn Error +
 Send + 'static>>` example with `.build()?` passes on std/no_std. Existing

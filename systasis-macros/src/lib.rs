@@ -77,7 +77,13 @@ pub fn container(
         .into()
 }
 
-/// Declare registrations inside a `#[systasis::container]` function.
+/// Declare a public `SystasisContainer` with parameterless `SystasisContainer::build()`.
+///
+/// At module or block scope, no enclosing attribute is needed. Each build returns
+/// an owned container and infers `SystasisContainerError` from initialization.
+/// Propagated source errors must implement `core::error::Error + 'static`; they
+/// are retained inline in a generated enum, with the original error available
+/// through `Error::source()`. Infallible builds infer the never error type.
 ///
 /// Use `register_value!(expression: Type as Interface)` for a stored value,
 /// `register_type!(Type as Interface)` for a fresh `Default` value, and
@@ -87,9 +93,10 @@ pub fn container(
 /// `register_container!(name: &ChildType)` composes an independently owned child
 /// behind a named scope rather than importing its registrations into the parent.
 ///
-/// The enclosing attribute processes this declaration and its dependency queries
-/// together. The builder can be moved or dropped without running initializers;
-/// consuming `.build()` exposes the generated resolution methods.
+/// For runtime inputs, the existing `#[systasis::container]` function form also
+/// accepts this macro as a builder expression. That builder can be moved or
+/// dropped without running initializers; consuming `.build()` exposes resolution
+/// methods and retains the attribute form's optional `.build::<E>()` selection.
 ///
 /// Systasis cannot yet represent some borrowed constructor inputs' lifetimes.
 /// Workaround: register an implementation with owned fields and captures.
