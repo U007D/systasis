@@ -243,7 +243,8 @@ mod returned_owned {
         let container = systasis::systasis_container! {
             register_value!(value: T as IValue);
             register_type_with!(T as IOutput, try || -> Result<T, Error> { try_resolve!(IValue) });
-        }.build::<Error>()?;
+        }
+        .build::<Error>()?;
         let _owned = container.try_resolve_i_output()?;
         assert!(matches!(
             container.try_resolve_i_value(),

@@ -7,6 +7,7 @@ mod values {
     trait IOwned {}
     #[derive(Copy)]
     struct Copied(u8);
+    #[allow(clippy::non_canonical_clone_impl)] // Prove the resolver copies, not clones.
     impl Clone for Copied {
         fn clone(&self) -> Self {
             panic!("copy resolution must not call Clone")
@@ -68,6 +69,10 @@ mod references {
     }
 
     #[test]
+    #[allow(
+        clippy::drop_non_drop,
+        reason = "verify the transferred reference survives container destruction"
+    )]
     fn references_are_values_and_mutable_references_are_not_reborrowed() {
         let mut value = 0;
         let text = String::from("borrowed");
@@ -82,8 +87,8 @@ mod references {
             container.try_resolve_i_mutable(),
             Err(systasis::container::Error::ValueAlreadyConsumed)
         ));
-        *mutable = 4;
         drop(container);
+        *mutable = 4; // The transferred reference outlives the container.
         assert_eq!(value, 4);
     }
 }
@@ -136,6 +141,8 @@ mod child {
     systasis::systasis_container! {
         register_value!(String::from("child"): String as IText in named);
         register_value!(5: u8 as Copy);
+        register_type!(String as IText in fresh);
+        register_type_with!(u8 as Copy in constructed, || 7);
     }
 }
 
@@ -156,6 +163,10 @@ mod parent {
         assert_eq!(text, "child");
         let Ok(number) = container.primary().try_resolve_copy();
         assert_eq!(number, 5);
+        let Ok(fresh) = container.primary().try_resolve_i_text_in_fresh();
+        assert!(fresh.is_empty());
+        let Ok(constructed) = container.primary().try_resolve_copy_in_constructed();
+        assert_eq!(constructed, 7);
     }
 
     #[test]

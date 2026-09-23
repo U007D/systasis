@@ -233,8 +233,18 @@ fn generated_and_handwritten_runtime_baselines() {
         "Copy/clone timings exclude build/drop. Consume includes build+checked take+drop; build/drop includes one payload destruction. All paths use identical slot primitives; no allocator workload, compile-time, machine isolation, or cross-machine claims."
     );
     report("copy", Work::Copy, copying::generated, copying::handwritten);
-    report("clone", Work::Clone, synchronized::generated, synchronized::handwritten);
-    report("local clone", Work::Clone, local::generated, local::handwritten);
+    report(
+        "clone",
+        Work::Clone,
+        synchronized::generated,
+        synchronized::handwritten,
+    );
+    report(
+        "local clone",
+        Work::Clone,
+        local::generated,
+        local::handwritten,
+    );
 
     report(
         "lazy constructor",

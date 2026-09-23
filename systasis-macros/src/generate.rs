@@ -1435,24 +1435,20 @@ fn expand_inner(
                 quote!(::systasis::__private::FreshSlot::<#ty>::new())
             } else {
                 quote!({
-                    // Infer the expression before applying the declared type:
-                    // a directly typed &mut initializer would implicitly
-                    // reborrow a captured reference instead of transferring it.
-                    let __systasis_input = { #value };
-                    let __systasis_input: #ty = __systasis_input;
+                    let __systasis_input: #ty = { #value };
                     <#policy as ::systasis::__private::Select<#ty>>::store(__systasis_input)
                 })
             };
             initialization.push(quote!(let (#slot,#systasis_error_ident)=match #systasis_error_ident {
                 error @ ::core::option::Option::Some(_)=>{#skipped_capture (::core::option::Option::None,error)},
-                ::core::option::Option::None=>::systasis::__private::split((|| -> ::core::result::Result<_, #error_ty> {
+                ::core::option::Option::None=>::systasis::__private::split(::systasis::__private::initialize_once(|| -> ::core::result::Result<_, #error_ty> {
                     // An empty match coerces into the contextual error type.
                     // It cannot execute: this expression constructs Ok, whose
                     // source error type Infallible has no inhabitants.
                     ::core::result::Result::<_, ::core::convert::Infallible>::Ok(
                         #stored
                     ).map_err(|never| match never {})
-                })()),
+                })),
             };));
         }
         let reverse = order.iter().rev().map(|i| &slots[*i]);

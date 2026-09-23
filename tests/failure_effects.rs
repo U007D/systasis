@@ -184,7 +184,10 @@ mod child_owned_error {
                 ResourceFailure::Rejected(resource) => assert!(Rc::ptr_eq(&resource.drops, &drops)),
                 ResourceFailure::Access(error) => panic!("resource must be available: {error}"),
             }
-            assert!(matches!(primary.try_resolve_i_resource(), Err(Error::ValueAlreadyConsumed)));
+            assert!(matches!(
+                primary.try_resolve_i_resource(),
+                Err(Error::ValueAlreadyConsumed)
+            ));
             assert_eq!(drops.get(), 0);
             drop(error);
             assert_eq!(drops.get(), 1);

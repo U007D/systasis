@@ -29,10 +29,7 @@ mod caller_local {
         }
         .build::<systasis::container::Error>();
 
-        assert_eq!(
-            built.unwrap().resolve_i_value_clone(),
-            "caller input"
-        );
+        assert_eq!(built.unwrap().resolve_i_value_clone(), "caller input");
     }
 }
 

@@ -88,13 +88,13 @@ pub(crate) fn replacements(
                 result.insert((index, method.into()), parse_quote!(#owner.#method_ident()));
             }
             if cfg!(feature = "resolve_unchecked") && !registration.fresh {
-                for method in ["resolve_unchecked"] {
-                    let method_ident = format_ident!("{method}");
-                    let owner: Expr = slot(index);
-                    // Deliberately no unsafe block: the user's query must be
-                    // inside an explicit unsafe context.
-                    result.insert((index, method.into()), parse_quote!(#owner.#method_ident()));
-                }
+                let owner: Expr = slot(index);
+                // Deliberately no unsafe block: the user's query must be
+                // inside an explicit unsafe context.
+                result.insert(
+                    (index, "resolve_unchecked".into()),
+                    parse_quote!(#owner.resolve_unchecked()),
+                );
             }
         }
     }

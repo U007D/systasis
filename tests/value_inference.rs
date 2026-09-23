@@ -146,9 +146,7 @@ mod group {
         }
         .build();
         assert_eq!(
-            container
-                .resolve_i_length_i_text_clone_in_test()
-                .length(),
+            container.resolve_i_length_i_text_clone_in_test().length(),
             5
         );
         assert_eq!(container.resolve_i_length_i_text_clone_in_test(), "group");

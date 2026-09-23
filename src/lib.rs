@@ -45,6 +45,13 @@ pub mod __private {
     /// The actual never type, named without requiring caller-side feature gates.
     pub type Never = <fn() -> ! as FunctionOutput>::Output;
 
+    /// Runs one initializer with a consuming closure bound before body inference.
+    /// This permits returning captured mutable references while retaining the
+    /// registered type's normal expression-coercion context.
+    pub fn initialize_once<T>(initialize: impl FnOnce() -> T) -> T {
+        initialize()
+    }
+
     pub fn split<T, E>(result: Result<T, E>) -> (Option<T>, Option<E>) {
         match result {
             Ok(value) => (Some(value), None),
