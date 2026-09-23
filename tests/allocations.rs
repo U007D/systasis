@@ -10,6 +10,8 @@ use counter::{Counts, assert_no_allocations, measure};
 
 #[path = "allocation_cases/composition.rs"]
 mod composition;
+#[path = "allocation_cases/declaration.rs"]
+mod declaration;
 #[path = "allocation_cases/lifecycle.rs"]
 mod lifecycle;
 #[path = "allocation_cases/plain.rs"]

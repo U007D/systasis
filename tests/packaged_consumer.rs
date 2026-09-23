@@ -289,7 +289,30 @@ pub mod native {
         named(&container)
     }
 }
+pub mod declared {
+    systasis::systasis_container! {
+        register_value!(42: u8 as Copy);
+    }
+    pub fn build() -> SystasisContainer {
+        let Ok(container) = SystasisContainer::build();
+        container
+    }
+}
+pub mod fallible {
+    systasis::systasis_container! {
+        register_value!("42".parse::<u8>()?: u8 as Copy);
+        register_value!("invalid".parse::<bool>()?: bool as Clone);
+    }
+    pub fn build() -> Result<SystasisContainer, SystasisContainerError> {
+        Ok(SystasisContainer::build()?)
+    }
+}
 pub fn run() -> u32 {
+    let declared: declared::SystasisContainer = declared::build();
+    assert_eq!(declared.resolve_copy(), 42);
+    let Err(error): Result<fallible::SystasisContainer, fallible::SystasisContainerError> =
+        fallible::build() else { panic!("invalid bool must fail initialization") };
+    assert!(core::error::Error::source(&error).unwrap().is::<core::str::ParseBoolError>());
     let mut value = 0;
     child::run(|child| value = outer::run(child));
     assert_eq!(native::run(), value);
