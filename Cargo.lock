@@ -129,7 +129,7 @@ dependencies = [
 
 [[package]]
 name = "systasis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "parking_lot",
  "portable-atomic",
@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "systasis-macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",

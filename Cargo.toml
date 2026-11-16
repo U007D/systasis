@@ -1,6 +1,6 @@
 [package]
 name = "systasis"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 description = "Statically wired dependency injection with checked, nonblocking value access"
@@ -29,7 +29,7 @@ portable-atomic = ["spin/portable-atomic", "dep:portable-atomic"]
 experimental-hardware = ["portable-atomic"]
 
 [dependencies]
-systasis-macros = { path = "systasis-macros", version = "0.1.0" }
+systasis-macros = { path = "systasis-macros", version = "0.2.0" }
 parking_lot = { version = "0.12.5", default-features = false, features = ["send_guard"], optional = true }
 thiserror = { version = "2.0.20", default-features = false }
 spin = { version = "0.12.2", default-features = false, features = ["rwlock", "lock_api"] }
