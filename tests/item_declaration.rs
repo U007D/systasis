@@ -46,7 +46,7 @@ fn fallible_declaration_inside_block() {
     systasis::systasis_container! {
         register_value!("invalid".parse::<u8>()?: u8 as Copy);
     }
-    fn init() -> Result<SystasisContainer, SystasisContainerError> {
+    fn init() -> BuildResult<impl core::error::Error> {
         SystasisContainer::build()
     }
     let Err(error) = init() else {
@@ -106,7 +106,7 @@ mod fallible {
         register_value!("invalid".parse::<u8>()?: u8 as Copy);
     }
 
-    fn init() -> Result<SystasisContainer, SystasisContainerError> {
+    fn init() -> BuildResult<impl core::error::Error> {
         SystasisContainer::build()
     }
 
@@ -249,9 +249,7 @@ mod different_sources {
         assert!(container.resolve_i_flag());
         for mode in [1, 2] {
             FAILURE.store(mode, Ordering::Relaxed);
-            let Err(error): Result<SystasisContainer, SystasisContainerError> =
-                SystasisContainer::build()
-            else {
+            let Err(error): BuildResult<_> = SystasisContainer::build() else {
                 panic!("selected input must fail");
             };
             fn send_sync<T: Send + Sync>(_: &T) {}

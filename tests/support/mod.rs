@@ -75,6 +75,9 @@ impl Artifacts {
 
     pub fn rustc(&self) -> Command {
         let mut command = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+        command
+            .env_remove("RUSTC_BOOTSTRAP")
+            .args(["-F", "unstable_features"]);
         // Newer Cargo separates metadata from the rlib. Passing both artifacts
         // supports metadata-only checks and linking without guessing their paths.
         for path in [&self.library, &self.metadata] {

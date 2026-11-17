@@ -1,7 +1,28 @@
 #![no_std]
 #![forbid(unsafe_code)]
+#![forbid(unstable_features)]
 
 use systasis::{Fallible, container::Error};
+
+/// Native constructor storage and inferred errors require only core.
+pub mod stable_generated {
+    trait IFresh {}
+    impl IFresh for u32 {}
+
+    systasis::systasis_container! {
+        register_value!("42".parse::<u32>()?: u32 as Copy);
+        register_type_with!(u32 as IFresh, || {
+            let value = resolve!(Copy);
+            assert!(value > 0);
+            value
+        });
+    }
+
+    /// Build and resolve through the allocator-free stable representation.
+    pub fn round_trip() -> Result<u32, impl core::error::Error> {
+        SystasisContainer::build().map(|container| container.resolve_i_fresh())
+    }
+}
 
 /// Positive control for the generated path in no_std target compilation.
 pub mod generated {
@@ -12,7 +33,8 @@ pub mod generated {
     pub fn round_trip(input: u32) -> u32 {
         let Ok(container) = systasis::systasis_container! {
             register_value!(input: u32 as IValue);
-        }.build();
+        }
+        .build();
         container.resolve_i_value()
     }
 }
@@ -23,7 +45,8 @@ pub mod generic_generated {
     pub fn round_trip<T: Copy + crate::generated::IValue>(input: T) -> T {
         let Ok(container) = systasis::systasis_container! {
             register_value!(input: T as crate::generated::IValue);
-        }.build();
+        }
+        .build();
         container.resolve_i_value()
     }
 }
@@ -50,9 +73,7 @@ pub fn readonly_value_cannot_be_taken() {
 extern crate alloc;
 
 /// Positive control: reservation adds no independent lifetime or guard type.
-pub fn reserved_reference(
-    slot: &systasis::__private::TakeSlot<u32>,
-) -> Result<&u32, Error> {
+pub fn reserved_reference(slot: &systasis::__private::TakeSlot<u32>) -> Result<&u32, Error> {
     slot.try_reserve_ref()
 }
 

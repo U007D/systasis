@@ -126,6 +126,15 @@ fn source_and_native_constructor_chains_can_transfer_child_values() {
         let source = if native {
             source
                 .replace(
+                    ") -> SystasisContainer<'a> {",
+                    ") -> SystasisContainer<'a, impl SystasisFactories<'a>> {",
+                )
+                .replace(
+                    "pub fn run<'a>(branch:",
+                    "pub fn run<'a, F: middle::SystasisFactories<'a>>(branch:",
+                )
+                .replace("&middle::SystasisContainer<'a>", "&middle::SystasisContainer<'a, F>")
+                .replace(
                     &format!("try_resolve_from!({interface}, branch)"),
                     &format!("{{ let length = try_resolve_from!({interface}, branch)?; assert!(length > 0); Ok(length) }}"),
                 )

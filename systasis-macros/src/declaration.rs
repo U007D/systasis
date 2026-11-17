@@ -6,6 +6,16 @@ use syn::{parse_quote, visit_mut::VisitMut};
 struct ModuleReferences;
 
 impl VisitMut for ModuleReferences {
+    fn visit_type_path_mut(&mut self, path: &mut syn::TypePath) {
+        let segments = path.path.segments.len();
+        syn::visit_mut::visit_type_path_mut(self, path);
+        if let Some(qualified) = &mut path.qself {
+            qualified.position = qualified
+                .position
+                .saturating_sub(segments.saturating_sub(path.path.segments.len()));
+        }
+    }
+
     fn visit_path_mut(&mut self, path: &mut syn::Path) {
         syn::visit_mut::visit_path_mut(self, path);
         if path.leading_colon.is_none()
@@ -13,6 +23,19 @@ impl VisitMut for ModuleReferences {
             && first.ident == "__systasis_injected"
         {
             path.segments = path.segments.iter().skip(1).cloned().collect();
+        }
+        if path.leading_colon.is_none()
+            && path
+                .segments
+                .first()
+                .is_some_and(|segment| segment.ident == "self")
+            && path
+                .segments
+                .iter()
+                .nth(1)
+                .is_some_and(|segment| segment.ident == "__systasis_injected")
+        {
+            path.segments = path.segments.iter().skip(2).cloned().collect();
         }
         if path.is_ident("SystasisContainer") {
             *path = parse_quote!(__systasis_Container);
@@ -22,7 +45,7 @@ impl VisitMut for ModuleReferences {
 
 pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
     let function = parse_quote! {
-        fn __systasis_build() -> ::core::result::Result<SystasisContainer, __systasis_declaration::NativeError> {
+        fn __systasis_build() {
             let mut __systasis_error_marker = ::core::marker::PhantomData;
             let container = ::systasis::systasis_container! {
                 #registrations
@@ -33,6 +56,42 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
     let mut errors = crate::declaration_errors::Sources::default();
     let mut definitions: syn::File =
         syn::parse2(crate::generate::expand_declaration(function, &mut errors)?)?;
+    let has_factories = definitions.items.iter().any(|item| matches!(item,
+        syn::Item::Type(alias) if alias.ident == "SystasisContainer"
+            && alias.generics.type_params().any(|parameter| parameter.ident == "__systasis_Factories")));
+    let mut raw_generics = definitions
+        .items
+        .iter()
+        .find_map(|item| {
+            let syn::Item::Mod(module) = item else {
+                return None;
+            };
+            module
+                .content
+                .as_ref()?
+                .1
+                .iter()
+                .find_map(|item| match item {
+                    syn::Item::Type(alias) if alias.ident == "__systasis_RawContainer" => {
+                        Some(alias.generics.clone())
+                    }
+                    _ => None,
+                })
+        })
+        .ok_or_else(|| {
+            syn::Error::new_spanned(&definitions, "raw container alias was not generated")
+        })?;
+    for parameter in raw_generics.type_params_mut() {
+        if parameter.ident == "__systasis_Error" {
+            parameter.ident = syn::Ident::new("E", parameter.ident.span());
+        }
+    }
+    let native_names = raw_generics
+        .type_params()
+        .filter(|parameter| parameter.ident != "E")
+        .map(|parameter| &parameter.ident)
+        .collect::<Vec<_>>();
+    let (raw_parameters, raw_arguments, _) = raw_generics.split_for_impl();
     let mut initializer = None;
     definitions.items.retain(|item| {
         if let syn::Item::Fn(function) = item
@@ -54,32 +113,97 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
         .block
         .stmts
         .push(parse_quote!(let kind = #kind;));
-    // The never-selection constant must not depend on the NativeError opaque
-    // alias while checking an enclosing function containing a declaration.
-    // Infer Kind from the same generated initializer in an uncalled function;
-    // only __systasis_build executes registrations at runtime.
+    // Inspect the initializer's inferred error types without executing it.
+    // A function-item argument exposes the marker constant on stable Rust.
     let mut kind_initializer = initializer.clone();
     kind_initializer.sig.ident =
         syn::Ident::new("__systasis_error_kind", initializer.sig.ident.span());
-    kind_initializer.attrs = vec![
-        parse_quote!(#[define_opaque(__systasis_declaration::Kind)]),
-        parse_quote!(#[allow(dead_code)]),
-    ];
-    kind_initializer.sig.output = parse_quote!(-> __systasis_declaration::Kind);
+    kind_initializer.attrs = vec![parse_quote!(#[allow(dead_code)])];
+    kind_initializer.sig.output = parse_quote!(-> impl __systasis_declaration::ErrorKind);
     kind_initializer
         .block
         .stmts
         .push(syn::Stmt::Expr(parse_quote!(kind), None));
-    initializer.attrs = vec![parse_quote!(#[define_opaque(__systasis_declaration::NativeError)])];
-    initializer.sig.output = parse_quote!(-> ::core::result::Result<__systasis_Container, __systasis_declaration::NativeError>);
-    initializer.block.stmts.push(parse_quote!(
-        let _: ::core::marker::PhantomData<__systasis_declaration::NativeError> =
-            __systasis_declaration::ErrorKind::marker(&kind);
-    ));
+    let mut parameters = Vec::new();
+    let mut arguments = Vec::new();
+    let mut opaque = Vec::new();
+    if has_factories {
+        parameters.push(quote!(F: __systasis_FactoryTypes));
+        arguments.push(quote!(F));
+        opaque.push(quote!(impl SystasisFactories));
+    }
+    if errors.has_sources() {
+        parameters.push(quote!(E));
+        arguments.push(quote!(E));
+        opaque.push(quote!(impl ::core::error::Error + 'static));
+    }
+    let parameters = (!parameters.is_empty()).then(|| quote!(<#(#parameters),*>));
+    let arguments = (!arguments.is_empty()).then(|| quote!(<#(#arguments),*>));
+    let opaque = (!opaque.is_empty()).then(|| quote!(<#(#opaque),*>));
+    let mut finished_arguments = Vec::new();
+    if has_factories {
+        let slots = native_names.iter().map(|name| {
+            let wrapper = quote::format_ident!(
+                "{}",
+                name.to_string()
+                    .replace("__systasis_Factory", "__systasis_NativeFactory")
+            );
+            quote!(::systasis::__private::FactorySlot<#wrapper<#name>>)
+        });
+        finished_arguments.push(quote!((#(#slots,)*)));
+    }
+    if errors.has_sources() {
+        finished_arguments.push(quote!(E));
+    }
+    let finished_arguments =
+        (!finished_arguments.is_empty()).then(|| quote!(<#(#finished_arguments),*>));
+    initializer.attrs.clear();
+    initializer.sig.output = parse_quote!(-> BuildResult #opaque);
     initializer
         .block
         .stmts
-        .push(syn::Stmt::Expr(parse_quote!(container), None));
+        .push(parse_quote!(let result = __systasis_finish(container);));
+    initializer
+        .block
+        .stmts
+        .push(syn::Stmt::Expr(parse_quote!(result), None));
+    let (error, selected_error, error_definition, conversion) = if errors.has_sources() {
+        (
+            quote!(E),
+            quote!(SystasisContainerError<E>),
+            quote! {
+                /// The inferred initialization error; `source()` exposes the original error.
+                pub type SystasisContainerError<E> = <__systasis_declaration::Select<{ __systasis_declaration::is_never(&__systasis_error_kind) }> as __systasis_declaration::ErrorSelection<E>>::Error;
+            },
+            quote!(result.map_err(
+                <__systasis_declaration::Select<
+                    { __systasis_declaration::is_never(&__systasis_error_kind) },
+                > as __systasis_declaration::ErrorSelection<E>>::convert
+            )),
+        )
+    } else {
+        (
+            quote!(::systasis::__private::Never),
+            quote!(SystasisContainerError),
+            quote! {
+                /// The never type for a declaration with no initialization errors.
+                pub type SystasisContainerError = ::systasis::__private::Never;
+            },
+            quote!(result),
+        )
+    };
+    let result_definitions = quote! {
+        #error_definition
+        /// A build result sharing its inferred type parameters with the container.
+        #[allow(type_alias_bounds)]
+        pub type BuildResult #parameters = ::core::result::Result<__systasis_Container #arguments, #selected_error>;
+        fn __systasis_finish #raw_parameters(result: ::core::result::Result<__systasis_RawContainer #raw_arguments, #error>) -> BuildResult #finished_arguments {
+            #conversion
+        }
+        impl __systasis_Container {
+            pub fn build() -> BuildResult #opaque { __systasis_build() }
+        }
+    };
     // Keep only generic error machinery in this module. Initializers remain in
     // the invocation scope so they can name the caller's block-local types.
     let helpers: syn::File = syn::parse2(quote! {
@@ -110,10 +234,10 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
             }
             pub fn infer<T, E>(_: &::core::result::Result<T, E>) -> Infer<E> { Infer(PhantomData) }
             pub fn tie<T, E>(result: ::core::result::Result<T, E>, _: &mut PhantomData<E>) -> ::core::result::Result<T, E> { result }
+            pub fn container_marker<M, G, E>(_: &PhantomData<E>) -> PhantomData<(M, fn() -> (G, E))> { PhantomData }
+            pub const fn is_never<F, K>(_: &F) -> bool where F: FnOnce() -> K, K: ErrorKind { K::NEVER }
 
             #error_definitions
-            pub type NativeError = impl ::core::error::Error + 'static;
-            pub type Kind = impl ErrorKind;
             pub struct Select<const EMPTY: bool>;
             pub trait ErrorSelection<E> { type Error; fn convert(error: E) -> Self::Error; }
             impl<E> ErrorSelection<E> for Select<false> {
@@ -126,20 +250,12 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
                     unreachable!("the two generated initializers infer the same source errors; Kind::NEVER is true only when every source error is the never type, so no error variant can exist")
                 }
             }
-            pub type Choice = Select<{ <Kind as ErrorKind>::NEVER }>;
-            pub type Error = <Choice as ErrorSelection<NativeError>>::Error;
         }
         #[allow(unused_imports)]
         use __systasis_declaration::ActualError as _;
         #kind_initializer
         #initializer
-        impl __systasis_Container {
-            pub fn build() -> ::core::result::Result<Self, __systasis_declaration::Error> {
-                __systasis_build().map_err(
-                    <__systasis_declaration::Choice as __systasis_declaration::ErrorSelection<__systasis_declaration::NativeError>>::convert
-                )
-            }
-        }
+        #result_definitions
     })?;
     let module = definitions
         .items
@@ -188,11 +304,15 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
     }
     implementation.extend(helpers.items);
     definitions.items.retain(
-        |item| !matches!(item, syn::Item::Mod(module) if module.ident == "__systasis_injected"),
+        |item| !matches!(item, syn::Item::Mod(module) if module.ident == "__systasis_injected")
+            && !matches!(item, syn::Item::Use(import) if matches!(&import.tree,
+                syn::UseTree::Path(root) if root.ident == "self"
+                    && matches!(&*root.tree, syn::UseTree::Path(path) if path.ident == "__systasis_injected"
+                        && matches!(&*path.tree, syn::UseTree::Name(name) if name.ident == "SystasisFactories")))),
     );
     for item in &mut definitions.items {
         if let syn::Item::Type(alias) = item {
-            ModuleReferences.visit_type_mut(&mut alias.ty);
+            ModuleReferences.visit_item_type_mut(alias);
         }
         if let syn::Item::Mod(module) = item
             && let Some((_, items)) = &mut module.content
@@ -217,7 +337,5 @@ pub(crate) fn expand(registrations: TokenStream) -> syn::Result<TokenStream> {
             #implementation
         )*
         #definitions
-        /// The inferred initialization error; `source()` exposes the original error.
-        pub use __systasis_declaration::Error as SystasisContainerError;
     })
 }

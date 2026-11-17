@@ -12,7 +12,7 @@ struct Service(String);
 trait IService {}
 impl IService for Service {}
 
-fn receive(container: &SystasisContainer) -> String {
+fn receive<F: SystasisFactories>(container: &SystasisContainer<F>) -> String {
     container.resolve_i_service().0
 }
 
@@ -38,7 +38,7 @@ fn native_macro_captures_are_lazy_repeatable_and_nameable() {
 mod inferred_capture {
     use super::{IService, Service};
 
-    fn receive(container: &SystasisContainer) -> String {
+    fn receive<F: SystasisFactories>(container: &SystasisContainer<F>) -> String {
         container.resolve_i_service().0
     }
 
@@ -238,8 +238,8 @@ mod generic_capture {
             });
         }
         .build();
-        fn receive<'env, T: Clone + Send + Sync>(
-            container: &SystasisContainer<'env, T>,
+        fn receive<'env, T: Clone + Send + Sync, F: SystasisFactories<'env, T>>(
+            container: &SystasisContainer<'env, T, F>,
         ) -> View<'env, T> {
             container.resolve_i_view()
         }
@@ -288,7 +288,7 @@ mod children {
     mod replica_factory {
         use super::*;
         #[systasis::container]
-        pub fn run(primary: &leaf::SystasisContainer) {
+        pub fn run<F: leaf::SystasisFactories>(primary: &leaf::SystasisContainer<F>) {
             let config: String = String::from("replica");
             let Ok(container) = systasis::systasis_container! {
                 register_type_with!(Service as IService, move || Service(format!("{config}")));
@@ -298,13 +298,13 @@ mod children {
         }
     }
     #[systasis::container]
-    fn check<'a>(
-        primary: &'a leaf::SystasisContainer,
-        replica: &'a replica_factory::SystasisContainer,
+    fn check<'a, F: leaf::SystasisFactories, G: replica_factory::SystasisFactories<F>>(
+        primary: &'a leaf::SystasisContainer<F>,
+        replica: &'a replica_factory::SystasisContainer<F, G>,
     ) {
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &'a leaf::SystasisContainer);
-            register_container!(replica: &'a replica_factory::SystasisContainer);
+            register_container!(primary: &'a leaf::SystasisContainer<F>);
+            register_container!(replica: &'a replica_factory::SystasisContainer<F, G>);
             register_type_with!(Service as IService, || {
                 let primary = resolve_from!(IService, primary);
                 let replica = resolve_from!(IService, replica);
@@ -312,7 +312,7 @@ mod children {
             });
         }
         .build();
-        fn receive(scope: &primary::SubContainer<'_>) -> String {
+        fn receive<F: leaf::SystasisFactories>(scope: &primary::SubContainer<'_, F>) -> String {
             scope.resolve_i_service().0
         }
         assert_eq!(receive(container.primary()), "primary");

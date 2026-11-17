@@ -300,14 +300,14 @@ pub mod fallible {
         register_value!("42".parse::<u8>()?: u8 as Copy);
         register_value!("invalid".parse::<bool>()?: bool as Clone);
     }
-    pub fn build() -> Result<SystasisContainer, SystasisContainerError> {
+    pub fn build() -> BuildResult<impl core::error::Error> {
         Ok(SystasisContainer::build()?)
     }
 }
 pub fn run() -> u32 {
     let declared: declared::SystasisContainer = declared::build();
     assert_eq!(declared.resolve_copy(), 42);
-    let Err(error): Result<fallible::SystasisContainer, fallible::SystasisContainerError> =
+    let Err(error): fallible::BuildResult<_> =
         fallible::build() else { panic!("invalid bool must fail initialization") };
     assert!(core::error::Error::source(&error).unwrap().is::<core::str::ParseBoolError>());
     let mut value = 0;

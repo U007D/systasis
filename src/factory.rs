@@ -15,7 +15,7 @@ impl<C> FactorySlot<C> {
     }
 }
 
-// Called before assigning native aliases without enclosing generics. Checking
+// Called when storing native closures without enclosing generics. Checking
 // the concrete closure makes local E0597 errors point to this bound and remedy.
 // Keep the comment on the bound's line: rustc renders that source excerpt.
 /// Systasis cannot yet represent some borrowed constructor inputs' lifetimes.

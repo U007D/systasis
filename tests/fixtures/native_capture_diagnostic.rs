@@ -50,6 +50,11 @@ fn main() {
     drop(unrelated);
     #[cfg(any(ignored, static_reference, wrong_output))]
     drop(text);
+    #[cfg(not(helper))]
+    fn receive<F: SystasisFactories>(container: &SystasisContainer<F>) -> String {
+        container.resolve_i_message()
+    }
+    #[cfg(helper)]
     fn receive(container: &SystasisContainer) -> String {
         container.resolve_i_message()
     }

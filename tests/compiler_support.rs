@@ -21,6 +21,8 @@ fn stable_layout_selects_hashed_metadata_and_dependency_directory() {
             r#"{"filenames":["/target/debug/libsystasis.rlib","/target/debug/deps/libsystasis-123.rmeta"]}"#
         ),
         [
+            "-F",
+            "unstable_features",
             "--extern",
             "systasis=/target/debug/libsystasis.rlib",
             "--extern",
@@ -44,13 +46,13 @@ fn split_metadata_layout_uses_all_reported_artifact_directories() {
 "#,
     );
     assert_eq!(
-        args[3],
+        args[5],
         "systasis=/target/debug/build/systasis/123/out/libsystasis-123.rmeta"
     );
     for directory in ["dependency/456/out", "macros/789/out", "systasis/123/out"] {
         assert!(args.contains(&format!("dependency=/target/debug/build/{directory}")));
     }
-    assert_eq!(args.len(), 12);
+    assert_eq!(args.len(), 14);
 }
 
 #[test]
@@ -63,7 +65,7 @@ fn paths_decode_json_escapes_without_treating_strings_or_nested_keys_as_artifact
 "#,
     );
     assert_eq!(
-        args[3],
+        args[5],
         "systasis=/path with ,\"quotes\"/café-🚀/libsystasis-123.rmeta"
     );
 }
@@ -110,7 +112,7 @@ fn invalid_filename_strings_are_rejected() {
 }
 
 // This small independent package allows validating artifact handling on stable
-// even when the production proc-macro package temporarily requires nightly.
+// independently of the production proc-macro package.
 #[test]
 fn independent_cargo_package_supports_metadata_checks_linking_and_intended_errors() {
     use std::{fs, path::Path, process::Command};

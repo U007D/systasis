@@ -89,8 +89,8 @@ fn main() { assert_eq!(init().resolve_copy(), 42); }
         (
             "inferred_fallible_name",
             r#"
-use item_provider::fallible::{SystasisContainer, SystasisContainerError};
-fn init() -> Result<SystasisContainer, SystasisContainerError> { SystasisContainer::build() }
+use item_provider::fallible::{SystasisContainer, BuildResult};
+fn init() -> BuildResult<impl core::error::Error> { SystasisContainer::build() }
 fn main() {
     let Err(error) = init() else { panic!("parse fails") };
     fn send_sync<T: Send + Sync>(_: &T) {}

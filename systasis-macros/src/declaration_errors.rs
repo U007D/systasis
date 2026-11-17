@@ -7,9 +7,14 @@ use syn::{parse_quote, visit_mut::VisitMut};
 #[derive(Default)]
 pub(crate) struct Sources {
     count: usize,
+    unexpanded: bool,
 }
 
 impl Sources {
+    pub(crate) fn has_sources(&self) -> bool {
+        self.count != 0 || self.unexpanded
+    }
+
     fn propagate(&mut self, source: &syn::Expr) -> syn::Expr {
         let function = format_ident!("propagate_{}", self.count);
         self.count += 1;
@@ -97,6 +102,12 @@ impl VisitMut for Sources {
     fn visit_expr_closure_mut(&mut self, _: &mut syn::ExprClosure) {}
     fn visit_expr_async_mut(&mut self, _: &mut syn::ExprAsync) {}
     fn visit_expr_try_block_mut(&mut self, _: &mut syn::ExprTryBlock) {}
+
+    fn visit_expr_macro_mut(&mut self, _: &mut syn::ExprMacro) {
+        // Expansion can introduce propagation. Keep its error parameter until
+        // rustc determines the actual error kind, including the never case.
+        self.unexpanded = true;
+    }
 
     fn visit_expr_try_mut(&mut self, expression: &mut syn::ExprTry) {
         self.visit_expr_mut(&mut expression.expr);

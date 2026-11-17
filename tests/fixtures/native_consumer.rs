@@ -1,30 +1,30 @@
 #![forbid(unsafe_code)]
 
-fn public(container: &native_provider::public_result::SystasisContainer) {
+fn public<F: native_provider::public_result::SystasisFactories>(container: &native_provider::public_result::SystasisContainer<F>) {
     let service: native_provider::public_result::Service = container.resolve_i_service();
     assert_eq!(service.0, "public");
 }
-fn private(_: &native_provider::private_result::SystasisContainer) {}
-fn generic<'a>(container: &native_provider::generic::SystasisContainer<'a, String>) {
+fn private<F: native_provider::private_result::SystasisFactories>(_: &native_provider::private_result::SystasisContainer<F>) {}
+fn generic<'a, F: native_provider::generic::SystasisFactories<'a, String>>(container: &native_provider::generic::SystasisContainer<'a, String, F>) {
     let service: native_provider::generic::Service<'a, String> = container.resolve_i_service();
     assert_eq!(service.0, "label");
     assert_eq!(service.1, "owned");
 }
 
 mod parent {
-    use native_provider::public_result::SystasisContainer as Child;
+    use native_provider::public_result::{SystasisContainer as Child, SystasisFactories};
 
-    fn receive(scope: &primary::SubContainer<'_>) -> String {
+    fn receive<F: SystasisFactories>(scope: &primary::SubContainer<'_, F>) -> String {
         scope.resolve_i_service().0
     }
 
     #[systasis::container]
-    pub fn inspect(child: &Child) {
+    pub fn inspect<F: SystasisFactories>(child: &Child<F>) {
         let primary = child;
         let replica = child;
         let Ok(container) = systasis::systasis_container! {
-            register_container!(primary: &Child);
-            register_container!(replica: &Child);
+            register_container!(primary: &Child<F>);
+            register_container!(replica: &Child<F>);
         }
         .build();
         assert_eq!(receive(container.primary()), "public");
@@ -40,7 +40,7 @@ mod borrowing_parent {
     trait IView {}
     impl IView for View<'_> {}
 
-    fn receive<'env>(container: &SystasisContainer<'_, 'env>) -> View<'env> {
+    fn receive<'env, F: SystasisFactories<'env>>(container: &SystasisContainer<'_, 'env, F>) -> View<'env> {
         container.try_resolve_i_view().unwrap()
     }
 
@@ -84,7 +84,7 @@ mod nested_borrowing_parent {
     trait IView {}
     impl IView for View<'_> {}
 
-    fn receive<'a, 'env>(container: &SystasisContainer<'_, 'a, 'env>) -> View<'env> {
+    fn receive<'a, 'env, F: SystasisFactories<'a, 'env>>(container: &SystasisContainer<'_, 'a, 'env, F>) -> View<'env> {
         container.try_resolve_i_view().unwrap()
     }
 
@@ -121,11 +121,12 @@ mod nested_borrowing_parent {
 }
 
 fn main() {
-    native_provider::public_result::run(String::from("public"), public);
-    native_provider::public_result::run(String::from("public"), parent::inspect);
-    native_provider::private_result::run(String::from("private"), private);
+    let container = native_provider::public_result::build(String::from("public"));
+    public(&container);
+    parent::inspect(&container);
+    private(&native_provider::private_result::build(String::from("private")));
     let label = String::from("label");
-    native_provider::generic::run(&label, String::from("owned"), generic);
+    generic(&native_provider::generic::build(&label, String::from("owned")));
     let child_value: String = String::from("borrowed child");
     native_provider::borrowed_child::run(&child_value, borrowing_parent::inspect);
     let nested_child_value: String = String::from("nested borrowed child");

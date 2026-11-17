@@ -128,7 +128,7 @@ mod native_capture {
     impl IText for String {}
 
     #[systasis::container(require(Send, Sync))]
-    fn init_container() -> SystasisContainer {
+    fn init_container() -> SystasisContainer<impl SystasisFactories> {
         let text = String::from("native owned capture");
         let Ok(container) = systasis::systasis_container! {
             register_type_with!(String as IText, move || text.clone());

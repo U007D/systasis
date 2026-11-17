@@ -249,7 +249,6 @@ fn expand_inner(
         })
         .collect::<Vec<_>>();
     let turbofish = (!type_arguments.is_empty()).then(|| quote!(::<#(#type_arguments),*>));
-    let mut opaque_definitions = Vec::new();
     let systasis_error_ident = Ident::new("__systasis_error", Span::mixed_site());
     let systasis_result_ident = Ident::new("__systasis_result", Span::mixed_site());
     let systasis_builder_ident = Ident::new("__systasis_builder", Span::mixed_site());
@@ -536,6 +535,14 @@ fn expand_inner(
                 return Err(error);
             }
         }
+        if let Some(errors) = &mut build_errors {
+            for &index in &order {
+                errors.visit_expr_mut(&mut registrations[index].value);
+            }
+        }
+        let inferred_error = build_errors
+            .as_ref()
+            .is_some_and(|errors| errors.has_sources());
         let slots = (0..registrations.len())
             .map(|i| format_ident!("__systasis_slot_{i}", span = Span::mixed_site()))
             .collect::<Vec<_>>();
@@ -704,8 +711,8 @@ fn expand_inner(
         for (&index, types) in &capture_types {
             if factories[&index].native {
                 let name = format_ident!("__systasis_NativeFactory{index}");
-                let (_, native_arguments, _) = original_generics.split_for_impl();
-                selected[index] = quote!(::systasis::__private::FactorySlot<__systasis_injected::#name #native_arguments>);
+                let parameter = crate::native::parameter(index);
+                selected[index] = quote!(::systasis::__private::FactorySlot<__systasis_injected::#name<#parameter>>);
                 continue;
             }
             if !factories[&index].requires_record {
@@ -783,8 +790,97 @@ fn expand_inner(
         } else {
             quote!(&self._children.inner)
         };
+        let mut native = crate::native::Storage::default();
+        for (&index, factory) in &factories {
+            if !factory.native {
+                continue;
+            }
+            let context = format_ident!("__systasis_ConstructorContext{index}");
+            let call_lifetime = Lifetime::new("'__systasis_native_call", Span::mixed_site());
+            let output = match &factory.closure.output {
+                ReturnType::Default => initializer_types[index].clone(),
+                ReturnType::Type(_, ty) => (**ty).clone(),
+            };
+            let mut output = output;
+            CallLifetime(call_lifetime.clone()).visit_type_mut(&mut output);
+            let arguments = crate::wiring::arguments(index, &transitive);
+            let slots = arguments
+                .iter()
+                .filter(|&&dependency| dependency != index)
+                .map(|&dependency| &selected[dependency]);
+            let child_types = children.iter().zip(&child_masks).map(|(child, mask)| {
+                let lifetime = child
+                    .ty
+                    .lifetime
+                    .as_ref()
+                    .unwrap_or_else(|| unreachable!("child lifetimes were lifted"));
+                let lifetime = if lifetimes
+                    .0
+                    .iter()
+                    .any(|lifted| lifted.ident == lifetime.ident)
+                {
+                    &call_lifetime
+                } else {
+                    lifetime
+                };
+                let ty = &child.ty.elem;
+                quote!(::systasis::scoped::BorrowedContext<#lifetime, #ty, #mask>)
+            });
+            native.bounds.insert(index, parse_quote!(for<#call_lifetime> Fn(__systasis_injected::#context<#call_lifetime, #(#slots,)* (#(#child_types,)*), ()>) -> #output));
+        }
+        let native_names = native.parameters();
+        let native_definitions = native.definitions(original_generics);
+        let (_, original_arguments, _) = original_generics.split_for_impl();
+        let mut container_generics = generics.clone();
+        let mut raw_generics = generics.clone();
+        raw_generics.params.extend(
+            native_names
+                .iter()
+                .map(|name| -> GenericParam { parse_quote!(#name) }),
+        );
+        // Keep native closures in one owned family parameter. Stable return-position
+        // impl Trait can infer that parameter while each closure retains its auto traits.
+        let (family, raw_family) = if native.is_empty() {
+            (quote!(()), quote!(()))
+        } else {
+            container_generics
+                .params
+                .push(parse_quote!(__systasis_Factories = ()));
+            container_generics.make_where_clause().predicates.push(parse_quote!(__systasis_Factories: __systasis_injected::__systasis_FactoryTypes #original_arguments));
+            let slots = native.bounds.keys().map(|&index| &selected[index]);
+            (quote!(__systasis_Factories), quote!((#(#slots,)*)))
+        };
+        let mut identity = generic_marker.clone();
+        if inferred_error {
+            container_generics.params.push(parse_quote!(
+                __systasis_Error = ::systasis::__private::Never
+            ));
+            raw_generics.params.push(parse_quote!(__systasis_Error));
+            identity = quote!(fn() -> (#identity, __systasis_Error));
+        }
+        let container_marker =
+            quote!(__systasis_injected::__systasis_Parameters<#identity, #family>);
+        let raw_marker = quote!(__systasis_injected::__systasis_Parameters<#identity, #raw_family>);
         selected.push(child_storage.clone());
-        selected.push(generic_marker.clone());
+        selected.push(raw_marker.clone());
+        let mut container_selected = selected
+            .iter()
+            .enumerate()
+            .map(|(index, ty)| {
+                if native.bounds.contains_key(&index) {
+                    quote!(())
+                } else {
+                    ty.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        if let Some(marker) = container_selected.last_mut() {
+            *marker = container_marker.clone();
+        }
+        let mut resolver_generics = container_generics.clone();
+        if !native.is_empty() {
+            resolver_generics.make_where_clause().predicates.push(parse_quote!(__systasis_Factories: __systasis_injected::SystasisFactories #original_arguments));
+        }
         let parameters = (0..=registrations.len() + 1)
             .map(|i| format_ident!("__Slot{i}"))
             .collect::<Vec<_>>();
@@ -864,8 +960,13 @@ fn expand_inner(
             let field = &fields[i];
             let slot = &slots[i];
             let storage = &selected[i];
-            field_types.push(storage.clone());
-            values.push(quote!(#field: #slot.unwrap_or_else(|| ::core::unreachable!("successful build initialized every slot"))));
+            if native.bounds.contains_key(&i) {
+                field_types.push(quote!(()));
+                values.push(quote!(#field: ()));
+            } else {
+                field_types.push(storage.clone());
+                values.push(quote!(#field: #slot.unwrap_or_else(|| ::core::unreachable!("successful build initialized every slot"))));
+            }
             let mut names = registration
                 .interface
                 .0
@@ -919,8 +1020,8 @@ fn expand_inner(
                 &scope_entry,
                 &parameters,
                 i,
-                &generics,
-                &selected,
+                &container_generics,
+                &container_selected,
                 &initializer_types[i],
                 dynamic[i].as_ref(),
             ));
@@ -951,6 +1052,7 @@ fn expand_inner(
                     .params
                     .insert(0, parse_quote!(#children_lifetime));
                 let arguments = crate::wiring::arguments(i, &transitive);
+                native.extend(&mut helper_generics, &arguments);
                 // The context exists only for this invocation. Bound its
                 // borrowed fields, not unrelated original generic parameters.
                 let authored_bounds = helper_generics
@@ -991,9 +1093,8 @@ fn expand_inner(
                         quote!(#parameter: &#call_lifetime #ty)
                     })
                     .collect::<Vec<_>>();
-                // Native closures receive dependencies, never their own
-                // closure slot: including that slot would make the opaque
-                // closure type occur recursively in its own Fn argument.
+                // A native closure's context contains only its dependencies,
+                // keeping its Fn signature independent of its own storage type.
                 let context_arguments = arguments
                     .iter()
                     .copied()
@@ -1023,7 +1124,12 @@ fn expand_inner(
                     .iter()
                     .map(|&index| {
                         let field = &fields[index];
-                        quote!(&self.#field)
+                        if native.bounds.contains_key(&index) {
+                            let method = format_ident!("__systasis_factory{index}");
+                            quote!(__systasis_injected::SystasisFactories::#method(&self._parameters.factories))
+                        } else {
+                            quote!(&self.#field)
+                        }
                     })
                     .collect::<Vec<_>>();
                 let method = if registration.fallible { &take } else { &copy };
@@ -1036,14 +1142,12 @@ fn expand_inner(
                         __systasis_output
                     })
                 };
-                let (impl_generics, _, where_clause) = generics.split_for_impl();
+                let (impl_generics, _, where_clause) = resolver_generics.split_for_impl();
                 let (context_parameters, _, context_where) = helper_generics.split_for_impl();
                 if factory.native {
                     let native_name = format_ident!("__systasis_NativeFactory{i}");
-                    let opaque_name = format_ident!("__systasis_NativeClosure{i}");
+                    let native_parameter = crate::native::parameter(i);
                     let signature_name = format_ident!("__systasis_native_signature{i}");
-                    let (native_parameters, native_arguments, native_where) =
-                        original_generics.split_for_impl();
                     // Avoid a scope GAT projection in the higher-ranked Fn
                     // argument: it can impose 'static on invariant child data.
                     // Name backing types directly, preserving each child's mask.
@@ -1075,9 +1179,9 @@ fn expand_inner(
                         quote!(__systasis_injected::#context<'_, #(#source_slots,)* #native_children, _>),
                     )?;
                     SourceLifetimes(&lifetimes.0).visit_type_mut(&mut source_context);
-                    // The signature helper (or generic opaque alias) establishes
-                    // the HRTB. Explicit context typing supports returned
-                    // dependency guards before assignment to opaque storage.
+                    native.infer().visit_type_mut(&mut source_context);
+                    // The signature helper establishes higher-ranked argument
+                    // lifetimes before rustc checks returned dependency borrows.
                     let mut native_closure = closure.clone();
                     native_closure
                         .inputs
@@ -1090,35 +1194,58 @@ fn expand_inner(
                     } else {
                         parse_quote!({ let __systasis_output: #registered = { #body }; __systasis_output })
                     };
-                    // Infer the higher-ranked call signature before checking
-                    // captures and assigning the opaque storage type. Assigning
-                    // that type first hides the capture-bound diagnostic; leaving
-                    // the signature unconstrained breaks returned guard lifetimes.
-                    // Keep the capture check in a separate let initializer too:
-                    // a tail call inherits the opaque expected type and loses
-                    // the diagnostic's source note on the tested compiler.
-                    let signature_function = original_generics.params.is_empty().then(|| quote! {
-                        pub(super) fn #signature_name<__systasis_Constructor>(constructor: __systasis_Constructor) -> __systasis_Constructor
-                        where
-                            __systasis_Constructor: for<#call_lifetime> Fn(#native_context_type) -> #helper_output,
+                    // Checking the concrete closure in a separate initializer
+                    // keeps capture-lifetime diagnostics tied to the supplied binding.
+                    let mut signature_generics = original_generics.clone();
+                    native.extend(&mut signature_generics, &arguments);
+                    let (signature_parameters, _, signature_where) =
+                        signature_generics.split_for_impl();
+                    let native_dependencies = native
+                        .bounds
+                        .keys()
+                        .copied()
+                        .filter(|&index| index != i && arguments.contains(&index))
+                        .collect::<Vec<_>>();
+                    let signature_dependencies = native_dependencies.iter().map(|&index| {
+                        let ty = &selected[index];
+                        quote!(_: &#ty)
+                    });
+                    let signature_inputs = native_dependencies.iter().map(|index| {
+                        let owner = format_ident!(
+                            "__systasis_capture_owner_{index}",
+                            span = Span::mixed_site()
+                        );
+                        quote!(&#owner)
+                    });
+                    let signature_function = quote! {
+                        pub(super) fn #signature_name #signature_parameters(constructor: #native_parameter, #(#signature_dependencies),*) -> #native_parameter
+                        #signature_where
                         {
                             constructor
                         }
+                    };
+                    let signature_inference = native
+                        .bounds
+                        .keys()
+                        .filter(|index| arguments.contains(index))
+                        .map(|_| quote!(_));
+                    let signature_turbofish =
+                        quote!(::<#(#type_arguments,)* #(#signature_inference),*>);
+                    let capture_check = original_generics.params.is_empty().then(|| quote! {
+                        let __systasis_native_closure =
+                            ::systasis::__private::check_native_constructor_captures(__systasis_native_closure);
                     });
-                    let checked_closure = if original_generics.params.is_empty() {
+                    let checked_closure = {
                         let source_span = registration.constructor.as_ref().map_or_else(
                             || registration.ty.span(),
                             |constructor| constructor.inputs_begin.span,
                         );
                         quote::quote_spanned!(source_span=> {
                             let __systasis_native_closure =
-                                __systasis_injected::#signature_name(#native_closure);
-                            let __systasis_native_closure =
-                                ::systasis::__private::check_native_constructor_captures(__systasis_native_closure);
+                                __systasis_injected::#signature_name #signature_turbofish (#native_closure, #(#signature_inputs),*);
+                            #capture_check
                             __systasis_native_closure
                         })
-                    } else {
-                        quote!(#native_closure)
                     };
                     native_initializers.insert(
                         i,
@@ -1126,7 +1253,6 @@ fn expand_inner(
                             closure: #checked_closure,
                         }),
                     );
-                    opaque_definitions.push(quote!(__systasis_injected::#opaque_name));
                     let native_context_fields = context_arguments
                         .iter()
                         .zip(&context_slot_parameters)
@@ -1143,20 +1269,15 @@ fn expand_inner(
                     // No borrow of the temporary context is returned.
                     constructor_functions.push(quote!(
                         #signature_function
-                        pub(super) struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
+                        pub struct #context<#call_lifetime, #(#context_slot_parameters,)* __ContextChildren, __ContextMarker> {
                             #(#native_context_fields,)*
                             pub(super) _children: __ContextChildren,
                             pub(super) _marker: ::core::marker::PhantomData<(&#call_lifetime __ContextChildren, __ContextMarker)>,
                         }
-                        // The defining function must prove requested auto traits
-                        // without first revealing its own opaque closure type.
-                        // Keep the whole-container assertions as well: other
-                        // slots and child references must satisfy them too.
-                        pub(super) type #opaque_name #native_parameters #native_where = impl for<#call_lifetime> Fn(#native_context_type) -> #helper_output #(+ ::core::marker::#requirements)*;
                         // The named wrapper prevents a private constructor
                         // result from leaking through the public container alias.
-                        pub struct #native_name #native_parameters #native_where {
-                            pub(super) closure: #opaque_name #native_arguments,
+                        pub struct #native_name<#native_parameter> {
+                            pub(super) closure: #native_parameter,
                         }
                         pub(super) fn #helper #context_parameters (#(#helper_parameters,)* #children_ident: &#children_lifetime #child_tuple) -> #helper_output #context_where {
                             let context: #native_context_type = #context { #(#context_fields,)* _children: (#(#native_child_values,)*), _marker: ::core::marker::PhantomData };
@@ -1190,7 +1311,7 @@ fn expand_inner(
                     }
                 ));
                 implementations.push(quote!(
-                    impl #impl_generics __systasis_Generated<#(#selected),*> #where_clause {
+                    impl #impl_generics __systasis_Generated<#(#container_selected),*> #where_clause {
                         pub fn #method(&self) -> #output { #helper #turbofish (#(#call_arguments,)* #stored_children_ref) }
                         #try_alias
                     }
@@ -1301,14 +1422,15 @@ fn expand_inner(
         let imports = bindings.imports();
         let capture_projection_helpers = bindings.projection_helpers();
         field_types.push(child_storage);
-        field_types.push(generic_marker);
+        field_types.push(raw_marker);
         let child_parameter = &parameters[registrations.len()];
         let generic_parameter = parameters.last().unwrap_or_else(|| {
             unreachable!(
                 "parameters includes child and generic-marker entries even with no registrations"
             )
         });
-        let (alias_parameters, alias_arguments, alias_where) = generics.split_for_impl();
+        let (alias_parameters, alias_arguments, alias_where) = container_generics.split_for_impl();
+        let (raw_parameters, raw_arguments, raw_where) = raw_generics.split_for_impl();
         let mut child_aliases = Vec::new();
         let mut child_exports = Vec::new();
         let mut child_accessors = Vec::new();
@@ -1333,7 +1455,9 @@ fn expand_inner(
             let mask = &child_masks[index];
             child_values.push(quote!(::systasis::scoped::AsScope::<#mask>::scope(#name)));
         }
-        let mut construction_type: Type = parse_quote!(SystasisContainer #alias_arguments);
+        let mut construction_type: Type =
+            parse_quote!(__systasis_injected::__systasis_RawContainer #raw_arguments);
+        native.infer().visit_type_mut(&mut construction_type);
         if let Type::Path(path) = &mut construction_type
             && let PathArguments::AngleBracketed(arguments) = &mut path
                 .path
@@ -1347,6 +1471,10 @@ fn expand_inner(
                 .arguments
         {
             for argument in &mut arguments.args {
+                if matches!(argument, GenericArgument::Type(Type::Path(path)) if path.path.is_ident("__systasis_Error"))
+                {
+                    *argument = parse_quote!(_);
+                }
                 if let GenericArgument::Lifetime(lifetime) = argument
                     && lifetimes
                         .0
@@ -1357,6 +1485,24 @@ fn expand_inner(
                 }
             }
         }
+        let native_exports = (!native.is_empty()).then(|| {
+            quote!(
+                pub use self::__systasis_injected::SystasisFactories;
+            )
+        });
+        let mut constructor_code: syn::File = parse2(quote!(#(#constructor_functions)*))?;
+        crate::native::Calls {
+            storage: &native,
+            dependencies: &transitive,
+        }
+        .visit_file_mut(&mut constructor_code);
+        let mut resolver_code: syn::File =
+            parse2(quote!(#(#implementations)* #(#scoped_implementations)*))?;
+        crate::native::Calls {
+            storage: &native,
+            dependencies: &transitive,
+        }
+        .visit_file_mut(&mut resolver_code);
         emitted = ::core::option::Option::Some(quote!(
             #[allow(non_snake_case, unused_imports, dead_code)]
             mod __systasis_injected {
@@ -1370,32 +1516,42 @@ fn expand_inner(
                 #(#constants)*
                 #(#const_markers)*
                 #(#dynamic_declarations)*
-                #(#constructor_functions)*
+                #constructor_code
+                #native_definitions
                 #(#key_declarations)*
+                pub struct __systasis_Parameters<__Marker, __Factories> {
+                    pub(super) factories: __Factories,
+                    pub(super) marker: ::core::marker::PhantomData<(#marker, __Marker)>,
+                }
                 pub struct __systasis_Generated<#(#parameters),*> {
                     #(pub(super) #fields: #parameters,)*
                     pub(super) _children: #child_parameter,
                     pub(super) _pin: ::core::marker::PhantomPinned,
-                    pub(super) _parameters: ::core::marker::PhantomData<(#marker, #generic_parameter)>,
+                    pub(super) _parameters: #generic_parameter,
                 }
-                #(#implementations)*
-                impl #alias_parameters __systasis_Generated<#(#selected),*> #alias_where { #(#child_accessors)* }
+                #resolver_code
+                impl #alias_parameters __systasis_Generated<#(#container_selected),*> #alias_where { #(#child_accessors)* }
                 #(#child_aliases)*
                 #descriptor
                 #child_forwarding
                 #namespace_forwarding
-                #(#scoped_implementations)*
                 #[allow(type_alias_bounds)]
-                pub type __systasis_Container #alias_parameters #alias_where = __systasis_Generated<#(#field_types),*>;
+                pub type __systasis_Container #container_generics #alias_where = __systasis_Generated<#(#container_selected),*>;
+                #[allow(type_alias_bounds)]
+                pub type __systasis_RawContainer #raw_parameters #raw_where = __systasis_Generated<#(#field_types),*>;
             }
             /// The container generated from this module's registration declaration.
             #[allow(type_alias_bounds)]
-            pub type SystasisContainer #alias_parameters #alias_where = __systasis_injected::__systasis_Container #alias_arguments;
+            pub type SystasisContainer #container_generics #alias_where = __systasis_injected::__systasis_Container #alias_arguments;
+            #native_exports
             #(#child_exports)*
         ));
         let mut initialization = Vec::new();
         let mut capture_initialization = Vec::new();
-        for (&index, factory) in &factories {
+        for &index in &order {
+            let Some(factory) = factories.get(&index) else {
+                continue;
+            };
             let owner = format_ident!(
                 "__systasis_capture_owner_{index}",
                 span = Span::mixed_site()
@@ -1418,10 +1574,7 @@ fn expand_inner(
         }
         for i in &order {
             let slot = &slots[*i];
-            let mut value = registrations[*i].value.clone();
-            if let Some(errors) = &mut build_errors {
-                errors.visit_expr_mut(&mut value);
-            }
+            let value = &registrations[*i].value;
             let policy = &policies[*i];
             let ty = &initializer_types[*i];
             let capture_owner =
@@ -1469,7 +1622,22 @@ fn expand_inner(
         } else {
             quote!(__systasis_injected::__systasis_StoredChildren { inner: #children_ident, marker: ::core::marker::PhantomData })
         };
-        let generated: Block = syn::parse2(quote!({
+        let parameters_marker = if inferred_error {
+            quote!(__systasis_declaration::container_marker(
+                &__systasis_error_marker
+            ))
+        } else {
+            quote!(::core::marker::PhantomData)
+        };
+        let native_values = native.bounds.keys().map(|&index| {
+            let slot = &slots[index];
+            quote!(#slot.unwrap_or_else(|| ::core::unreachable!("successful build initialized every constructor")))
+        });
+        let parameters_value = quote!(__systasis_injected::__systasis_Parameters {
+            factories: (#(#native_values,)*),
+            marker: #parameters_marker,
+        });
+        let mut generated: Block = syn::parse2(quote!({
             #macro_path!(@__systasis_marker);
             #(#policy_checks)*
             #(#validation_calls)*
@@ -1481,7 +1649,7 @@ fn expand_inner(
                     #(#initialization)*
                     let #systasis_result_ident=match #systasis_error_ident {
                         ::core::option::Option::None=>{
-                            let container: #construction_type = SystasisContainer {#(#values,)*_children: #stored_child_values, _pin: ::core::marker::PhantomPinned,_parameters: ::core::marker::PhantomData};
+                            let container: #construction_type = __systasis_injected::__systasis_RawContainer {#(#values,)*_children: #stored_child_values, _pin: ::core::marker::PhantomPinned,_parameters: #parameters_value};
                             ::core::result::Result::Ok(container)
                         },
                         #[allow(unreachable_code, reason = "this generated error arm cannot execute for an uninhabited build error type")]
@@ -1493,14 +1661,14 @@ fn expand_inner(
             );
             let #pattern = #published_expression #otherwise;
         }))?;
+        crate::native::Calls {
+            storage: &native,
+            dependencies: &transitive,
+        }
+        .visit_block_mut(&mut generated);
         statements.extend(generated.stmts);
     }
     function.block.stmts = statements;
-    if !opaque_definitions.is_empty() {
-        function
-            .attrs
-            .push(parse_quote!(#[define_opaque(#(#opaque_definitions),*)]));
-    }
     let mut definitions: syn::File = syn::parse2(quote!(#emitted))?;
     for item in &mut definitions.items {
         if let syn::Item::Mod(module) = item

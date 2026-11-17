@@ -1,6 +1,7 @@
 #![doc = include_str!("../docs/USAGE.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![forbid(unstable_features)]
 
 pub mod container;
 

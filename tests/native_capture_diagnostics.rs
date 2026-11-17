@@ -29,9 +29,7 @@ fn local_native_capture_errors_explain_the_working_rewrite() {
     for (case, error, capture_note) in [
         ("borrowed", Some("E0597"), true),
         ("inferred", Some("E0597"), true),
-        // rustc does not include the bound's source note in E0521. Retain this
-        // control as an explicit limit, not evidence of a tailored diagnostic.
-        ("parameter", Some("E0521"), false),
+        ("parameter", Some("E0521"), true),
         ("wrong_output", Some("E0308"), false),
         ("owned", None, false),
         ("static_reference", None, false),
@@ -83,9 +81,9 @@ fn local_native_capture_errors_explain_the_working_rewrite() {
         );
         if capture_note {
             assert!(
-                diagnostics.contains(
-                    "note: requirement that the value outlives `'static` introduced here"
-                ),
+                diagnostics.lines().any(|line| line.starts_with("note: ")
+                    && line.contains("'static")
+                    && line.contains("introduced here")),
                 "{case} lost its explanatory source note:\n{diagnostics}"
             );
         }

@@ -31,3 +31,35 @@ fn building_and_returning_inferred_errors_do_not_allocate() {
     });
     assert_no_allocations(counts);
 }
+
+mod native {
+    use super::{assert_no_allocations, measure};
+
+    trait IBytes {}
+    impl IBytes for [u8; 4] {}
+
+    #[systasis::container]
+    fn build(bytes: [u8; 4]) -> SystasisContainer<impl SystasisFactories> {
+        let Ok(container) = systasis::systasis_container! {
+            register_type_with!([u8; 4] as IBytes, move || {
+                assert_eq!(bytes.len(), 4);
+                bytes
+            });
+        }
+        .build();
+        container
+    }
+
+    #[test]
+    fn inferred_native_storage_build_resolve_and_drop_do_not_allocate() {
+        let (bytes, counts) = measure(|| {
+            let container = build(std::hint::black_box([1, 2, 3, 4]));
+            let first = container.resolve_i_bytes();
+            assert_eq!(container.resolve_i_bytes(), first);
+            drop(container);
+            first
+        });
+        assert_eq!(bytes, [1, 2, 3, 4]);
+        assert_no_allocations(counts);
+    }
+}

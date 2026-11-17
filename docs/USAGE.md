@@ -7,15 +7,14 @@ The existing attributed-function form remains available for runtime inputs.
 The crate is under development: see the repository README and
 `docs/CAPTURE_LIMITS.md` for remaining implementation limits.
 
-The current procedural-macro crate requires nightly Rust. Use the
-`nightly` toolchain; application crates need no extra feature
-attributes for generated containers. The repository's `docs/NIGHTLY.md` records
-the unstable features and their purposes. A consuming project's
+This branch supports stable Rust 1.100 or newer. Application crates need no feature
+attributes or bootstrap setting. The repository's `docs/STABLE.md` describes
+the generic type parameters used for inferred storage and errors. A consuming project's
 `rust-toolchain.toml` can select the channel:
 
 ```toml
 [toolchain]
-channel = "nightly"
+channel = "stable"
 profile = "minimal"
 ```
 
@@ -60,7 +59,7 @@ runtime variables; use the attribute form below when supplying such inputs.
 ### Inferred initialization errors
 
 Propagate an initializer's error with `?`. Systasis infers and combines the source
-errors in `SystasisContainerError`; no error-type annotation or list is needed.
+errors in `SystasisContainerError<E>`; no error-type annotation or list is needed.
 Sources must implement `core::error::Error + 'static`.
 
 ```rust
@@ -76,28 +75,70 @@ systasis_container! {
     register_value!("true".parse::<bool>()?: bool as IEnabled);
 }
 
-pub fn init_container() -> Result<SystasisContainer, SystasisContainerError> {
+pub fn init_container() -> BuildResult<impl core::error::Error> {
     SystasisContainer::build()
 }
 
-fn main() -> Result<(), SystasisContainerError> {
-    let container = init_container()?;
-    assert_eq!(container.resolve_i_port(), 8080);
-    assert!(container.resolve_i_enabled());
-    Ok(())
+fn main() -> Result<(), impl core::error::Error> {
+    init_container().map(|container| {
+        assert_eq!(container.resolve_i_port(), 8080);
+        assert!(container.resolve_i_enabled());
+    })
 }
 ```
 
 The generated enum owns errors inline, without boxing. `Error::source()` exposes
 the original error, and `Display` forwards its message. `Send`/`Sync` follow the
-source types. Internal variants and source-type parameters are not public naming
-contracts; use the generated error name and the `Error` trait.
+source types. `BuildResult<E>` aliases
+`Result<SystasisContainer<E>, SystasisContainerError<E>>`, sharing the inferred
+error parameter between both sides. A successful container's auto traits are
+independent of `E`. Internal variants remain implementation details.
 
 Infallible declarations infer the never error type, permitting the first
 example's irrefutable `let Ok(...)`. Errors handled inside a nested closure, or
 returned by a lazy constructor during resolution, do not make building fallible.
 Failed builds drop initialized values before returning the error, except values
 owned by the error itself. No partial container is exposed.
+
+### Naming native constructor storage
+
+When captures need native closure storage, `SystasisContainer<F>` carries the
+inferred storage type. The generated `SystasisFactories` bound exposes its resolver
+capabilities. Authored generic parameters precede `F`. For a declaration that
+also infers source errors, use `BuildResult<F, E>` in returning signatures.
+
+```rust
+use systasis::{container, systasis_container};
+
+trait ILabel {}
+impl ILabel for String {}
+
+#[container]
+fn make(label: String) -> SystasisContainer<impl SystasisFactories> {
+    let Ok(container) = systasis_container! {
+        register_type_with!(String as ILabel, move || format!("{label}"));
+    }.build();
+    container
+}
+
+fn read<F>(container: &SystasisContainer<F>) -> String
+where
+    F: SystasisFactories,
+{
+    container.resolve_i_label()
+}
+
+fn main() {
+    let container = make(String::from("request"));
+    assert_eq!(read(&container), "request");
+    assert_eq!(read(&container), "request");
+}
+```
+
+The type parameter owns constructor state inline and preserves its natural auto
+traits. Typed reconstructed captures that need no anonymous storage keep the
+existing container signature. Named child aliases carry their relevant type
+parameters too; registration and child-resolution syntax stay the same.
 
 ## Function-local inputs (attribute form)
 
@@ -735,7 +776,7 @@ systasis = { path = "../systasis", default-features = false }
 ```
 
 Adjust the path to the checkout location. Procedural macros still build for the
-host, and the nightly requirement above still applies.
+host using the same stable toolchain.
 
 - `std` is enabled by default. Disable default features for the no_std runtime;
   no allocator is required by systasis itself.
