@@ -1,6 +1,30 @@
 # Stable workaround investigation — 2026-11-15
 
-## Current status: parked
+## Current status: integrated on `stable-impl`, 2026-11-17
+
+The user requested finishing the stable implementation on `stable-impl`.
+This supersedes the earlier parking decision for this branch. The integrated
+stable generic representation preserves registration syntax, owned inferred
+captures, inline inferred errors, infallible `let Ok(...)`, natural auto traits,
+cleanup, and named/nested subcontainers. `main` remains unchanged.
+
+The concrete failure is that ordinary `cargo +stable check` rejects the macro
+crate's nightly feature gate. Acceptance is the integrated public API passing
+the std/no_std workspace suites, downstream/compiler tests, examples and docs
+on stable with bootstrap disabled and unstable features forbidden. No new
+dependencies or unsafe storage mechanisms were added.
+
+Acceptance is complete on Rust 1.100.0 with bootstrap removed and unstable
+features forbidden: the std and no_std workspace suites each pass 507 tests,
+zero failures and four pre-existing ignored tests, including all 17 usage-guide
+doctests and downstream/compiler fixtures. Warnings-denied Clippy passes on
+both backends; allocator-free contracts compile on the host and
+`thumbv8m.main-none-eabihf`. Public generic naming and migration examples are
+documented in [STABLE.md](../../docs/STABLE.md), with detailed evidence in
+[VALIDATION.md](../../docs/VALIDATION.md). No implementation work remains for
+this request; the sections below retain the earlier investigation history.
+
+## Previous status: parked
 
 The user judged this approach a usability regression from the nightly API and
 requested archiving the work on `stable-impl`, with main untouched. The research

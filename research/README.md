@@ -1,13 +1,19 @@
-# Stable Rust research — parked
+# Stable Rust research archive
+
+On 2026-11-17 the user requested integrating this work on `stable-impl`.
+The branch now contains the stable implementation as well as these original
+probes. See [stable support and API migration](../docs/STABLE.md) for the current
+API and [validation](../docs/VALIDATION.md) for integration evidence.
+
+## Original parking decision
 
 On 2026-11-15 the user identified the proposed generic container/error API as a
 usability regression from the nightly API and requested that this work be parked
 on `stable-impl`, leaving `main` untouched.
 
-This branch archives the investigations and runnable probes. Both workspace
-packages are versioned `0.2.0` on this branch; the stable port remains unimplemented.
-Production macro and runtime source, third-party dependencies, public API and
-toolchain are unchanged. The branch is based on main commit
+The initial branch commit archived the investigations and runnable probes and
+versioned both packages `0.2.0`. It left production implementation and toolchain
+unchanged. The branch is based on main commit
 `2122f2006cc52ebfe06e141b131ac9240f19592f`.
 
 - [Stable replacement investigation](stable-replacements/README.md): named factory
@@ -18,6 +24,6 @@ toolchain are unchanged. The branch is based on main commit
   uses a shared error parameter and a result alias; minimal API changes remain
   unproven.
 
-The prototype's public generic parameters are not an accepted API change. Full
-registration-macro integration and named subcontainers were not implemented.
-Resume this work only on an explicit user request; retain the nightly API on main.
+At that time the prototype's generic API was not selected for integration.
+The subsequent implementation request applies to `stable-impl`; `main` retains
+its existing API and toolchain.

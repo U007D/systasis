@@ -30,7 +30,7 @@ instead of the registered value. The constructor-context fix does not protect
 this path. For now, `__systasis_*` names are reserved for generated code: caller
 declarations, imports (including globs), and macro expansions must not introduce
 them into generated-code scopes. Ordinary nonconflicting globs remain allowed.
-This accepted usage restriction remains during the nightly port; it does not
+This accepted usage restriction remains during the stable port; it does not
 fix the collision or guarantee a compiler diagnostic. A violating program can
 compile and resolve the wrong value. The parent research/initializer-hygiene
 directory retains the reproducer and rejected stable candidates. The nightly

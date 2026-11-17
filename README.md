@@ -4,6 +4,10 @@ An experimental Rust dependency-injection library. The initial-release operation
 are implemented and tested; capture and type-bound recognition limitations remain.
 See the [feature inventory and validation evidence](docs/VALIDATION.md).
 
+The `stable-impl` branch targets **stable Rust 1.100 or newer**. Native constructor
+storage and inferred build errors use generic type parameters; see
+[stable support and API migration](docs/STABLE.md).
+
 For the initial release, user macros inside registrations are deferred.
 Systasis's own dependency-resolution and registered-type query macros remain
 in scope. Existing partial user-macro support is not a general release guarantee.
@@ -99,18 +103,16 @@ Known input-form gaps are recorded above and in the capture limits. Further
 array-alias edge-case work, user macros, container-stored internal borrows and
 physical-board validation are deferred. Renamed Cargo dependency support is out
 of the current scope; no import placement restriction or new dependency has been
-adopted for it. Stable-toolchain work follows the temporary nightly implementation.
+adopted for it.
 
 The root package is `systasis`; `systasis-macros/` is its procedural-macro
 workspace member. The implementation follows the accepted design documents
-in the parent directory. Research artifacts remain outside this package.
+in the parent directory. The original stable-port probes are archived in `research/`.
 
 `std` is enabled by default. Disable default features for the no_std runtime.
-The project temporarily uses nightly Rust while native constructor closure
-storage is integrated. See [the feature inventory](docs/NIGHTLY.md) for what
-requires nightly and the later stable-support checks. Infallible builds infer
-the never error type without spelling `!` in generated source. No nightly guard
-feature is used.
+The project selects stable Rust. Both crates forbid unstable features;
+applications need no feature attributes or bootstrap setting. Infallible builds
+retain the actual never error type and irrefutable `let Ok(...)` patterns.
 
 For targets without native atomic compare-and-swap, enable `portable-atomic`
 alongside `default-features = false`. It enables Spin's portable atomics and the

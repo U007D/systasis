@@ -1,8 +1,9 @@
 # Stable inferred storage and build errors
 
-**Parked on `stable-impl` at the user's request.** The generic public naming was
-judged a usability regression from the nightly API. See [the branch decision](../README.md).
-This archive does not authorize integration or further research.
+**Historical prototype.** The user requested production integration on
+2026-11-17. The implementation uses a generated constructor-family parameter;
+see [the current API](../../docs/STABLE.md) and [branch history](../README.md).
+The findings below describe the original hand-expanded experiment.
 
 Verified 2026-11-15 with `rustc 1.100.0 (0ef1bc386 2026-11-09)`.
 
@@ -10,7 +11,8 @@ This is a working stable representation for the two mechanisms currently using
 TAIT: anonymous constructor storage and inferred declaration errors. It requires
 generic public container/error types. It is a hand expansion with a small local
 macro, not an implementation of Systasis's registration macro or a completed
-stable port. The production macros, runtime and toolchain selection are unchanged.
+stable port. At the time of this experiment the production implementation was
+unchanged; current branch support is documented separately above.
 
 ## New result
 

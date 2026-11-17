@@ -7,6 +7,55 @@ including their dependency and ownership checks, remain in scope.
 
 ## Current generated-container checks
 
+2026-11-17 stable implementation (`stable-impl`): both crates compile on
+`rustc 1.100.0 (0ef1bc386 2026-11-09)` / Cargo 1.100.0 with unstable features
+forbidden and bootstrap removed. Native closures are owned in a generic
+constructor family, and declaration errors use stable return-position `impl Trait`
+with type-based never selection. [STABLE.md](STABLE.md) documents the public
+generic signatures. The dependency versions and unsafe storage implementations
+are unchanged.
+
+The clean std and no_std workspace runs each pass 507 tests, zero failures,
+four pre-existing ignored tests, including 17 usage-guide doctests. Coverage
+includes named/nested children,
+cross-crate privacy and generics, native captures, original inline error sources,
+infallible propagation, failed-build cleanup, and positive/negative auto traits.
+New integration cases combine native factories with inferred errors, preserve
+infallibility through returning signatures, and verify successful containers are
+independent of a non-Send source error. Allocation checks include building,
+returning, repeatedly resolving and dropping owned native state.
+
+The direct-rustc fixture driver removes `RUSTC_BOOTSTRAP` and passes
+`-F unstable_features` to consumers. Extracted-package consumers are included in
+both backend suites. The allocator-free `#![no_std]` contracts fixture also
+compiles on the host and `thumbv8m.main-none-eabihf`, including native factory
+storage and inferred errors.
+
+Warnings-denied Clippy passes for all workspace targets on both backends;
+warnings-denied Rustdoc also passes on both backends.
+Cargo separately reports its existing manifest-level unused `spin` dependency
+warning on the std build; Spin remains required by no_std. Formatting and diff
+checks pass. No new dependency or unsafe code was introduced, so no Miri rerun
+was needed.
+
+Final suites use a fresh `target/stable-validation` directory and run sequentially.
+Concurrent earlier test/Clippy builds interfered with rustdoc's dependency
+artifacts; clean sequential validation replaces those runs.
+
+```sh
+env -u RUSTC_BOOTSTRAP RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER= \
+  RUSTFLAGS=-Funstable-features RUSTDOCFLAGS=-Funstable-features \
+  cargo +stable test --workspace --offline --locked \
+  --features resolve_unchecked,portable-atomic \
+  --target-dir target/stable-validation --no-fail-fast
+# Repeat with --no-default-features for the no_std runtime.
+```
+
+Logs: `/private/tmp/systasis-stable-{std,no-std}-final.log`,
+`systasis-stable-clippy-{std,no-std}.log`,
+`systasis-stable-rustdoc-{std,no-std}.log`, `systasis-stable-core.log`, and
+`systasis-stable-thumb.log`. The dated entries below describe earlier revisions.
+
 2026-09-23 clone-prefix naming (`07d3858`): public methods are
 `resolve_clone_<trait>` and `try_resolve_clone_<trait>`, with namespace suffixes
 unchanged. `clone_prefix` checks Sender<Message> without Clone/Default on Message,
@@ -998,11 +1047,10 @@ Rust-driver tests, covering intended errors and diagnostic-matcher checks.
 
 ## Reproduction
 
-Run from the repository root to select the installed `nightly` channel through
-`rust-toolchain.toml`. The macro package currently requires nightly; historical
-results above describe their named revisions and compilers. Record `rustc --version`
-with new results. The complete-suite commands below currently encounter the two
-compile failures documented above on the installed 2026-05-10 compiler.
+Run from the repository root to select the installed `stable` channel through
+`rust-toolchain.toml`. Historical results above describe their named revisions
+and compilers. Record `rustc --version` with new results; the current stable
+validation commands and environment are at the top of this document.
 
 ```sh
 cargo test --workspace --offline --locked
